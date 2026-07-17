@@ -13,6 +13,7 @@ import {
   writeTextFile,
 } from "@tauri-apps/plugin-fs";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import type { Cache, DirEntry, FileSystem, Http, HttpResponse, Ports, System } from "../ports.js";
 
 const fs: FileSystem = {
@@ -106,3 +107,8 @@ export function assetUrl(path: string): string {
 }
 
 export { appCacheDir };
+
+/** url im system-standardbrowser öffnen (tauri-opener-plugin). */
+export function openExternal(url: string): Promise<void> {
+  return openUrl(url);
+}
