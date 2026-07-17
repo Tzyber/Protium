@@ -37,6 +37,35 @@ function pct(tag: string): number | null {
   if (!j?.total) return null;
   return Math.min(100, Math.round((j.downloaded / j.total) * 100));
 }
+
+function relTime(ts: number): string {
+  const s = Math.round((Date.now() - ts) / 1000);
+  if (s < 60) return "gerade eben";
+  const m = Math.round(s / 60);
+  if (m < 60) return `vor ${m} min`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `vor ${h} h`;
+  return `vor ${Math.round(h / 24)} tag(en)`;
+}
+
+const statusLine = computed(() => {
+  if (proton.loading) return null;
+  if (proton.lastFetchedAt == null) return null;
+  const when = relTime(proton.lastFetchedAt);
+  const n = proton.releases.length;
+  switch (proton.lastSource) {
+    case "fresh":
+      return { icon: "✓", text: `aktualisiert · ${n} releases · gerade eben`, ok: true };
+    case "not-modified":
+      return { icon: "✓", text: `aktuell · zuletzt geprüft ${when}`, ok: true };
+    case "cache":
+      return { icon: "✓", text: `aktuell · zuletzt geprüft ${when}`, ok: true };
+    case "offline":
+      return { icon: "⚠", text: `offline · letzter stand ${when}`, ok: false };
+    default:
+      return null;
+  }
+});
 </script>
 
 <template>
@@ -46,9 +75,14 @@ function pct(tag: string): number | null {
         <span class="label">proton</span>
         <h2>versionen</h2>
       </div>
-      <button class="rescan" type="button" :disabled="proton.loading" @click="proton.loadReleases()">
-        {{ proton.loading ? "lädt…" : "releases aktualisieren" }}
-      </button>
+      <div class="update">
+        <button class="rescan" type="button" :disabled="proton.loading" @click="proton.loadReleases()">
+          {{ proton.loading ? "lädt…" : "releases aktualisieren" }}
+        </button>
+        <div v-if="statusLine" class="statusline" :class="{ warn: !statusLine.ok }">
+          <span class="ic">{{ statusLine.icon }}</span> {{ statusLine.text }}
+        </div>
+      </div>
     </header>
 
     <!-- installiert -->
@@ -138,6 +172,18 @@ function pct(tag: string): number | null {
 <style scoped>
 .pm { padding: 20px 24px; }
 .bar { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 20px; }
+.update { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.statusline {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--fg-2);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.statusline .ic { color: var(--tier-platinum); }
+.statusline.warn { color: var(--tier-gold); }
+.statusline.warn .ic { color: var(--tier-gold); }
 .title h2 { margin: 2px 0 0; font-family: var(--font-display); font-size: 26px; font-weight: 600; letter-spacing: -0.02em; }
 
 .rescan {

@@ -1,7 +1,13 @@
 import { listen } from "@tauri-apps/api/event";
 import { defineStore } from "pinia";
 import { appCacheDir, tauriPorts } from "../../core/adapters/tauri";
-import { fetchReleases, type GeRelease, installRelease, removeTool } from "../../core/geproton";
+import {
+  type FetchSource,
+  fetchReleases,
+  type GeRelease,
+  installRelease,
+  removeTool,
+} from "../../core/geproton";
 import type { CompatTool } from "../../core/types";
 import { useScanStore } from "./scanStore";
 
@@ -23,6 +29,8 @@ interface State {
   releases: GeRelease[];
   loading: boolean;
   loadError: string | null;
+  lastFetchedAt: number | null; // letzter echter github-kontakt
+  lastSource: FetchSource | null;
   jobs: Record<string, Job>; // key = release.tag
   queue: string[]; // wartende tags (max 1 aktiv)
   activeTag: string | null;
@@ -35,6 +43,8 @@ export const useProtonStore = defineStore("proton", {
     releases: [],
     loading: false,
     loadError: null,
+    lastFetchedAt: null,
+    lastSource: null,
     jobs: {},
     queue: [],
     activeTag: null,
@@ -72,8 +82,13 @@ export const useProtonStore = defineStore("proton", {
       this.loading = true;
       this.loadError = null;
       try {
-        this.releases = await fetchReleases(tauriPorts.http, tauriPorts.cache);
-        if (!this.releases.length) this.loadError = "keine releases (offline oder rate-limit?)";
+        const result = await fetchReleases(tauriPorts.http, tauriPorts.cache);
+        this.releases = result.releases;
+        this.lastFetchedAt = result.fetchedAt;
+        this.lastSource = result.source;
+        if (!this.releases.length && result.source === "offline") {
+          this.loadError = "keine releases (offline oder rate-limit?)";
+        }
       } catch (e) {
         this.loadError = errMsg(e);
       } finally {
