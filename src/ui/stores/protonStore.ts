@@ -7,6 +7,11 @@ import { useScanStore } from "./scanStore";
 
 type Phase = "queued" | "downloading" | "verifying" | "extracting";
 
+/** rust-commands rejecten mit einem rohen string (kein Error-objekt) → sicher auslesen. */
+function errMsg(e: unknown): string {
+  return typeof e === "string" ? e : ((e as Error)?.message ?? String(e));
+}
+
 interface Job {
   tag: string;
   phase: Phase;
@@ -70,7 +75,7 @@ export const useProtonStore = defineStore("proton", {
         this.releases = await fetchReleases(tauriPorts.http, tauriPorts.cache);
         if (!this.releases.length) this.loadError = "keine releases (offline oder rate-limit?)";
       } catch (e) {
-        this.loadError = (e as Error).message;
+        this.loadError = errMsg(e);
       } finally {
         this.loading = false;
       }
@@ -119,7 +124,7 @@ export const useProtonStore = defineStore("proton", {
         await scan.runScan(); // frische compatToolsInstalled + usedBy
         delete this.jobs[tag];
       } catch (e) {
-        const msg = (e as Error).message;
+        const msg = errMsg(e);
         if (!/cancel/i.test(msg)) this.loadError = `install ${tag} fehlgeschlagen: ${msg}`;
         delete this.jobs[tag];
       } finally {
@@ -137,7 +142,7 @@ export const useProtonStore = defineStore("proton", {
         await removeTool(tauriPorts.fs, steamRoot, tool.name);
         await scan.runScan();
       } catch (e) {
-        this.loadError = `löschen fehlgeschlagen: ${(e as Error).message}`;
+        this.loadError = `löschen fehlgeschlagen: ${errMsg(e)}`;
       } finally {
         this.busyRemove = null;
       }
