@@ -70,4 +70,4 @@ grundregeln, die überall gelten: schreibende zugriffe auf steam-dateien laufen 
 
 ## status
 
-in aktiver entwicklung, repo noch privat. api und UI ändern sich ohne vorwarnung. wer das liest, bevor version 0.1 existiert: die roadmap oben ist der ehrliche stand, nicht der wunschzettel.
+in aktiver entwicklung api und UI ändern sich ohne vorwarnung. wer das liest, bevor alles wirklich existiert: die roadmap oben ist der ehrliche stand, nicht der wunschzettel.
