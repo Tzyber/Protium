@@ -6,6 +6,10 @@ protium ist eine linux-desktop-app für steam/proton-housekeeping. sie zeigt dir
 
 entstanden, weil es genau dieses tool nicht gab. protonup-qt managt nur versionen, protontricks ist ein winetricks-wrapper, steamtinkerlaunch kann alles und ist genau deshalb unübersichtlich. protium will die eine aufgeräumte oberfläche für den kompletten workflow sein.
 
+![library-ansicht: cover-grid mit protondb-tiers, proton-zuordnung und filtern](docs/screenshots/main_page.png)
+
+![proton-manager: installierte versionen mit nutzung, GE-releases zum installieren](docs/screenshots/proton_page.png)
+
 ## was es kann
 
 **library-übersicht.** alle spiele über alle libraries (auch auf externen platten), mit cover, größe, zugewiesener proton-version und protondb-tier direkt auf der karte. cover kommen aus steams lokalem librarycache, die app funktioniert also auch komplett offline.
@@ -70,4 +74,4 @@ grundregeln, die überall gelten: schreibende zugriffe auf steam-dateien laufen 
 
 ## status
 
-in aktiver entwicklung api und UI ändern sich ohne vorwarnung. wer das liest, bevor alles wirklich existiert: die roadmap oben ist der ehrliche stand, nicht der wunschzettel.
+in aktiver entwicklung api und UI ändern sich ohne vorwarnung. wer das liest, bevor eine nahe endversion steht: die roadmap oben ist der ehrliche stand, nicht der wunschzettel.
