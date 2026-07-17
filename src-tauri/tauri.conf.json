@@ -1,0 +1,36 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "protium",
+  "version": "0.0.0",
+  "identifier": "com.protium.desktop",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "npm run vite:dev",
+    "beforeBuildCommand": "npm run vite:build"
+  },
+  "app": {
+    "windows": [{ "title": "protium", "width": 1280, "height": 800 }],
+    "security": {
+      "csp": {
+        "default-src": "'self'",
+        "img-src": "'self' data: asset: http://asset.localhost https://cdn.cloudflare.steamstatic.com",
+        "connect-src": "'self' ipc: http://ipc.localhost asset: http://asset.localhost",
+        "style-src": "'self' 'unsafe-inline'"
+      },
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "$HOME/.local/share/Steam/appcache/librarycache/**",
+          "$HOME/.steam/**/appcache/librarycache/**",
+          "$HOME/.var/app/com.valvesoftware.Steam/.local/share/Steam/appcache/librarycache/**"
+        ]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["deb", "appimage"],
+    "icon": ["icons/icon.png"]
+  }
+}

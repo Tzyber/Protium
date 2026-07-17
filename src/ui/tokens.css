@@ -1,0 +1,98 @@
+/* protium design-tokens — "mission control": tiefes dunkel, periwinkle-signal,
+   space grotesk display / mono-akzente. fonts fallen ohne bundle auf system zurück
+   (bundling folgt). */
+
+:root {
+  color-scheme: dark;
+
+  /* flächen */
+  --bg-0: #0a0b11; /* app-hintergrund */
+  --bg-1: #10121b; /* panels / sidebar */
+  --bg-2: #161927; /* cards */
+  --bg-3: #1e2233; /* erhöht / hover */
+  --line: #262b3d; /* borders */
+  --line-soft: #1c2030;
+
+  /* text */
+  --fg-0: #eceef6; /* primär */
+  --fg-1: #a8adc2; /* sekundär */
+  --fg-2: #6b7189; /* gedämpft / labels */
+
+  /* signal (periwinkle) */
+  --signal: #6b7cff;
+  --signal-bright: #8f9bff;
+  --signal-dim: #3a4283;
+  --signal-glow: rgba(107, 124, 255, 0.25);
+
+  /* tier-farben (FR-2.1) */
+  --tier-platinum: #52d6e8;
+  --tier-gold: #e6c34a;
+  --tier-silver: #9aa0b4;
+  --tier-bronze: #d3894a;
+  --tier-borked: #e85a63;
+  --tier-unknown: #565d75;
+
+  /* typo */
+  --font-display: "Space Grotesk", "Inter", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: "Space Mono", ui-monospace, "JetBrains Mono", monospace;
+
+  /* radius / spacing */
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --gap: 16px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-0);
+  color: var(--fg-0);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* subtiles technisches grid im hintergrund */
+#app {
+  background-image:
+    linear-gradient(var(--line-soft) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line-soft) 1px, transparent 1px);
+  background-size: 40px 40px;
+  background-position: -1px -1px;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--bg-3);
+  border-radius: 10px;
+  border: 2px solid var(--bg-0);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #2a3048;
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+.label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
