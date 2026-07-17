@@ -78,11 +78,11 @@ export const useProtonStore = defineStore("proton", {
       if (!this.releases.length) this.loadReleases();
     },
 
-    async loadReleases() {
+    async loadReleases(force = false) {
       this.loading = true;
       this.loadError = null;
       try {
-        const result = await fetchReleases(tauriPorts.http, tauriPorts.cache);
+        const result = await fetchReleases(tauriPorts.http, tauriPorts.cache, Date.now, force);
         this.releases = result.releases;
         this.lastFetchedAt = result.fetchedAt;
         this.lastSource = result.source;
