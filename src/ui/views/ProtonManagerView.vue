@@ -96,13 +96,21 @@ function pct(tag: string): number | null {
           </div>
         </div>
         <button
-          v-if="!installedInternal.has(r.tag)"
+          v-if="!installedInternal.has(r.tag) && !proton.jobs[r.tag]"
           class="install"
           type="button"
-          :disabled="!!proton.jobs[r.tag]"
           @click="proton.queueInstall(r)"
         >
-          {{ proton.jobs[r.tag] ? "…" : "installieren" }}
+          installieren
+        </button>
+        <button
+          v-else-if="proton.jobs[r.tag]"
+          class="cancel"
+          type="button"
+          :title="proton.activeTag === r.tag ? 'download abbrechen' : 'aus warteschlange entfernen'"
+          @click="proton.cancel(r.tag)"
+        >
+          ✕ abbrechen
         </button>
         <span v-else class="used muted">✓</span>
       </div>
@@ -166,6 +174,18 @@ function pct(tag: string): number | null {
 .install { background: var(--signal); color: #0a0b11; border: none; border-radius: var(--r-sm); padding: 7px 14px; font-family: var(--font-display); font-weight: 600; font-size: 13px; cursor: pointer; }
 .install:hover:not(:disabled) { background: var(--signal-bright); }
 .install:disabled { opacity: 0.55; cursor: default; }
+.cancel {
+  background: none;
+  border: 1px solid color-mix(in srgb, var(--tier-borked) 50%, transparent);
+  color: var(--tier-borked);
+  border-radius: var(--r-sm);
+  padding: 7px 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.cancel:hover { background: color-mix(in srgb, var(--tier-borked) 14%, transparent); }
 
 .progress { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
 .track { flex: 1; max-width: 320px; height: 5px; background: var(--bg-0); border-radius: 999px; overflow: hidden; }

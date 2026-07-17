@@ -29,4 +29,5 @@ cache liegt unter `~/.cache/com.protium.desktop/cache/` (tauri app-cache, aus id
 - `src/core/adapters/tauri.ts` — ports gegen plugin-fs/http + rust-commands (einzige tauri-fläche im core).
 - `src/ui/App.vue` — phase-1 debug-view (roher json-dump).
 - `src-tauri/src/commands.rs` — R-2/R-3/R-5 + canonicalize implementiert; R-1/R-4 stubs (phase 3).
-- `tests/` — vitest gegen fake-steam-fixtures.
+- `tests/` — vitest gegen fake-steam-fixtures. 
+-

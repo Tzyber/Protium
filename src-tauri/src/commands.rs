@@ -2,8 +2,10 @@
 // R-1/R-2/R-3/R-4/R-5/R-6. downloads + extraktion laufen in rust, weil beides
 // im webview zu teuer/unmöglich wäre.
 
+use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
+use std::sync::Mutex;
 
 use futures_util::StreamExt;
 use serde::Serialize;
@@ -12,6 +14,18 @@ use sysinfo::System;
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_fs::FsExt;
 use tokio::io::AsyncWriteExt;
+
+/// laufende downloads, die abgebrochen werden sollen (id = download_id).
+#[derive(Default)]
+pub struct CancelRegistry(pub Mutex<HashSet<String>>);
+
+/// markiert einen laufenden download zum abbruch; R-4 pollt das zwischen chunks.
+#[tauri::command]
+pub fn cancel_download(state: tauri::State<'_, CancelRegistry>, download_id: String) {
+    if let Ok(mut set) = state.0.lock() {
+        set.insert(download_id);
+    }
+}
 
 #[derive(Serialize, Clone)]
 struct DownloadProgress {
@@ -102,6 +116,7 @@ fn dir_size_impl(path: &Path) -> u64 {
 #[tauri::command]
 pub async fn download_file(
     app: AppHandle,
+    state: tauri::State<'_, CancelRegistry>,
     url: String,
     dest: String,
     download_id: String,
@@ -126,7 +141,20 @@ pub async fn download_file(
     let mut last_emit: u64 = 0;
     let mut stream = resp.bytes_stream();
 
+    // hilfsfunktion: ist dieser download zum abbruch markiert?
+    let is_cancelled = |id: &str| -> bool {
+        state.0.lock().map(|s| s.contains(id)).unwrap_or(false)
+    };
+
     while let Some(chunk) = stream.next().await {
+        if is_cancelled(&download_id) {
+            drop(file);
+            let _ = tokio::fs::remove_file(&dest).await; // nichts halbes hinterlassen
+            if let Ok(mut s) = state.0.lock() {
+                s.remove(&download_id);
+            }
+            return Err("cancelled".into());
+        }
         let chunk = chunk.map_err(|e| e.to_string())?;
         hasher.update(&chunk);
         file.write_all(&chunk).await.map_err(|e| e.to_string())?;
@@ -140,6 +168,9 @@ pub async fn download_file(
         }
     }
     file.flush().await.map_err(|e| e.to_string())?;
+    if let Ok(mut s) = state.0.lock() {
+        s.remove(&download_id); // aufräumen für re-download
+    }
     let _ = app.emit(
         "download-progress",
         DownloadProgress { id: download_id.clone(), downloaded, total },

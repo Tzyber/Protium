@@ -83,6 +83,21 @@ export const useProtonStore = defineStore("proton", {
       void this.pump();
     },
 
+    /** bricht einen download ab — queued: sofort raus; aktiv: rust-abbruch + cleanup. */
+    async cancel(tag: string) {
+      const queuedIdx = this.queue.indexOf(tag);
+      if (queuedIdx >= 0) {
+        this.queue.splice(queuedIdx, 1); // noch nicht gestartet → einfach entfernen
+        delete this.jobs[tag];
+        return;
+      }
+      if (this.activeTag === tag) {
+        // R-4 pollt die registry, bricht ab und räumt die partielle datei auf.
+        // der laufende installRelease() wirft dann → pump()-catch entfernt den job.
+        await tauriPorts.system.cancelDownload(tag).catch(() => {});
+      }
+    },
+
     async pump() {
       if (this.activeTag || !this.queue.length) return;
       const tag = this.queue.shift();
@@ -104,8 +119,8 @@ export const useProtonStore = defineStore("proton", {
         await scan.runScan(); // frische compatToolsInstalled + usedBy
         delete this.jobs[tag];
       } catch (e) {
-        job.phase = "queued";
-        this.loadError = `install ${tag} fehlgeschlagen: ${(e as Error).message}`;
+        const msg = (e as Error).message;
+        if (!/cancel/i.test(msg)) this.loadError = `install ${tag} fehlgeschlagen: ${msg}`;
         delete this.jobs[tag];
       } finally {
         this.activeTag = null;

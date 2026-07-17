@@ -54,6 +54,8 @@ export interface System {
    * → rückgabe hex-digest. fortschritt via event "download-progress" (UI abonniert).
    */
   downloadFile(url: string, dest: string, downloadId: string): Promise<string>;
+  /** laufenden download (per id) abbrechen — R-4 räumt die partielle datei auf. */
+  cancelDownload(downloadId: string): Promise<void>;
   /** R-1 .tar.gz nach `dest` entpacken (temp im ziel-fs, atomisches rename, EXDEV). */
   extractTarball(src: string, dest: string): Promise<void>;
 }

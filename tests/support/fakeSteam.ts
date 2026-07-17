@@ -215,6 +215,7 @@ export function fakeSystem(): System & { scopedPaths: string[] } {
     async downloadFile() {
       return ""; // in geproton-tests gezielt gemockt
     },
+    async cancelDownload() {},
     async extractTarball() {},
   };
 }

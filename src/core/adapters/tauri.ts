@@ -55,6 +55,7 @@ const system: System = {
     ),
   downloadFile: (url, dest, downloadId) =>
     invoke<string>("download_file", { url, dest, downloadId }),
+  cancelDownload: (downloadId) => invoke<void>("cancel_download", { downloadId }),
   extractTarball: (src, dest) => invoke<void>("extract_tarball", { src, dest }),
 };
 
