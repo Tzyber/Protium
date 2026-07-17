@@ -2,7 +2,7 @@ import { joinPath, paths } from "./paths.js";
 import type { Cache, FileSystem, Http, System } from "./ports.js";
 
 const RELEASES_URL =
-  "https://api.github.com/repos/GloriousEggroll/proton-ge-custom/releases?per_page=15";
+"https://api.github.com/repos/GloriousEggroll/proton-ge-custom/releases?per_page=15";
 const CACHE_KEY = "gh:ge-releases";
 const TTL_MS = 60 * 60 * 1000; // 1h (FR-3.1)
 const MAX_NOTES = 280;
@@ -26,6 +26,15 @@ interface CacheEntry {
   etag: string | null;
   fetchedAt: number;
   releases: GeRelease[];
+}
+
+/** woher die zuletzt gelieferten daten stammen — fürs UI-feedback. */
+export type FetchSource = "cache" | "not-modified" | "fresh" | "offline";
+
+export interface FetchResult {
+  releases: GeRelease[];
+  fetchedAt: number; // zeitpunkt des letzten echten github-kontakts
+  source: FetchSource;
 }
 
 interface RawAsset {
@@ -69,10 +78,10 @@ function parseReleases(json: string): GeRelease[] {
     out.push({
       tag,
       name: str(r.name) || tag,
-      publishedAt: str(r.published_at),
-      notes: body.length > MAX_NOTES ? `${body.slice(0, MAX_NOTES).trimEnd()}…` : body,
-      tarball,
-      sha512Url,
+             publishedAt: str(r.published_at),
+             notes: body.length > MAX_NOTES ? `${body.slice(0, MAX_NOTES).trimEnd()}…` : body,
+             tarball,
+             sha512Url,
     });
   }
   return out;
@@ -86,7 +95,7 @@ export async function fetchReleases(
   http: Http,
   cache: Cache,
   now: () => number = Date.now,
-): Promise<GeRelease[]> {
+): Promise<FetchResult> {
   let cached: CacheEntry | null = null;
   try {
     const raw = await cache.get(CACHE_KEY);
@@ -95,7 +104,9 @@ export async function fetchReleases(
     cached = null;
   }
 
-  if (cached && now() - cached.fetchedAt < TTL_MS) return cached.releases;
+  if (cached && now() - cached.fetchedAt < TTL_MS) {
+    return { releases: cached.releases, fetchedAt: cached.fetchedAt, source: "cache" };
+  }
 
   try {
     const headers: Record<string, string> = {
@@ -107,24 +118,36 @@ export async function fetchReleases(
     const res = await http.get(RELEASES_URL, { headers });
 
     if (res.status === 304 && cached) {
-      await cache.set(
-        CACHE_KEY,
-        JSON.stringify({ ...cached, fetchedAt: now() } satisfies CacheEntry),
-      );
-      return cached.releases;
+      const at = now();
+      await cache.set(CACHE_KEY, JSON.stringify({ ...cached, fetchedAt: at } satisfies CacheEntry));
+      return { releases: cached.releases, fetchedAt: at, source: "not-modified" };
     }
-    if (!res.ok) return cached?.releases ?? []; // 403 rate-limit etc.
+    if (!res.ok) {
+      // 403 rate-limit etc. → letzter stand
+      return {
+        releases: cached?.releases ?? [],
+        fetchedAt: cached?.fetchedAt ?? now(),
+        source: "offline",
+      };
+    }
 
+    const at = now();
     const releases = parseReleases(res.text);
-    const entry: CacheEntry = {
-      etag: res.headers.etag ?? null,
-      fetchedAt: now(),
-      releases,
-    };
-    await cache.set(CACHE_KEY, JSON.stringify(entry));
-    return releases;
+    await cache.set(
+      CACHE_KEY,
+      JSON.stringify({
+        etag: res.headers.etag ?? null,
+        fetchedAt: at,
+        releases,
+      } satisfies CacheEntry),
+    );
+    return { releases, fetchedAt: at, source: "fresh" };
   } catch {
-    return cached?.releases ?? [];
+    return {
+      releases: cached?.releases ?? [],
+      fetchedAt: cached?.fetchedAt ?? now(),
+      source: "offline",
+    };
   }
 }
 
