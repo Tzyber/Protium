@@ -67,7 +67,7 @@ grundregeln, die überall gelten: schreibende zugriffe auf steam-dateien laufen 
 - [x] phase 1: core data layer (scan, vdf-parsing, protondb, multi-library inkl. externer mounts)
 - [x] phase 2: library-UI (cover-grid, tiers, warnings)
 - [x] phase 3: GE-proton-manager (install/remove, queue, distro-tool-erkennung)
-- [ ] phase 3 rest: laufende downloads abbrechen inkl. aufräumen
+- [x] phase 3 rest: laufende downloads abbrechen inkl. aufräumen
 - [ ] phase 4: compat-tool und launch-options setzen (write-gate, backups, restore)
 - [ ] phase 5: cleanup verwaister prefixes und shader-caches, AUR-paket
 - [ ] phase 6: spiele starten (via steam-protokoll, kein eigener launcher)
