@@ -48,6 +48,15 @@ function relTime(ts: number): string {
   return `vor ${Math.round(h / 24)} tag(en)`;
 }
 
+const statusFlash = ref(false);
+async function refreshReleases() {
+  await proton.loadReleases(true); // expliziter klick → cache umgehen
+  statusFlash.value = true;
+  setTimeout(() => {
+    statusFlash.value = false;
+  }, 1400);
+}
+
 const statusLine = computed(() => {
   if (proton.loading) return null;
   if (proton.lastFetchedAt == null) return null;
@@ -76,10 +85,14 @@ const statusLine = computed(() => {
         <h2>versionen</h2>
       </div>
       <div class="update">
-        <button class="rescan" type="button" :disabled="proton.loading" @click="proton.loadReleases()">
+        <button class="rescan" type="button" :disabled="proton.loading" @click="refreshReleases">
           {{ proton.loading ? "lädt…" : "releases aktualisieren" }}
         </button>
-        <div v-if="statusLine" class="statusline" :class="{ warn: !statusLine.ok }">
+        <div
+          v-if="statusLine"
+          class="statusline"
+          :class="{ warn: !statusLine.ok, flash: statusFlash }"
+        >
           <span class="ic">{{ statusLine.icon }}</span> {{ statusLine.text }}
         </div>
       </div>
@@ -175,15 +188,25 @@ const statusLine = computed(() => {
 .update { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .statusline {
   font-family: var(--font-mono);
-  font-size: 10.5px;
-  color: var(--fg-2);
+  font-size: 11px;
+  color: var(--fg-1);
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  transition: background 0.3s, border-color 0.3s, color 0.3s;
 }
-.statusline .ic { color: var(--tier-platinum); }
+.statusline .ic { color: var(--tier-platinum); font-size: 12px; }
 .statusline.warn { color: var(--tier-gold); }
 .statusline.warn .ic { color: var(--tier-gold); }
+.statusline.flash {
+  color: var(--signal-bright);
+  border-color: var(--signal);
+  background: color-mix(in srgb, var(--signal) 16%, transparent);
+}
 .title h2 { margin: 2px 0 0; font-family: var(--font-display); font-size: 26px; font-weight: 600; letter-spacing: -0.02em; }
 
 .rescan {

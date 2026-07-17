@@ -10,10 +10,10 @@ function ghBody() {
       name: "GE-Proton9-27",
       published_at: "2025-01-01T00:00:00Z",
       body: "x".repeat(400),
-      assets: [
-        { name: "GE-Proton9-27.tar.gz", browser_download_url: "https://dl/ge.tar.gz", size: 400 },
-        { name: "GE-Proton9-27.sha512sum", browser_download_url: "https://dl/ge.sha512sum" },
-      ],
+                        assets: [
+                          { name: "GE-Proton9-27.tar.gz", browser_download_url: "https://dl/ge.tar.gz", size: 400 },
+                          { name: "GE-Proton9-27.sha512sum", browser_download_url: "https://dl/ge.sha512sum" },
+                        ],
     },
     { tag_name: "no-tarball", assets: [] }, // muss rausgefiltert werden
   ]);
@@ -32,7 +32,7 @@ describe("fetchReleases", () => {
   it("parst releases, filtert tarball-lose, kürzt notes", async () => {
     const { releases: rels } = await fetchReleases(
       httpOnce({ text: ghBody(), headers: { etag: '"abc"' } }),
-      memCache(),
+                                                   memCache(),
     );
     expect(rels).toHaveLength(1);
     expect(rels[0]?.tag).toBe("GE-Proton9-27");
@@ -50,6 +50,16 @@ describe("fetchReleases", () => {
     expect(calls).toBe(1);
   });
 
+  it("force umgeht den cache und fragt trotzdem github", async () => {
+    let calls = 0;
+    const cache = memCache();
+    const http = httpOnce({ text: ghBody(), headers: { etag: '"abc"' } }, () => calls++);
+    await fetchReleases(http, cache); // füllt cache
+    const res = await fetchReleases(http, cache, Date.now, true); // force trotz frischem cache
+    expect(calls).toBe(2);
+    expect(res.source).toBe("fresh");
+  });
+
   it("304 → nutzt cache weiter, aktualisiert fetchedAt", async () => {
     const cache = memCache();
     let t = 0;
@@ -58,7 +68,7 @@ describe("fetchReleases", () => {
       status: 200,
       ok: true,
       text: ghBody(),
-      headers: { etag: '"v1"' },
+     headers: { etag: '"v1"' },
     };
     const r304: HttpResponse = { status: 304, ok: false, text: "", headers: {} };
     const http: Http = {
