@@ -8,6 +8,11 @@ const VALID_TIERS: readonly Tier[] = ["platinum", "gold", "silver", "bronze", "b
 // muss dem http-scope in §2 entsprechen, sonst blockt tauri den request.
 const BASE = "https://www.protondb.com/api/v1/reports/summaries";
 
+/** öffentliche protondb-seite eines spiels (reports mit OS/proton-version/text). */
+export function protonDbAppUrl(appId: number): string {
+  return `https://www.protondb.com/app/${appId}`;
+}
+
 interface CacheEntry {
   tier: Tier;
   confidence: string;

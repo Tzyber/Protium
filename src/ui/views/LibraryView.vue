@@ -2,6 +2,7 @@
 import { computed, ref } from "vue";
 import FilterBar from "../components/FilterBar.vue";
 import GameCard from "../components/GameCard.vue";
+import GameDetailDrawer from "../components/GameDetailDrawer.vue";
 import { filterAndSortGames } from "../filter";
 import { useLibraryStore } from "../stores/libraryStore";
 import { useScanStore } from "../stores/scanStore";
@@ -70,6 +71,8 @@ const showWarnings = ref(false);
     <div v-else class="grid">
       <GameCard v-for="g in visible" :key="g.appId" :game="g" />
     </div>
+
+    <GameDetailDrawer />
   </section>
 </template>
 

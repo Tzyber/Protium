@@ -3,9 +3,11 @@ import { computed, ref } from "vue";
 import { assetUrl } from "../../core/adapters/tauri";
 import type { Game } from "../../core/types";
 import { formatBytes } from "../format";
+import { useUiStore } from "../stores/uiStore";
 import TierBadge from "./TierBadge.vue";
 
 const props = defineProps<{ game: Game }>();
+const ui = useUiStore();
 
 // kandidaten in reihenfolge: lokaler cache (CDN-unabhängig) → steam-cdn → text.
 const candidates = computed<string[]>(() => {
@@ -23,7 +25,7 @@ function onError() {
 </script>
 
 <template>
-  <article class="card">
+  <article class="card" role="button" tabindex="0" @click="ui.openGame(game)" @keydown.enter="ui.openGame(game)">
     <div class="cover">
       <img
         v-if="src"
@@ -64,6 +66,7 @@ function onError() {
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   overflow: hidden;
+  cursor: pointer;
   transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
 }
 .card:hover {

@@ -2,7 +2,7 @@ import { joinPath, paths } from "./paths.js";
 import type { Cache, FileSystem, Http, System } from "./ports.js";
 
 const RELEASES_URL =
-"https://api.github.com/repos/GloriousEggroll/proton-ge-custom/releases?per_page=15";
+  "https://api.github.com/repos/GloriousEggroll/proton-ge-custom/releases?per_page=15";
 const CACHE_KEY = "gh:ge-releases";
 const TTL_MS = 60 * 60 * 1000; // 1h (FR-3.1)
 const MAX_NOTES = 280;
@@ -78,10 +78,10 @@ function parseReleases(json: string): GeRelease[] {
     out.push({
       tag,
       name: str(r.name) || tag,
-             publishedAt: str(r.published_at),
-             notes: body.length > MAX_NOTES ? `${body.slice(0, MAX_NOTES).trimEnd()}…` : body,
-             tarball,
-             sha512Url,
+      publishedAt: str(r.published_at),
+      notes: body.length > MAX_NOTES ? `${body.slice(0, MAX_NOTES).trimEnd()}…` : body,
+      tarball,
+      sha512Url,
     });
   }
   return out;

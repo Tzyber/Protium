@@ -36,6 +36,10 @@
         { "url": "https://github.com/*" },
         { "url": "https://objects.githubusercontent.com/*" }
       ]
+    },
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "https://www.protondb.com/*" }]
     }
   ]
 }
