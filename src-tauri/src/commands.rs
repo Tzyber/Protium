@@ -111,8 +111,60 @@ fn dir_size_impl(path: &Path) -> u64 {
     total
 }
 
-/// R-4: großen download streamend nach `dest`, sha512 im selben stream berechnet.
-/// fortschritt via event "download-progress"; rückgabe = hex-sha512.
+/// pure download-kernlogik ohne tauri-typen → per cargo-test verifizierbar.
+/// streamt nach `dest`, sha512 im stream, pollt `is_cancelled` zwischen chunks,
+/// meldet fortschritt via `on_progress`. crash-fest: JEDER fehlerausgang
+/// (cancel, netzwerkabbruch, schreibfehler) löscht die partielle datei vor return.
+async fn download_stream(
+    url: &str,
+    dest: &str,
+    is_cancelled: impl Fn() -> bool,
+    mut on_progress: impl FnMut(u64, Option<u64>),
+) -> Result<String, String> {
+    let result: Result<String, String> = async {
+        let client = reqwest::Client::builder()
+            .build()
+            .map_err(|e| e.to_string())?;
+        let resp = client.get(url).send().await.map_err(|e| e.to_string())?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP {}", resp.status()));
+        }
+        let total = resp.content_length();
+
+        if let Some(parent) = Path::new(dest).parent() {
+            let _ = tokio::fs::create_dir_all(parent).await;
+        }
+        let mut file = tokio::fs::File::create(dest)
+            .await
+            .map_err(|e| e.to_string())?;
+        let mut hasher = Sha512::new();
+        let mut downloaded: u64 = 0;
+        let mut stream = resp.bytes_stream();
+
+        while let Some(chunk) = stream.next().await {
+            if is_cancelled() {
+                return Err("cancelled".into());
+            }
+            let chunk = chunk.map_err(|e| e.to_string())?; // netzwerkabbruch landet hier
+            hasher.update(&chunk);
+            file.write_all(&chunk).await.map_err(|e| e.to_string())?; // schreibfehler hier
+            downloaded += chunk.len() as u64;
+            on_progress(downloaded, total);
+        }
+        file.flush().await.map_err(|e| e.to_string())?;
+        Ok(format!("{:x}", hasher.finalize()))
+    }
+    .await;
+
+    // crash-fest: partielle datei bei jedem fehler weg, bevor zurückgekehrt wird
+    if result.is_err() {
+        let _ = tokio::fs::remove_file(dest).await;
+    }
+    result
+}
+
+/// R-4: tauri-wrapper um `download_stream`. verbindet die cancel-registry (per id)
+/// und emittet fortschritt (throttled ~1 MB). registry-eintrag wird immer entfernt.
 #[tauri::command]
 pub async fn download_file(
     app: AppHandle,
@@ -121,62 +173,30 @@ pub async fn download_file(
     dest: String,
     download_id: String,
 ) -> Result<String, String> {
-    let client = reqwest::Client::builder()
-        .build()
-        .map_err(|e| e.to_string())?;
-    let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
-    if !resp.status().is_success() {
-        return Err(format!("HTTP {}", resp.status()));
-    }
-    let total = resp.content_length();
-
-    if let Some(parent) = Path::new(&dest).parent() {
-        let _ = tokio::fs::create_dir_all(parent).await;
-    }
-    let mut file = tokio::fs::File::create(&dest)
-        .await
-        .map_err(|e| e.to_string())?;
-    let mut hasher = Sha512::new();
-    let mut downloaded: u64 = 0;
+    let id = download_id.clone();
     let mut last_emit: u64 = 0;
-    let mut stream = resp.bytes_stream();
 
-    // hilfsfunktion: ist dieser download zum abbruch markiert?
-    let is_cancelled = |id: &str| -> bool {
-        state.0.lock().map(|s| s.contains(id)).unwrap_or(false)
-    };
-
-    while let Some(chunk) = stream.next().await {
-        if is_cancelled(&download_id) {
-            drop(file);
-            let _ = tokio::fs::remove_file(&dest).await; // nichts halbes hinterlassen
-            if let Ok(mut s) = state.0.lock() {
-                s.remove(&download_id);
+    let result = download_stream(
+        &url,
+        &dest,
+        || state.0.lock().map(|s| s.contains(&id)).unwrap_or(false),
+        |downloaded, total| {
+            let done = total.map(|t| downloaded >= t).unwrap_or(false);
+            if downloaded - last_emit >= 1_000_000 || done {
+                last_emit = downloaded;
+                let _ = app.emit(
+                    "download-progress",
+                    DownloadProgress { id: download_id.clone(), downloaded, total },
+                );
             }
-            return Err("cancelled".into());
-        }
-        let chunk = chunk.map_err(|e| e.to_string())?;
-        hasher.update(&chunk);
-        file.write_all(&chunk).await.map_err(|e| e.to_string())?;
-        downloaded += chunk.len() as u64;
-        if downloaded - last_emit >= 1_000_000 {
-            last_emit = downloaded;
-            let _ = app.emit(
-                "download-progress",
-                DownloadProgress { id: download_id.clone(), downloaded, total },
-            );
-        }
-    }
-    file.flush().await.map_err(|e| e.to_string())?;
-    if let Ok(mut s) = state.0.lock() {
-        s.remove(&download_id); // aufräumen für re-download
-    }
-    let _ = app.emit(
-        "download-progress",
-        DownloadProgress { id: download_id.clone(), downloaded, total },
-    );
+        },
+    )
+    .await;
 
-    Ok(format!("{:x}", hasher.finalize()))
+    if let Ok(mut s) = state.0.lock() {
+        s.remove(&download_id); // registry immer aufräumen (re-download möglich)
+    }
+    result
 }
 
 /// R-5: zur laufzeit entdeckte library/verzeichnis in den fs-scope aufnehmen.
@@ -212,4 +232,92 @@ pub fn path_identity(path: String) -> Result<PathIdentity, String> {
         dev: md.dev().to_string(),
         ino: md.ino().to_string(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::download_stream;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::thread;
+
+    /// einmal-HTTP-server: kündigt `announce` bytes im Content-Length an, sendet aber
+    /// nur `send`. announce == send → sauberer download; send < announce → verbindung
+    /// bricht vorzeitig ab (netzwerkabbruch-simulation). gibt die url zurück.
+    fn serve_once(announce: usize, send: usize) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buf = [0u8; 1024];
+                let _ = stream.read(&mut buf); // request lesen, ignorieren
+                let header =
+                    format!("HTTP/1.1 200 OK\r\nContent-Length: {announce}\r\n\r\n");
+                let _ = stream.write_all(header.as_bytes());
+                let _ = stream.write_all(&vec![0xABu8; send]);
+                // bei send < announce: stream wird hier gedroppt → client sieht EOF zu früh
+            }
+        });
+        format!("http://{addr}/")
+    }
+
+    fn tmp(tag: &str) -> std::path::PathBuf {
+        let mut p = std::env::temp_dir();
+        p.push(format!("protium-dltest-{tag}-{}", std::process::id()));
+        p.push("file.bin");
+        p
+    }
+
+    #[tokio::test]
+    async fn erfolg_berechnet_hash_und_behaelt_datei() {
+        let dest = tmp("ok");
+        let url = serve_once(32, 32);
+        let cancel = AtomicBool::new(false);
+        let res = download_stream(
+            &url,
+            dest.to_str().unwrap(),
+            || cancel.load(Ordering::Relaxed),
+            |_, _| {},
+        )
+        .await;
+        assert!(res.is_ok(), "sollte erfolgreich sein: {res:?}");
+        assert_eq!(res.unwrap().len(), 128); // sha512 hex = 128 zeichen
+        assert!(dest.exists(), "erfolgsfall: datei muss bleiben");
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn netzabbruch_raeumt_partielle_datei_auf() {
+        let dest = tmp("net");
+        let url = serve_once(1_000_000, 4096); // 1MB angekündigt, nur 4KB gesendet
+        let cancel = AtomicBool::new(false);
+        let res = download_stream(
+            &url,
+            dest.to_str().unwrap(),
+            || cancel.load(Ordering::Relaxed),
+            |_, _| {},
+        )
+        .await;
+        assert!(res.is_err(), "vorzeitiger EOF muss fehler sein");
+        assert!(!dest.exists(), "partielle datei muss weg sein");
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn cancel_stoppt_und_raeumt_auf() {
+        let dest = tmp("cancel");
+        let url = serve_once(32, 32);
+        let cancel = AtomicBool::new(true); // sofort gesetzt → bricht beim ersten chunk ab
+        let res = download_stream(
+            &url,
+            dest.to_str().unwrap(),
+            || cancel.load(Ordering::Relaxed),
+            |_, _| {},
+        )
+        .await;
+        assert_eq!(res.unwrap_err(), "cancelled");
+        assert!(!dest.exists(), "abbruch: keine datei zurücklassen");
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
 }
