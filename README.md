@@ -71,7 +71,7 @@ grundregeln, die überall gelten: schreibende zugriffe auf steam-dateien laufen 
 - [x] game-detail-drawer mit protondb-link (reports anderer nutzer)
 - [ ] phase 4: compat-tool und launch-options setzen (write-gate, backups, restore)
 - [ ] phase 5: cleanup verwaister prefixes und shader-caches, AUR-paket
-- [ ] phase 6: spiele starten (via steam-protokoll, kein eigener launcher)
+- [x] phase 6: spiele starten (via steam-protokoll, kein eigener launcher)
 
 ## status
 
