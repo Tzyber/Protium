@@ -34,7 +34,7 @@ const rootShort = computed(() => {
         </div>
       </div>
 
-      <nav>
+      <nav aria-label="Hauptnavigation">
         <button
           v-for="item in nav"
           :key="item.id"
@@ -42,6 +42,7 @@ const rootShort = computed(() => {
           :class="{ active: item.active && ui.activeView === item.id }"
           :disabled="!item.active"
           type="button"
+          :aria-current="item.active && ui.activeView === item.id ? 'page' : undefined"
           @click="item.active && ui.go(item.id as ViewId)"
         >
           {{ item.label }}

@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { assetUrl, launchGame, openExternal } from "../../core/adapters/tauri";
 import { protonDbAppUrl } from "../../core/protondb";
 import type { Tier } from "../../core/types";
+import { focusFirstFocusable, restoreFocus, trapFocus } from "../a11y";
 import { formatBytes } from "../format";
 import { useUiStore } from "../stores/uiStore";
 import TierBadge from "./TierBadge.vue";
@@ -30,33 +31,42 @@ const cover = computed<string | null>(() => {
   return list[idx.value] ?? null;
 });
 
-let listening = false;
-const handleKeydown = (event: KeyboardEvent) => {
-  if (event.key === "Escape") ui.closeGame();
-};
+const drawerRef = ref<HTMLElement | null>(null);
+const titleId = "game-detail-title";
+const descriptionId = "game-detail-description";
+let lastFocusedElement: HTMLElement | null = null;
 
-function startListening() {
-  if (listening || typeof window === "undefined") return;
-  window.addEventListener("keydown", handleKeydown);
-  listening = true;
-}
+function onKeydown(event: KeyboardEvent) {
+  if (event.key === "Escape") {
+    event.stopPropagation();
+    ui.closeGame();
+    return;
+  }
 
-function stopListening() {
-  if (!listening || typeof window === "undefined") return;
-  window.removeEventListener("keydown", handleKeydown);
-  listening = false;
+  trapFocus(event, drawerRef.value);
 }
 
 watch(
   game,
-  (current) => {
-    if (current) startListening();
-    else stopListening();
+  async (current) => {
+    if (current) {
+      lastFocusedElement =
+        document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      await nextTick();
+      focusFirstFocusable(drawerRef.value);
+      return;
+    }
+
+    await nextTick();
+    restoreFocus(lastFocusedElement);
+    lastFocusedElement = null;
   },
   { immediate: true },
 );
 
-onBeforeUnmount(stopListening);
+onBeforeUnmount(() => {
+  restoreFocus(lastFocusedElement);
+});
 
 async function openProtonDb() {
   if (game.value) await openExternal(protonDbAppUrl(game.value.appId)).catch(() => {});
@@ -73,15 +83,29 @@ function launch() {
   <transition name="drawer">
     <div v-if="game" class="wrap">
       <div class="scrim" @click="ui.closeGame()" />
-      <aside class="drawer" role="dialog" aria-modal="true">
+      <aside
+        ref="drawerRef"
+        class="drawer"
+        role="dialog"
+        aria-modal="true"
+        :aria-labelledby="titleId"
+        :aria-describedby="descriptionId"
+        tabindex="-1"
+        @keydown="onKeydown"
+      >
         <button class="close" type="button" aria-label="schließen" @click="ui.closeGame()">✕</button>
+
+        <p :id="descriptionId" class="sr-only">
+          details zu {{ game.name }}. größe {{ formatBytes(game.sizeBytes) }}, proton {{ game.compatTool }}, app-id
+          {{ game.appId }}.
+        </p>
 
         <div class="cover">
           <img v-if="cover" :src="cover" :alt="game.name" @error="idx++" />
           <div v-else class="cover-fb"><span>{{ game.name }}</span></div>
         </div>
 
-        <h2>{{ game.name }}</h2>
+        <h2 :id="titleId">{{ game.name }}</h2>
 
         <div class="rows">
           <div class="row"><span class="k">größe</span><span class="v mono">{{ formatBytes(game.sizeBytes) }}</span></div>

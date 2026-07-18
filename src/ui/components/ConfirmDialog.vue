@@ -1,13 +1,59 @@
 <script setup lang="ts">
-defineProps<{ title: string; confirmLabel?: string; danger?: boolean }>();
+import { nextTick, onBeforeUnmount, onMounted, ref } from "vue";
+import { focusFirstFocusable, restoreFocus, trapFocus } from "../a11y";
+
+let dialogCount = 0;
+
+const { title, confirmLabel, danger } = defineProps<{
+  title: string;
+  confirmLabel?: string;
+  danger?: boolean;
+}>();
 const emit = defineEmits<{ confirm: []; cancel: [] }>();
+
+const dialogRef = ref<HTMLElement | null>(null);
+const instanceId = ++dialogCount;
+const titleId = `confirm-dialog-title-${instanceId}`;
+const contentId = `confirm-dialog-content-${instanceId}`;
+
+let lastFocusedElement: HTMLElement | null = null;
+
+function onKeydown(event: KeyboardEvent) {
+  if (event.key === "Escape") {
+    event.stopPropagation();
+    emit("cancel");
+    return;
+  }
+
+  trapFocus(event, dialogRef.value);
+}
+
+onMounted(async () => {
+  lastFocusedElement =
+    document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  await nextTick();
+  focusFirstFocusable(dialogRef.value);
+});
+
+onBeforeUnmount(() => {
+  restoreFocus(lastFocusedElement);
+});
 </script>
 
 <template>
   <div class="backdrop" @click.self="emit('cancel')">
-    <div class="dialog" role="dialog" aria-modal="true">
-      <h3>{{ title }}</h3>
-      <div class="content"><slot /></div>
+    <div
+      ref="dialogRef"
+      class="dialog"
+      role="dialog"
+      aria-modal="true"
+      :aria-labelledby="titleId"
+      :aria-describedby="contentId"
+      tabindex="-1"
+      @keydown="onKeydown"
+    >
+      <h3 :id="titleId">{{ title }}</h3>
+      <div :id="contentId" class="content"><slot /></div>
       <div class="actions">
         <button class="btn ghost" type="button" @click="emit('cancel')">abbrechen</button>
         <button class="btn" :class="{ danger }" type="button" @click="emit('confirm')">

@@ -33,9 +33,12 @@ function libShort(path: string): string {
 <template>
   <div class="filterbar">
     <div class="search">
+      <label class="sr-only" for="library-search">suche</label>
       <span class="ico">⌕</span>
-      <input v-model="lib.search" type="text" placeholder="suchen…" spellcheck="false" />
-      <button v-if="lib.search" class="clear" type="button" @click="lib.search = ''">✕</button>
+      <input id="library-search" v-model="lib.search" type="text" placeholder="suchen…" spellcheck="false" />
+      <button v-if="lib.search" class="clear" type="button" aria-label="suche löschen" @click="lib.search = ''">
+        ✕
+      </button>
     </div>
 
     <div class="group">
@@ -46,6 +49,7 @@ function libShort(path: string): string {
         class="seg"
         :class="{ on: lib.sortKey === s.key }"
         type="button"
+        :aria-pressed="lib.sortKey === s.key"
         @click="lib.setSort(s.key)"
       >
         {{ s.label }}<span v-if="lib.sortKey === s.key" class="arr">{{ arrow }}</span>
@@ -59,6 +63,7 @@ function libShort(path: string): string {
         class="tier-pill"
         :class="[`t-${t}`, { on: lib.tiers.includes(t) }]"
         type="button"
+        :aria-pressed="lib.tiers.includes(t)"
         @click="lib.toggle('tiers', t)"
       >
         {{ t }}
@@ -73,6 +78,7 @@ function libShort(path: string): string {
         class="seg small"
         :class="{ on: lib.compatTools.includes(c) }"
         type="button"
+        :aria-pressed="lib.compatTools.includes(c)"
         :title="c"
         @click="lib.toggle('compatTools', c)"
       >
@@ -88,6 +94,7 @@ function libShort(path: string): string {
         class="seg small"
         :class="{ on: lib.libraries.includes(l) }"
         type="button"
+        :aria-pressed="lib.libraries.includes(l)"
         :title="l"
         @click="lib.toggle('libraries', l)"
       >

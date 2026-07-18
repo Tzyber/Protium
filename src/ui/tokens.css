@@ -16,7 +16,7 @@
   /* text */
   --fg-0: #eceef6; /* primär */
   --fg-1: #a8adc2; /* sekundär */
-  --fg-2: #6b7189; /* gedämpft / labels */
+  --fg-2: #8087a3; /* gedämpft / labels */
 
   /* signal (periwinkle) */
   --signal: #6b7cff;
@@ -46,6 +46,20 @@
 
 * {
   box-sizing: border-box;
+}
+
+:where(
+  button,
+  [role="button"],
+  [role="tab"],
+  a[href],
+  input,
+  select,
+  textarea,
+  summary
+):focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
 }
 
 html,
@@ -91,8 +105,21 @@ body {
 }
 .label {
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 11px;
+  font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--fg-2);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
