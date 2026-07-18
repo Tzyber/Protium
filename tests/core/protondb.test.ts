@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ProtonDbClient } from "../../src/core/protondb.js";
-import { fakeHttp, memCache } from "../support/fakeSteam.js";
+import { fakeHttp, memCache } from "../support/fakeSteam";
 
 const summary = (tier: string, confidence = "strong") => ({
   status: 200,

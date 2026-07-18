@@ -29,7 +29,15 @@ function launch() {
 </script>
 
 <template>
-  <article class="card" role="button" tabindex="0" @click="ui.openGame(game)" @keydown.enter="ui.openGame(game)">
+  <article
+    class="card"
+    role="button"
+    tabindex="0"
+    :aria-label="`${game.name} details öffnen`"
+    @click="ui.openGame(game)"
+    @keydown.enter.prevent="ui.openGame(game)"
+    @keydown.space.prevent="ui.openGame(game)"
+  >
     <div class="cover">
       <img
         v-if="src"
@@ -88,6 +96,10 @@ function launch() {
   border-color: var(--signal-dim);
   transform: translateY(-2px);
   box-shadow: 0 8px 24px -12px var(--signal-glow);
+}
+.card:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
 }
 
 .cover {

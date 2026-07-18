@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { fetchReleases, type GeRelease, installRelease } from "../../src/core/geproton.js";
 import type { FileSystem, Http, HttpResponse, System } from "../../src/core/ports.js";
-import { memCache } from "../support/fakeSteam.js";
+import { memCache } from "../../tests/support/fakeSteam";
 
 function ghBody() {
   return JSON.stringify([

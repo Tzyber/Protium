@@ -9,6 +9,7 @@ import { useScanStore } from "../stores/scanStore";
 
 const scan = useScanStore();
 const lib = useLibraryStore();
+const warningsId = "library-warnings";
 
 const visible = computed(() =>
   filterAndSortGames(scan.games, {
@@ -40,11 +41,13 @@ const showWarnings = ref(false);
           v-if="scan.warnings.length"
           class="warn-toggle"
           type="button"
+          :aria-expanded="showWarnings"
+          :aria-controls="warningsId"
           @click="showWarnings = !showWarnings"
         >
           ⚠ {{ scan.warnings.length }}
         </button>
-        <span class="status mono">{{ scan.statusText }}</span>
+        <span class="status mono" role="status" aria-live="polite" aria-atomic="true">{{ scan.statusText }}</span>
         <button class="rescan" type="button" :disabled="scan.status === 'scanning'" @click="scan.runScan()">
           {{ scan.status === "scanning" ? "scannt…" : "neu scannen" }}
         </button>
@@ -52,7 +55,13 @@ const showWarnings = ref(false);
     </header>
 
     <transition name="fade">
-      <ul v-if="showWarnings && scan.warnings.length" class="warnings">
+      <ul
+        v-if="showWarnings && scan.warnings.length"
+        :id="warningsId"
+        class="warnings"
+        aria-live="polite"
+        aria-atomic="true"
+      >
         <li v-for="(w, i) in scan.warnings" :key="i">{{ w }}</li>
       </ul>
     </transition>
