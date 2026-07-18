@@ -6,11 +6,7 @@ import { asNode, asString, getPath, parseVdf } from "./vdf.js";
 /** appId → compat-tool-name (interner name, wie in config.vdf). */
 export type CompatToolMapping = Map<number, string>;
 
-/**
- * liest InstallConfigStore→Software→Valve→Steam→CompatToolMapping.
- * fehlt der teilbaum → leere map (aufrufer setzt "default").
- * ungültiges vdf → wirft; scan fängt ab → mapping "unknown" + warning (FR-1.5).
- */
+// fehlender teilbaum → leere map; ungültiges vdf wirft (scan fängt ab, FR-1.5).
 export function parseCompatToolMapping(configVdfText: string): CompatToolMapping {
   const root = parseVdf(configVdfText);
   const mappingNode = asNode(
@@ -28,7 +24,7 @@ export function parseCompatToolMapping(configVdfText: string): CompatToolMapping
   return out;
 }
 
-/** interner tool-name (key in compat_tools) + display_name aus einer vdf. */
+// interner name (key) + display_name aus der tool-vdf.
 function readToolVdf(
   text: string,
   fallbackName: string,
@@ -47,18 +43,9 @@ function readToolVdf(
   return { internalName, displayName };
 }
 
-/**
- * listet installierte compat-tools aus ALLEN quellen: steam-root
- * (compatibilitytools.d) + systemweite verzeichnisse (/usr/share/steam/…, wo
- * z. B. proton-cachyos vom paketmanager landet).
- *
- * - verzeichnisse werden per identität (dev/ino) dedupliziert, damit der
- *   ~/.steam/steam-symlink nicht dieselben tools doppelt liefert.
- * - externe verzeichnisse werden vor dem read in den fs-scope gehängt (R-5).
- * - usedBy matcht gegen den INTERNEN namen (steht so im mapping), nicht den
- *   verzeichnisnamen. tools werden über den internen namen dedupliziert (erste quelle gewinnt).
- * - defekte einzeltools → skip (INV-2), nie abbruch.
- */
+// tools aus steam-root + systemweiten dirs (/usr/share/steam/…, z. B. proton-cachyos).
+// dedup dirs via (dev,ino) gegen symlinks, dedup tools via internem namen (erste quelle gewinnt).
+// usedBy matcht den INTERNEN namen (so steht er im mapping), nicht den verzeichnisnamen.
 export async function listCompatTools(
   fs: FileSystem,
   system: System,
@@ -68,9 +55,7 @@ export async function listCompatTools(
   installedAppIds: ReadonlySet<number>,
   extraDirs: readonly string[] = SYSTEM_COMPAT_DIRS,
 ): Promise<CompatTool[]> {
-  // usedBy zählt NUR installierte, echte spiele — nicht stale mapping-einträge
-  // (deinstallierte spiele), nicht appId 0 (globaler default) und nicht
-  // shortcut-ids von non-steam-games (hohe 32-bit-werte).
+  // nur installierte echte spiele: keine stale einträge, kein appId 0, keine non-steam-shortcuts.
   const usedByOf = (id: string): number[] =>
     [...mapping.entries()]
       .filter(([appId, name]) => name === id && installedAppIds.has(appId))
@@ -85,19 +70,17 @@ export async function listCompatTools(
 
   for (const dir of candidateDirs) {
     const source: "user" | "system" = dir === userDir ? "user" : "system";
-    // externe/systemweite dirs vor dem read scopen (R-5); root ist bereits im scope.
     if (source === "system") {
       try {
-        await system.allowLibraryScope(dir);
+        await system.allowLibraryScope(dir); // R-5; root ist schon im scope
       } catch {
-        // nicht scope-bar → verzeichnis überspringen
         continue;
       }
     }
 
     const id = await system.pathIdentity(dir);
     const realKey = id ? id.realpath : dir;
-    if (seenDirs.has(realKey)) continue; // symlink-duplikat (z. B. ~/.steam/steam)
+    if (seenDirs.has(realKey)) continue; // symlink-duplikat
     seenDirs.add(realKey);
 
     let entries: DirEntry[];
@@ -119,7 +102,7 @@ export async function listCompatTools(
         if (await fs.exists(vdfPath)) {
           ({ internalName, displayName } = readToolVdf(await fs.readTextFile(vdfPath), name));
         }
-        if (seenInternal.has(internalName)) continue; // schon aus höher-priorisierter quelle
+        if (seenInternal.has(internalName)) continue; // aus höher-priorisierter quelle
         seenInternal.add(internalName);
 
         const sizeBytes = await system.dirSize(joinPath(dir, name));

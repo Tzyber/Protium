@@ -2,7 +2,7 @@ import { joinPath, paths } from "./paths.js";
 import type { Cache, FileSystem, Http, System } from "./ports.js";
 
 const RELEASES_URL =
-"https://api.github.com/repos/GloriousEggroll/proton-ge-custom/releases?per_page=15";
+  "https://api.github.com/repos/GloriousEggroll/proton-ge-custom/releases?per_page=15";
 const CACHE_KEY = "gh:ge-releases";
 const TTL_MS = 60 * 60 * 1000; // 1h (FR-3.1)
 const MAX_NOTES = 280;
@@ -14,7 +14,7 @@ export interface GeAsset {
 }
 
 export interface GeRelease {
-  tag: string; // = verzeichnisname nach install (z. B. "GE-Proton9-27")
+  tag: string; // = install-verzeichnisname
   name: string;
   publishedAt: string;
   notes: string;
@@ -28,12 +28,11 @@ interface CacheEntry {
   releases: GeRelease[];
 }
 
-/** woher die zuletzt gelieferten daten stammen — fürs UI-feedback. */
 export type FetchSource = "cache" | "not-modified" | "fresh" | "offline";
 
 export interface FetchResult {
   releases: GeRelease[];
-  fetchedAt: number; // zeitpunkt des letzten echten github-kontakts
+  fetchedAt: number; // letzter echter github-kontakt
   source: FetchSource;
 }
 
@@ -72,30 +71,27 @@ function parseReleases(json: string): GeRelease[] {
         sha512Url = url;
       }
     }
-    if (!tarball) continue; // release ohne tarball ist für uns wertlos
+    if (!tarball) continue; // ohne tarball unbrauchbar
     const tag = tarball.name.replace(/\.tar\.gz$/, "");
     const body = str(r.body);
     out.push({
       tag,
       name: str(r.name) || tag,
-             publishedAt: str(r.published_at),
-             notes: body.length > MAX_NOTES ? `${body.slice(0, MAX_NOTES).trimEnd()}…` : body,
-             tarball,
-             sha512Url,
+      publishedAt: str(r.published_at),
+      notes: body.length > MAX_NOTES ? `${body.slice(0, MAX_NOTES).trimEnd()}…` : body,
+      tarball,
+      sha512Url,
     });
   }
   return out;
 }
 
-/**
- * lädt die GE-releases mit 1h-cache + etag-conditional-request.
- * 403/rate-limit/offline → letzter cache-stand oder [] (INV-3), nie throw.
- */
+// 1h-cache + etag-conditional-request; 403/offline → letzter stand oder [] (INV-3), nie throw.
 export async function fetchReleases(
   http: Http,
   cache: Cache,
   now: () => number = Date.now,
-                                    force = false,
+  force = false,
 ): Promise<FetchResult> {
   let cached: CacheEntry | null = null;
   try {
@@ -105,8 +101,7 @@ export async function fetchReleases(
     cached = null;
   }
 
-  // auto-load nutzt den 1h-cache; ein expliziter klick (force) fragt immer github
-  // (per etag meist billiges 304, aber die prüfzeit wird aktualisiert)
+  // force (expliziter klick) umgeht den cache und fragt github — per etag meist billiges 304.
   if (!force && cached && now() - cached.fetchedAt < TTL_MS) {
     return { releases: cached.releases, fetchedAt: cached.fetchedAt, source: "cache" };
   }
@@ -126,7 +121,7 @@ export async function fetchReleases(
       return { releases: cached.releases, fetchedAt: at, source: "not-modified" };
     }
     if (!res.ok) {
-      // 403 rate-limit etc. → letzter stand
+      // 403/rate-limit → letzter stand
       return {
         releases: cached?.releases ?? [],
         fetchedAt: cached?.fetchedAt ?? now(),
@@ -154,7 +149,7 @@ export async function fetchReleases(
   }
 }
 
-/** erster whitespace-getrennte token einer .sha512sum-datei = der hash. */
+// erster token der .sha512sum-datei ist der hash.
 function parseSha512Sum(text: string): string | null {
   const token = text.trim().split(/\s+/)[0];
   return token && /^[0-9a-fA-F]{128}$/.test(token) ? token.toLowerCase() : null;
@@ -162,16 +157,12 @@ function parseSha512Sum(text: string): string | null {
 
 export interface InstallOpts {
   steamRoot: string;
-  cacheDir: string; // wohin der tarball zwischengeladen wird (app-cache)
+  cacheDir: string; // tarball-zwischenspeicher (app-cache)
   release: GeRelease;
-  downloadId: string; // korreliert progress-events
+  downloadId: string; // korreliert die progress-events
 }
 
-/**
- * lädt, prüft (sha512) und installiert ein GE-release nach compatibilitytools.d.
- * abbruch/fehler hinterlässt nichts halbes: temp-tarball wird immer aufgeräumt,
- * R-1 entpackt atomar (temp im ziel-fs + rename). wirft bei checksum-mismatch.
- */
+// download → sha512-prüfung → entpacken. tarball wird immer aufgeräumt; wirft bei mismatch.
 export async function installRelease(
   ports: { fs: FileSystem; http: Http; system: System },
   opts: InstallOpts,
@@ -179,7 +170,7 @@ export async function installRelease(
   const { fs, http, system } = ports;
   const dest = joinPath(opts.cacheDir, opts.release.tarball.name);
 
-  // erwarteten hash holen (falls asset vorhanden) — fehlt er, wird ohne prüfung installiert
+  // hash-asset optional: fehlt es, wird ohne prüfung installiert
   let expected: string | null = null;
   if (opts.release.sha512Url) {
     try {
@@ -199,11 +190,11 @@ export async function installRelease(
     }
     await system.extractTarball(dest, paths.compatToolsDir(opts.steamRoot));
   } finally {
-    await fs.remove(dest).catch(() => {}); // tarball immer wegräumen
+    await fs.remove(dest).catch(() => {}); // tarball immer weg
   }
 }
 
-/** entfernt ein installiertes tool-verzeichnis. NUR für GE-tools aufrufen (nicht distro). */
+// NUR für GE-tools aufrufen (distro-tools gehören dem paketmanager).
 export async function removeTool(
   fs: FileSystem,
   steamRoot: string,

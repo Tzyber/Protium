@@ -1,6 +1,5 @@
-// implementiert die core-ports gegen die echten tauri-plugins + rust-commands.
-// dies ist die EINZIGE datei mit tauri-imports auf der core-seite (INV-5 bleibt
-// gewahrt: core/*.ts kennt nur ports.ts, nicht diese datei).
+// ports-implementierung gegen tauri-plugins + rust-commands.
+// EINZIGE datei mit tauri-imports auf der core-seite (INV-5).
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { appCacheDir, homeDir } from "@tauri-apps/api/path";
 import {
@@ -29,7 +28,7 @@ const fs: FileSystem = {
       }),
     );
   },
-  // plugin-fs kennt kein realpath → rust std::fs::canonicalize (symlink-auflösung).
+  // plugin-fs kann kein realpath → rust canonicalize
   realpath: (path) => invoke<string>("canonicalize_path", { path }),
   remove: (path, opts) => fsRemove(path, { recursive: opts?.recursive ?? false }),
 };
@@ -60,7 +59,7 @@ const system: System = {
   extractTarball: (src, dest) => invoke<void>("extract_tarball", { src, dest }),
 };
 
-// cache als json-dateien unter dem app-cache-dir (~/.cache/com.protium.desktop/).
+// cache als json-dateien unter dem app-cache-dir
 const CACHE_SUBDIR = "cache";
 let cacheDirReady: Promise<void> | null = null;
 function ensureCacheDir(): Promise<void> {
@@ -89,26 +88,26 @@ const cache: Cache = {
       await ensureCacheDir();
       await writeTextFile(cacheFile(key), value, { baseDir: BaseDirectory.AppCache });
     } catch {
-      // cache-schreibfehler nie fatal (INV-3)
+      // schreibfehler nie fatal (INV-3)
     }
   },
 };
 
 export const tauriPorts: Ports = { fs, http, system, cache };
 
-/** $HOME für discoverSteamRoot (tauri-path-api). */
+/** $HOME für discoverSteamRoot. */
 export function getHome(): Promise<string> {
   return homeDir();
 }
 
-/** wandelt einen lokalen fs-pfad in eine von der webview ladbare asset-url. */
+/** lokaler pfad → asset-url für die webview. */
 export function assetUrl(path: string): string {
   return convertFileSrc(path);
 }
 
 export { appCacheDir };
 
-/** url im system-standardbrowser öffnen (tauri-opener-plugin). */
+/** url im system-browser öffnen. */
 export function openExternal(url: string): Promise<void> {
   return openUrl(url);
 }

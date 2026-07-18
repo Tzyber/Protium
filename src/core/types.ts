@@ -5,13 +5,13 @@ export type Tier = "platinum" | "gold" | "silver" | "bronze" | "borked" | "unkno
 export interface Game {
   appId: number;
   name: string;
-  library: string; // absoluter pfad der library, in der das spiel liegt
+  library: string;
   sizeBytes: number;
   installed: boolean;
   compatTool: string; // "GE-Proton9-27" | "proton_experimental" | "default" | "unknown"
   protonDb: { tier: Tier; confidence: string } | null;
-  localHeader: string | null; // lokaler pfad aus appcache/librarycache (bevorzugt, CDN-unabhängig)
-  headerImage: string | null; // steam cdn-fallback
+  localHeader: string | null; // bevorzugt (CDN-unabhängig)
+  headerImage: string | null; // CDN-fallback
   launchOptions?: string; // ab phase 4
   prefixPath?: string; // ab phase 5
 }
@@ -22,7 +22,7 @@ export interface CompatTool {
   displayName: string;
   sizeBytes: number;
   usedBy: number[]; // appIds, die dieses tool via mapping nutzen
-  source: "user" | "system"; // user = steam-root/compatibilitytools.d, system = /usr/share/… (distro, read-only)
+  source: "user" | "system"; // system = distro-dir (/usr/share/…), read-only
 }
 
 export interface ScanResult {
@@ -35,8 +35,8 @@ export interface ScanResult {
   warnings: string[];
 }
 
-// steam meldet StateFlags als bitfield. bit 2 (wert 4) = fully installed.
-// installiert + update-pending = 4|2 = 6 → deshalb maskieren, nie === 4 (S-2).
+// StateFlags ist ein bitfield: bit 2 (=4) = fully installed. maskieren, nie === 4,
+// weil installiert+update-pending = 6 wäre (S-2).
 export const STATE_FLAG_FULLY_INSTALLED = 4;
 
 export function isFullyInstalled(stateFlags: number): boolean {

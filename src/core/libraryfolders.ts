@@ -1,10 +1,6 @@
 import { asNode, asString, getKeyInsensitive, getPath, parseVdf } from "./vdf.js";
 
-/**
- * moderne libraryfolders.vdf: "libraryfolders" → "0" → { "path" "..." }.
- * die root-library selbst ist als index-0 enthalten. gibt absolute pfade
- * dedupliziert zurück. tolerant gegen unbekannte keys (steam-format-drift).
- */
+// libraryfolders.vdf: "libraryfolders" → "<index>" → { path }. index-0 ist die root selbst.
 export function parseLibraryFolders(text: string): string[] {
   const root = parseVdf(text);
   const container =
