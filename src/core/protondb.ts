@@ -4,8 +4,7 @@ import type { Tier } from "./types.js";
 const TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const VALID_TIERS: readonly Tier[] = ["platinum", "gold", "silver", "bronze", "borked", "unknown"];
 
-// host wird in S-3 gegen echte requests fixiert (www vs apex + redirects);
-// muss dem http-scope in §2 entsprechen, sonst blockt tauri den request.
+// host muss dem http-scope entsprechen (www, nicht apex), sonst blockt tauri (S-3).
 const BASE = "https://www.protondb.com/api/v1/reports/summaries";
 
 /** öffentliche protondb-seite eines spiels (reports mit OS/proton-version/text). */
@@ -32,10 +31,7 @@ export class ProtonDbClient {
     private now: () => number = Date.now,
   ) {}
 
-  /**
-   * tier für eine appId. cache-hit (frisch) → sofort; sonst netzwerk.
-   * 404 / offline / kaputte antwort → null (aufrufer setzt tier "unknown", INV-3).
-   */
+  // 404/offline/kaputt → null (aufrufer setzt tier "unknown", INV-3).
   async getSummary(appId: number): Promise<{ tier: Tier; confidence: string } | null> {
     const key = `protondb:${appId}`;
     try {
@@ -47,7 +43,7 @@ export class ProtonDbClient {
         }
       }
     } catch {
-      // kaputter cache-eintrag → wie miss behandeln
+      // kaputt → wie cache-miss
     }
 
     try {

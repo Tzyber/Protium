@@ -1,5 +1,4 @@
-// strukturierte tabelle statt flacher liste (FR-1.4): FR-4.2 leitet aus den
-// proton-builtin-einträgen die auswählbaren built-in-tools ab.
+// tabelle statt liste (FR-1.4): FR-4.2 leitet die wählbaren built-in-protons hieraus ab.
 
 export type BlockCategory =
   | "proton-builtin" // valve-eigene proton-builds, eigene steam-app
@@ -14,8 +13,7 @@ export interface BlockEntry {
   label: string;
 }
 
-// nicht erschöpfend, aber die praktisch relevanten. bei bedarf erweiterbar.
-// appids steamdb-verifiziert. interne toolnamen folgen dem muster proton_<major>.
+// appids steamdb-verifiziert; interne toolnamen folgen dem muster proton_<major>.
 export const BLOCKLIST: readonly BlockEntry[] = [
   // valve proton-builds (compat tool, kein spiel)
   { appId: 4628710, category: "proton-builtin", toolName: "proton_11", label: "Proton 11.0" },

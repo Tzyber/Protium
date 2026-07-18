@@ -1,5 +1,4 @@
-// wrapper um @node-steam/vdf (S-1). isoliert die lib-wahl hinter einer
-// schmalen fläche → phase-4-round-trip/-tausch trifft nur diese datei.
+// wrapper um @node-steam/vdf (S-1): lib-wahl isoliert, ein tausch trifft nur diese datei.
 import { parse } from "@node-steam/vdf";
 
 export type VdfValue = string | number | VdfNode;
@@ -15,7 +14,7 @@ function isNode(v: VdfValue | undefined): v is VdfNode {
   return typeof v === "object" && v !== null;
 }
 
-/** steam schreibt keys mal groß, mal klein (Valve/valve, Steam/steam). */
+// steam schreibt keys mal groß, mal klein (Valve/valve).
 export function getKeyInsensitive(node: VdfNode, key: string): VdfValue | undefined {
   if (key in node) return node[key];
   const lower = key.toLowerCase();
@@ -25,7 +24,7 @@ export function getKeyInsensitive(node: VdfNode, key: string): VdfValue | undefi
   return undefined;
 }
 
-/** folgt einem pfad case-insensitiv; gibt undefined statt zu werfen. */
+// case-insensitiv, undefined statt werfen
 export function getPath(root: VdfNode, ...keys: string[]): VdfValue | undefined {
   let cur: VdfValue | undefined = root;
   for (const k of keys) {
@@ -45,7 +44,7 @@ export function asString(v: VdfValue | undefined): string | undefined {
   return undefined;
 }
 
-/** werte kommen aus der lib teils als number, teils als string → tolerant. */
+// lib liefert teils number, teils string
 export function asInt(v: VdfValue | undefined): number | undefined {
   if (typeof v === "number") return Math.trunc(v);
   if (typeof v === "string" && v.trim() !== "") {

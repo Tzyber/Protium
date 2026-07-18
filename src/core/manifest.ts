@@ -8,10 +8,7 @@ export interface ManifestData {
   installed: boolean;
 }
 
-/**
- * parst eine appmanifest_*.acf. wirft bei kaputtem inhalt / fehlender appid —
- * der aufrufer (scan) fängt das ab und degradiert zu skip+warning (INV-2).
- */
+// wirft bei kaputtem inhalt/fehlender appid; scan fängt ab → skip+warning (INV-2).
 export function parseManifest(text: string): ManifestData {
   const root = parseVdf(text);
   const app = getKeyInsensitive(root, "AppState");

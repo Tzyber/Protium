@@ -1,5 +1,4 @@
-// ports = die einzige art, wie core mit der außenwelt spricht.
-// adapter (tauri) implementieren diese; tests mocken sie.
+// einzige schnittstelle von core zur außenwelt: adapter implementieren, tests mocken.
 
 export interface DirEntry {
   name: string;
@@ -11,9 +10,8 @@ export interface FileSystem {
   exists(path: string): Promise<boolean>;
   readTextFile(path: string): Promise<string>;
   readDir(path: string): Promise<DirEntry[]>;
-  /** kanonischer pfad, symlinks aufgelöst (~/.steam/steam → …/.local/share/Steam). */
+  /** symlinks aufgelöst. */
   realpath(path: string): Promise<string>;
-  /** datei oder verzeichnis löschen (verzeichnis rekursiv). */
   remove(path: string, opts?: { recursive?: boolean }): Promise<void>;
 }
 
@@ -30,33 +28,22 @@ export interface Http {
 
 export interface PathIdentity {
   realpath: string;
-  dev: string; // als string, um JS-number-präzisionsverlust bei großen inodes zu vermeiden
+  dev: string; // string: große inodes überschreiten JS-number-präzision
   ino: string;
 }
 
 export interface System {
   /** R-2 */ isProcessRunning(name: string): Promise<boolean>;
-  /** R-3 rekursive verzeichnisgröße in bytes. */ dirSize(path: string): Promise<number>;
-  /**
-   * R-5 zur laufzeit entdeckte library (evtl. auf anderem mount) in den
-   * tauri-fs-scope aufnehmen. MUSS vor jedem read auf externen pfaden laufen
-   * (FR-1.3), sonst blockt der statische scope den zugriff.
-   */
+  /** R-3 */ dirSize(path: string): Promise<number>;
+  /** R-5 — muss vor read auf externen pfaden laufen, sonst blockt der fs-scope (FR-1.3). */
   allowLibraryScope(path: string): Promise<void>;
-  /**
-   * R-6 kanonischer pfad + (dev, ino) zur dedup identischer libraries
-   * (symlink ODER doppelt gemounteter datenträger, gleiche UUID). null, wenn
-   * der pfad nicht existiert/erreichbar ist (staler libraryfolders-eintrag).
-   */
+  /** R-6 (dev,ino) zur library-dedup; null wenn nicht erreichbar. */
   pathIdentity(path: string): Promise<PathIdentity | null>;
-  /**
-   * R-4 großen download streamend nach `dest`, sha512 im selben stream berechnet
-   * → rückgabe hex-digest. fortschritt via event "download-progress" (UI abonniert).
-   */
+  /** R-4 streamt nach dest, sha512 im stream → hex-digest; fortschritt via event "download-progress". */
   downloadFile(url: string, dest: string, downloadId: string): Promise<string>;
-  /** laufenden download (per id) abbrechen — R-4 räumt die partielle datei auf. */
+  /** R-4 abbrechen; räumt die partielle datei auf. */
   cancelDownload(downloadId: string): Promise<void>;
-  /** R-1 .tar.gz nach `dest` entpacken (temp im ziel-fs, atomisches rename, EXDEV). */
+  /** R-1 .tar.gz nach dest entpacken (temp im ziel-fs, EXDEV-safe). */
   extractTarball(src: string, dest: string): Promise<void>;
 }
 

@@ -1,6 +1,4 @@
-// protium — rust-commands (bewusst minimale rust-fläche).
-// R-1/R-2/R-3/R-4/R-5/R-6. downloads + extraktion laufen in rust, weil beides
-// im webview zu teuer/unmöglich wäre.
+// rust-commands (R-1..R-6): das, was die webview nicht kann.
 
 use std::collections::HashSet;
 use std::fs;
@@ -15,11 +13,11 @@ use tauri::{AppHandle, Emitter};
 use tauri_plugin_fs::FsExt;
 use tokio::io::AsyncWriteExt;
 
-/// laufende downloads, die abgebrochen werden sollen (id = download_id).
+/// ids laufender downloads, die abgebrochen werden sollen.
 #[derive(Default)]
 pub struct CancelRegistry(pub Mutex<HashSet<String>>);
 
-/// markiert einen laufenden download zum abbruch; R-4 pollt das zwischen chunks.
+/// markiert einen download zum abbruch; R-4 pollt zwischen den chunks.
 #[tauri::command]
 pub fn cancel_download(state: tauri::State<'_, CancelRegistry>, download_id: String) {
     if let Ok(mut set) = state.0.lock() {
@@ -34,9 +32,7 @@ struct DownloadProgress {
     total: Option<u64>,
 }
 
-/// R-1: GE-proton .tar.gz nach `dest` (= compatibilitytools.d) entpacken.
-/// entpackt in ein temp-geschwisterverzeichnis IM ZIEL-FS (EXDEV-sicher),
-/// verschiebt dann die top-level-verzeichnisse per rename ins ziel, räumt temp auf.
+/// R-1: .tar.gz entpacken. temp im ziel-fs (EXDEV-safe), dann rename ins ziel.
 #[tauri::command]
 pub async fn extract_tarball(src: String, dest: String) -> Result<(), String> {
     tokio::task::spawn_blocking(move || extract_blocking(&src, &dest))
@@ -51,7 +47,7 @@ fn extract_blocking(src: &str, dest_dir: &str) -> Result<(), String> {
     let dest = Path::new(dest_dir);
     fs::create_dir_all(dest).map_err(|e| e.to_string())?;
 
-    // temp im selben verzeichnis wie ziel → rename bleibt innerhalb des fs (kein EXDEV)
+    // temp im ziel-fs → rename ohne EXDEV
     let tmp = dest.join(format!(".protium-extract-{}", std::process::id()));
     let _ = fs::remove_dir_all(&tmp);
     fs::create_dir_all(&tmp).map_err(|e| e.to_string())?;
@@ -60,7 +56,7 @@ fn extract_blocking(src: &str, dest_dir: &str) -> Result<(), String> {
         let f = fs::File::open(src).map_err(|e| e.to_string())?;
         let mut ar = Archive::new(GzDecoder::new(f));
         ar.unpack(&tmp).map_err(|e| e.to_string())?;
-        // top-level-einträge (i. d. R. genau der versionsordner) ins ziel renamen
+        // top-level-einträge (der versionsordner) ins ziel renamen
         for entry in fs::read_dir(&tmp).map_err(|e| e.to_string())? {
             let entry = entry.map_err(|e| e.to_string())?;
             let target = dest.join(entry.file_name());
@@ -76,7 +72,7 @@ fn extract_blocking(src: &str, dest_dir: &str) -> Result<(), String> {
     result
 }
 
-/// R-2: läuft ein prozess mit diesem namen? (steam-läuft-check, INV-1a)
+/// R-2: prozess mit diesem namen aktiv? (steam-läuft-check, INV-1a)
 #[tauri::command]
 pub fn is_process_running(name: String) -> Result<bool, String> {
     let sys = System::new_all();
@@ -87,7 +83,7 @@ pub fn is_process_running(name: String) -> Result<bool, String> {
         .any(|p| p.name().to_string_lossy().to_lowercase().contains(&target)))
 }
 
-/// R-3: rekursive verzeichnisgröße in bytes.
+/// R-3
 #[tauri::command]
 pub fn dir_size(path: String) -> Result<u64, String> {
     Ok(dir_size_impl(Path::new(&path)))
@@ -111,10 +107,8 @@ fn dir_size_impl(path: &Path) -> u64 {
     total
 }
 
-/// pure download-kernlogik ohne tauri-typen → per cargo-test verifizierbar.
-/// streamt nach `dest`, sha512 im stream, pollt `is_cancelled` zwischen chunks,
-/// meldet fortschritt via `on_progress`. crash-fest: JEDER fehlerausgang
-/// (cancel, netzwerkabbruch, schreibfehler) löscht die partielle datei vor return.
+/// download-kern ohne tauri-typen (cargo-testbar). crash-fest: jeder fehlerausgang
+/// (cancel, netzabbruch, schreibfehler) löscht die partielle datei vor return.
 async fn download_stream(
     url: &str,
     dest: &str,
@@ -156,15 +150,14 @@ async fn download_stream(
     }
     .await;
 
-    // crash-fest: partielle datei bei jedem fehler weg, bevor zurückgekehrt wird
+    // partielle datei bei fehler weg (vor return)
     if result.is_err() {
         let _ = tokio::fs::remove_file(dest).await;
     }
     result
 }
 
-/// R-4: tauri-wrapper um `download_stream`. verbindet die cancel-registry (per id)
-/// und emittet fortschritt (throttled ~1 MB). registry-eintrag wird immer entfernt.
+/// R-4: tauri-wrapper um download_stream — cancel-registry + fortschritt (throttled ~1 MB).
 #[tauri::command]
 pub async fn download_file(
     app: AppHandle,
@@ -194,19 +187,19 @@ pub async fn download_file(
     .await;
 
     if let Ok(mut s) = state.0.lock() {
-        s.remove(&download_id); // registry immer aufräumen (re-download möglich)
+        s.remove(&download_id); // aufräumen für re-download
     }
     result
 }
 
-/// R-5: zur laufzeit entdeckte library/verzeichnis in den fs-scope aufnehmen.
+/// R-5: verzeichnis zur laufzeit in den fs-scope aufnehmen.
 #[tauri::command]
 pub fn allow_library_scope(app: tauri::AppHandle, path: String) -> Result<(), String> {
     let _ = app.fs_scope().allow_directory(&path, true);
     Ok(())
 }
 
-/// symlink-auflösung für steam-root-discovery.
+/// symlink-auflösung (steam-root-discovery).
 #[tauri::command]
 pub fn canonicalize_path(path: String) -> Result<String, String> {
     fs::canonicalize(&path)
@@ -214,7 +207,7 @@ pub fn canonicalize_path(path: String) -> Result<String, String> {
         .map_err(|e| e.to_string())
 }
 
-/// R-6: kanonischer pfad + (dev, ino) zur library-dedup.
+/// R-6: realpath + (dev,ino) zur library-dedup.
 #[derive(Serialize)]
 pub struct PathIdentity {
     pub realpath: String,
@@ -242,16 +235,15 @@ mod tests {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::thread;
 
-    /// einmal-HTTP-server: kündigt `announce` bytes im Content-Length an, sendet aber
-    /// nur `send`. announce == send → sauberer download; send < announce → verbindung
-    /// bricht vorzeitig ab (netzwerkabbruch-simulation). gibt die url zurück.
+    /// HTTP-stub: kündigt `announce` bytes an, sendet nur `send`.
+    /// send < announce simuliert einen netzabbruch (vorzeitiger EOF).
     fn serve_once(announce: usize, send: usize) -> String {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
         thread::spawn(move || {
             if let Ok((mut stream, _)) = listener.accept() {
                 let mut buf = [0u8; 1024];
-                let _ = stream.read(&mut buf); // request lesen, ignorieren
+                let _ = stream.read(&mut buf); // request ignorieren
                 let header =
                     format!("HTTP/1.1 200 OK\r\nContent-Length: {announce}\r\n\r\n");
                 let _ = stream.write_all(header.as_bytes());

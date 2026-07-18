@@ -8,12 +8,10 @@ import { ProtonDbClient } from "./protondb.js";
 import type { Game, ScanResult } from "./types.js";
 
 export interface ScanOptions {
-  /** $HOME des users (adapter liefert via tauri-path-api). */
   home: string;
   steamRoot: string;
-  /** höflichkeits-delay zwischen protondb-netzwerkabfragen (default 150ms). */
   protonDbDelayMs?: number;
-  /** override der systemweiten compat-dirs (v. a. für tests). default: SYSTEM_COMPAT_DIRS. */
+  /** compat-dirs überschreiben — für tests. */
   extraCompatDirs?: readonly string[];
 }
 
@@ -23,11 +21,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-/**
- * sucht das lokale cover (library_header.jpg) im steam-bildcache. neuere steam-
- * versionen legen es unter appcache/librarycache/{appId}/{hash}/library_header.jpg
- * ab (hash-unterordner). gibt den absoluten pfad zurück oder null (INV-2/3).
- */
+// cover liegt unter librarycache/{appId}/{hash}/ — hash-unterordner muss durchsucht werden.
 async function resolveLocalHeader(
   fs: Ports["fs"],
   steamRoot: string,
@@ -42,22 +36,17 @@ async function resolveLocalHeader(
       if (await fs.exists(candidate)) return candidate;
     }
   } catch {
-    // cache defekt/unlesbar → einfach kein lokales bild
+    // defekt → kein cover (INV-2)
   }
   return null;
 }
 
-/**
- * kompletter read-only-scan. degradiert bei defekten dateien zu skip+warning
- * (INV-2) und bei netzwerkausfall zu tier "unknown" (INV-3). wirft nur, wenn
- * gar keine steam-root existiert (davor: discoverSteamRoot).
- */
+// defekte dateien → skip+warning (INV-2), netzausfall → tier "unknown" (INV-3).
 export async function scanLibrary(ports: Ports, opts: ScanOptions): Promise<ScanResult> {
   const { fs, system } = ports;
   const { steamRoot } = opts;
   const warnings: string[] = [];
 
-  // 1) libraries bestimmen. defekt/fehlt → nur die root als einzige library.
   let libraries: string[] = [];
   try {
     const lfPath = paths.libraryFoldersVdf(steamRoot);
@@ -67,12 +56,9 @@ export async function scanLibrary(ports: Ports, opts: ScanOptions): Promise<Scan
   } catch (e) {
     warnings.push(`libraryfolders.vdf nicht lesbar: ${(e as Error).message}`);
   }
-  if (libraries.length === 0) libraries = [steamRoot];
+  if (libraries.length === 0) libraries = [steamRoot]; // fallback: root ist selbst eine library
 
-  // 1b) libraries kanonisch deduplizieren (INV: keine doppelten spiele/größen).
-  //   - pathIdentity null → pfad nicht erreichbar (staler libraryfolders-eintrag) → warning+skip.
-  //   - gleiche (dev,ino) → symlink ODER doppelt gemounteter datenträger (gleiche UUID)
-  //     wie /run/media/... vs /mnt/... → duplikat, warnung, überspringen.
+  // (dev,ino) fängt denselben datenträger über zwei mountpoints (z. B. /run/media vs /mnt).
   const uniqueLibraries: string[] = [];
   const seenIdentity = new Map<string, string>();
   for (const lib of libraries) {
@@ -94,7 +80,6 @@ export async function scanLibrary(ports: Ports, opts: ScanOptions): Promise<Scan
   }
   libraries = uniqueLibraries;
 
-  // 2) compat-mapping (liegt in der root). fehlt/korrupt → per-spiel "unknown".
   let mapping: CompatToolMapping = new Map();
   let mappingUsable = true;
   try {
@@ -112,11 +97,10 @@ export async function scanLibrary(ports: Ports, opts: ScanOptions): Promise<Scan
   const compatFor = (appId: number): string =>
     !mappingUsable ? "unknown" : (mapping.get(appId) ?? "default");
 
-  // 3) manifests je library. externe mounts vor dem read scopen (FR-1.3, R-5).
   const games: Game[] = [];
   for (const lib of libraries) {
     try {
-      await system.allowLibraryScope(lib);
+      await system.allowLibraryScope(lib); // externe mounts vor read freigeben (R-5)
     } catch (e) {
       warnings.push(`library "${lib}" nicht scope-bar, übersprungen: ${(e as Error).message}`);
       continue;
@@ -153,10 +137,8 @@ export async function scanLibrary(ports: Ports, opts: ScanOptions): Promise<Scan
     }
   }
 
-  // 4) installierte compat-tools
-  // 4) installierte compat-tools — usedBy nur gegen tatsächlich gescannte spiele
   const installedAppIds = new Set(games.map((g) => g.appId));
-  const defaultCompatTool = mapping.get(0) ?? null; // CompatToolMapping[0] = globaler default
+  const defaultCompatTool = mapping.get(0) ?? null; // mapping[0] = globaler default
   const compatToolsInstalled = await listCompatTools(
     fs,
     system,
@@ -167,7 +149,6 @@ export async function scanLibrary(ports: Ports, opts: ScanOptions): Promise<Scan
     opts.extraCompatDirs,
   );
 
-  // 5) protondb sequenziell, degradiert still zu unknown
   const client = new ProtonDbClient(ports.http, ports.cache);
   const delay = opts.protonDbDelayMs ?? 150;
   for (const game of games) {
