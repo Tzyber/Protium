@@ -111,3 +111,8 @@ export { appCacheDir };
 export function openExternal(url: string): Promise<void> {
   return openUrl(url);
 }
+
+/** spiel über steam starten (steam:// handler). steam muss laufen bzw. startet dann. */
+export function launchGame(appId: number): Promise<void> {
+  return openUrl(`steam://rungameid/${appId}`);
+}

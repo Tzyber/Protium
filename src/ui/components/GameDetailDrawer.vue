@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
-import { assetUrl, openExternal } from "../../core/adapters/tauri";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { assetUrl, launchGame, openExternal } from "../../core/adapters/tauri";
 import { protonDbAppUrl } from "../../core/protondb";
 import type { Tier } from "../../core/types";
 import { formatBytes } from "../format";
@@ -30,8 +30,42 @@ const cover = computed<string | null>(() => {
   return list[idx.value] ?? null;
 });
 
+let listening = false;
+const handleKeydown = (event: KeyboardEvent) => {
+  if (event.key === "Escape") ui.closeGame();
+};
+
+function startListening() {
+  if (listening || typeof window === "undefined") return;
+  window.addEventListener("keydown", handleKeydown);
+  listening = true;
+}
+
+function stopListening() {
+  if (!listening || typeof window === "undefined") return;
+  window.removeEventListener("keydown", handleKeydown);
+  listening = false;
+}
+
+watch(
+  game,
+  (current) => {
+    if (current) startListening();
+    else stopListening();
+  },
+  { immediate: true },
+);
+
+onBeforeUnmount(stopListening);
+
 async function openProtonDb() {
   if (game.value) await openExternal(protonDbAppUrl(game.value.appId)).catch(() => {});
+}
+
+function launch() {
+  const currentGame = game.value;
+  if (!currentGame) return;
+  void launchGame(currentGame.appId).catch(() => {});
 }
 </script>
 
@@ -67,7 +101,14 @@ async function openProtonDb() {
           <p class="tier-desc">{{ TIER_LABEL[game.protonDb?.tier ?? "unknown"] }}</p>
           <p v-if="game.protonDb" class="conf mono">konfidenz: {{ game.protonDb.confidence }}</p>
         </div>
-
+        <button class="play"
+            type="button"
+            :title="`${game.name} starten`"
+            :aria-label="`${game.name} starten`"
+            @click.stop="launch">
+          spiel starten
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9l7-4.5z" /></svg>
+        </button>
         <button class="pdb" type="button" @click="openProtonDb">
           auf protondb ansehen — berichte anderer nutzer ↗
         </button>
@@ -103,6 +144,8 @@ async function openProtonDb() {
 }
 .close:hover { color: var(--fg-0); }
 
+
+
 .cover {
   aspect-ratio: 460 / 215;
   border-radius: var(--r-md);
@@ -137,22 +180,43 @@ h2 { margin: 0 0 16px; font-family: var(--font-display); font-size: 20px; font-w
 
 .pdb {
   width: 100%;
-  background: color-mix(in srgb, var(--signal) 14%, transparent);
-  border: 1px solid var(--signal);
-  color: var(--signal-bright);
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--fg-1);
   border-radius: var(--r-sm);
   padding: 11px 14px;
   font-family: var(--font-display);
   font-weight: 600;
   font-size: 13px;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background 0.15s, border-color 0.15s;
 }
-.pdb:hover { background: color-mix(in srgb, var(--signal) 22%, transparent); }
-.hint { margin: 10px 2px 0; color: var(--fg-2); font-size: 10.5px; line-height: 1.5; }
+.play {
+  width: 100%;
+  background: var(--signal);
+  border: 1px solid var(--signal);
+  color: var(--bg-1);
+  border-radius: var(--r-sm);
+  padding: 12px 14px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 16px;
+  cursor: pointer;
+  transition: filter 0.15s, transform 0.1s;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.play svg { width: 16px; height: 16px; fill: currentColor; }
+.play:hover { filter: brightness(1.12); }
+.play:active { transform: scale(0.98); }
+.play:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 
-.drawer-enter-active, .drawer-leave-active { transition: opacity 0.2s; }
+.pdb:hover { background: var(--bg-2); border-color: var(--signal-dim); }
+.hint { margin: 10px 2px 0; color: var(--fg-2); font-size: 12px; line-height: 1.5; }
+
 .drawer-enter-active .drawer, .drawer-leave-active .drawer { transition: transform 0.2s ease; }
-.drawer-enter-from, .drawer-leave-to { opacity: 0; }
 .drawer-enter-from .drawer, .drawer-leave-to .drawer { transform: translateX(100%); }
 </style>

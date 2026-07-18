@@ -39,7 +39,10 @@
     },
     {
       "identifier": "opener:allow-open-url",
-      "allow": [{ "url": "https://www.protondb.com/*" }]
+      "allow": [
+        { "url": "https://www.protondb.com/*" },
+        { "url": "steam://rungameid/*" }
+      ]
     }
   ]
 }

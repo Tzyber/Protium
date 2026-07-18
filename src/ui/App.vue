@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted } from "vue";
+import ProtiumLogo from "./components/ProtiumLogo.vue";
 import { useScanStore } from "./stores/scanStore";
 import { useUiStore, type ViewId } from "./stores/uiStore";
 import LibraryView from "./views/LibraryView.vue";
@@ -26,7 +27,7 @@ const rootShort = computed(() => {
   <div class="shell">
     <aside class="sidebar">
       <div class="brand">
-        <div class="logo">◆</div>
+        <div class="logo"><ProtiumLogo :size="28"/></div>
         <div>
           <div class="name">PROTIUM</div>
           <div class="label">steam · proton</div>
@@ -98,7 +99,7 @@ nav { display: flex; flex-direction: column; gap: 2px; }
   padding: 9px 12px;
   color: var(--fg-1);
   font-family: var(--font-display);
-  font-size: 13.5px;
+  font-size: 14px;
   font-weight: 500;
   text-align: left;
   cursor: pointer;
@@ -110,7 +111,7 @@ nav { display: flex; flex-direction: column; gap: 2px; }
   box-shadow: inset 2px 0 0 var(--signal);
 }
 .nav-item:disabled { color: var(--fg-2); cursor: default; }
-.soon { font-family: var(--font-mono); font-size: 8.5px; letter-spacing: 0.1em; opacity: 0.6; }
+.soon { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.1em; opacity: 0.6; }
 
 .readout {
   margin-top: auto;
@@ -124,5 +125,9 @@ nav { display: flex; flex-direction: column; gap: 2px; }
 .readout .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .readout .val { color: var(--fg-1); font-size: 11px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.content { overflow: auto; }
+.content {
+  overflow-y: scroll;
+  overflow-x: auto;
+  scrollbar-gutter: stable;
+}
 </style>
