@@ -126,7 +126,7 @@ function libShort(path: string): string {
   min-width: 160px;
 }
 .search:focus-within { border-color: var(--signal-dim); }
-.search .ico { color: var(--fg-2); font-size: 15px; }
+.search .ico { color: var(--fg-2); font-size: 16px; }
 .search input {
   flex: 1;
   background: transparent;
@@ -134,10 +134,10 @@ function libShort(path: string): string {
   outline: none;
   color: var(--fg-0);
   font-family: var(--font-body);
-  font-size: 13px;
+  font-size: 16px;
   padding: 8px 0;
 }
-.search .clear { background: none; border: none; color: var(--fg-2); cursor: pointer; font-size: 11px; }
+.search .clear { background: none; border: none; color: var(--fg-2); cursor: pointer; font-size: 14px; }
 
 .group { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 
@@ -148,11 +148,11 @@ function libShort(path: string): string {
   border-radius: var(--r-sm);
   padding: 6px 10px;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 13px;
   cursor: pointer;
   transition: border-color 0.12s, color 0.12s, background 0.12s;
 }
-.seg.small { font-size: 10px; padding: 5px 8px; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.seg.small { font-size: 12px; padding: 5px 8px; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .seg:hover { color: var(--fg-0); border-color: var(--signal-dim); }
 .seg.on {
   color: var(--signal-bright);
@@ -169,7 +169,7 @@ function libShort(path: string): string {
   border-radius: 999px;
   padding: 5px 10px;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   cursor: pointer;
@@ -190,7 +190,7 @@ function libShort(path: string): string {
   border-radius: var(--r-sm);
   padding: 6px 10px;
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 12px;
   cursor: pointer;
 }
 .reset:hover { color: var(--fg-0); border-color: var(--signal-dim); }

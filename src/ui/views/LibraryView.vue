@@ -77,7 +77,7 @@ const showWarnings = ref(false);
 </template>
 
 <style scoped>
-.library { padding: 20px 24px; }
+.library { padding: 20px 24px; scrollbar-gutter: stable; }
 
 .bar {
   display: flex;
@@ -141,7 +141,7 @@ const showWarnings = ref(false);
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
   gap: var(--gap);
 }
 
