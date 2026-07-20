@@ -5,6 +5,7 @@ import {
   readdir,
   readFile,
   realpath,
+  rename,
   rm,
   stat,
   symlink,
@@ -70,6 +71,39 @@ const CONFIG_VDF = `"InstallConfigStore"
 }
 `;
 
+// 620 hat startoptionen, die anderen spiele nichts (→ undefined im scan)
+const LOCALCONFIG_VDF = `"UserLocalConfigStore"
+{
+	"Software"
+	{
+		"Valve"
+		{
+			"Steam"
+			{
+				"Apps"
+				{
+					"620"
+					{
+						"LaunchOptions"		"gamemoderun %command%"
+					}
+				}
+			}
+		}
+	}
+}
+`;
+
+// steamID64 76561198073717116 = accountID 113451388 (= userdata-ordner), MostRecent
+const LOGINUSERS_VDF = `"users"
+{
+	"76561198073717116"
+	{
+		"AccountName"		"testaccount"
+		"MostRecent"		"1"
+	}
+}
+`;
+
 const toolVdf = (internal: string, display: string) => `"compatibilitytools"
 {
 	"compat_tools"
@@ -102,6 +136,7 @@ export async function buildFakeSteam(): Promise<{
   lib2Dup: string;
   staleLib: string;
   systemCompat: string;
+  userId: string;
 }> {
   const home = await mkdtemp(join(tmpdir(), "protium-"));
   const root = join(home, ".local/share/Steam");
@@ -158,7 +193,12 @@ export async function buildFakeSteam(): Promise<{
     acf(730, "Counter-Strike 2", 6, 98765432),
   );
 
-  return { home, root, lib2, lib2Dup, staleLib, systemCompat };
+  const userId = "113451388";
+  await mkdir(join(root, "userdata", userId, "config"), { recursive: true });
+  await writeFile(join(root, "userdata", userId, "config", "localconfig.vdf"), LOCALCONFIG_VDF);
+  await writeFile(join(root, "config", "loginusers.vdf"), LOGINUSERS_VDF);
+
+  return { home, root, lib2, lib2Dup, staleLib, systemCompat, userId };
 }
 
 // ---- port-adapter über node:fs (echtes dir-walking gegen fixtures) ----
@@ -186,6 +226,11 @@ export function nodeFs(): FileSystem {
     },
     realpath: (p) => realpath(p),
     remove: (p, opts) => rm(p, { recursive: opts?.recursive ?? false, force: true }),
+    writeTextFile: (p, content) => writeFile(p, content, "utf8"),
+    rename: (a, b) => rename(a, b),
+    async mkdir(p) {
+      await mkdir(p, { recursive: true });
+    },
   };
 }
 
