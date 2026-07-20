@@ -10,10 +10,14 @@ const ROOT_CANDIDATES = [
 ] as const;
 
 function join(...parts: string[]): string {
-  return parts
+  const joined = parts
     .map((p, i) => (i === 0 ? p.replace(/\/+$/, "") : p.replace(/^\/+|\/+$/g, "")))
     .filter(Boolean)
     .join("/");
+  if (joined.split("/").some((seg) => seg === "..")) {
+    throw new Error(`joinPath: ".." segment rejected for security`);
+  }
+  return joined;
 }
 
 // symlinks aufgelöst, damit scope-checks gegen den echten pfad matchen (S-4).

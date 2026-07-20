@@ -49,4 +49,25 @@ describe("writeSteamFile (INV-1 write-gate)", () => {
     expect(await readFile(target, "utf8")).toBe("INHALT");
     expect(await readdir(dir)).toEqual(["neu.vdf"]); // kein backup-dir angelegt
   });
+
+  it("backupText-parameter: backup = übergebener text, NICHT disk-re-read (TOCTOU-schutz)", async () => {
+    const dir = await tmp();
+    const target = join(dir, "localconfig.vdf");
+    await writeFile(target, "ORIGINAL", "utf8");
+    const backupDir = join(dir, "backups");
+
+    // simuliere: zwischen dem read des callers und writeSteamFile wurde die datei
+    // extern auf "FREMD" geändert. mit backupText="ORIGINAL" muss das backup
+    // trotzdem "ORIGINAL" enthalten (nicht "FREMD" von der disk).
+    await writeSteamFile(nodeFs(), fakeSystem(), target, "NEU", backupDir, "ORIGINAL");
+    // jetzt die disk auf "FREMD" ändern — wird ignoriert weil backupText gegeben
+    await writeFile(target, "FREMD", "utf8");
+    // backup sollte "ORIGINAL" sein
+
+    const backups = await readdir(backupDir);
+    expect(backups).toHaveLength(1);
+    const backupFile = backups[0];
+    if (!backupFile) throw new Error("backup fehlt");
+    expect(await readFile(join(backupDir, backupFile), "utf8")).toBe("ORIGINAL");
+  });
 });
