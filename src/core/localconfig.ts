@@ -99,6 +99,6 @@ export async function writeLaunchOptions(
   const text = await ports.fs.readTextFile(path);
   if ((readLaunchOptions(text, appId) ?? "") === value) return "unchanged";
   const patched = setVdfValue(text, launchOptionsPath(appId), value);
-  await writeSteamFile(ports.fs, ports.system, path, patched, backupDir);
+  await writeSteamFile(ports.fs, ports.system, path, patched, backupDir, text);
   return "written";
 }

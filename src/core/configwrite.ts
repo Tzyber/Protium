@@ -17,6 +17,8 @@ export class SteamRunningError extends Error {
  * → ein write bei laufendem steam würde still revertiert.
  * backup nur wenn die zieldatei existiert; temp+rename im selben verzeichnis
  * (gleiches dateisystem → atomar, kein EXDEV-problem).
+ * `backupText`: der vor dem patch gelesene originalstand.
+ * nur so ist sichergestellt, dass backup und patch dieselbe basis haben (kein TOCTOU).
  */
 export async function writeSteamFile(
   fs: FileSystem,
@@ -24,6 +26,7 @@ export async function writeSteamFile(
   path: string,
   content: string,
   backupDir: string,
+  backupText?: string,
 ): Promise<void> {
   // "steam" matcht per substring auch steamwebhelper — im zweifel lieber blockieren (sichere richtung)
   if (await system.isProcessRunning("steam")) throw new SteamRunningError();
@@ -32,7 +35,8 @@ export async function writeSteamFile(
     await fs.mkdir(backupDir);
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
     const base = path.split("/").pop() ?? "steam-datei";
-    await fs.writeTextFile(joinPath(backupDir, `${base}.${stamp}`), await fs.readTextFile(path));
+    const text = backupText ?? (await fs.readTextFile(path));
+    await fs.writeTextFile(joinPath(backupDir, `${base}.${stamp}`), text);
   }
 
   const tmp = `${path}.protium-tmp`;
