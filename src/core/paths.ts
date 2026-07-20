@@ -35,6 +35,7 @@ export const paths = {
   steamapps: (root: string) => join(root, "steamapps"),
   libraryFoldersVdf: (root: string) => join(root, "steamapps", "libraryfolders.vdf"),
   configVdf: (root: string) => join(root, "config", "config.vdf"), // mapping liegt in der root
+  loginusersVdf: (root: string) => join(root, "config", "loginusers.vdf"),
   compatToolsDir: (root: string) => join(root, "compatibilitytools.d"),
   compatToolVdf: (root: string, toolDir: string) =>
     join(root, "compatibilitytools.d", toolDir, "compatibilitytool.vdf"),

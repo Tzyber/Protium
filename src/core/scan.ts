@@ -1,6 +1,7 @@
 import { isBlocked } from "./blocklist.js";
 import { type CompatToolMapping, listCompatTools, parseCompatToolMapping } from "./compat.js";
 import { parseLibraryFolders } from "./libraryfolders.js";
+import { findActiveUser, readLaunchOptions } from "./localconfig.js";
 import { parseManifest } from "./manifest.js";
 import { joinPath, LOCAL_HEADER_FILENAME, paths } from "./paths.js";
 import type { DirEntry, Ports } from "./ports.js";
@@ -97,6 +98,22 @@ export async function scanLibrary(ports: Ports, opts: ScanOptions): Promise<Scan
   const compatFor = (appId: number): string =>
     !mappingUsable ? "unknown" : (mapping.get(appId) ?? "default");
 
+  // startoptionen: aktiven account finden, localconfig einmal lesen (INV-2: defekt → leer)
+  let steamUserId: string | null = null;
+  let localConfigText: string | null = null;
+  const activeUser = await findActiveUser(fs, steamRoot);
+  if (!activeUser) {
+    warnings.push("kein steam-account mit localconfig.vdf gefunden → startoptionen unbekannt");
+  } else {
+    steamUserId = activeUser.userId;
+    if (activeUser.warning) warnings.push(activeUser.warning);
+    try {
+      localConfigText = await fs.readTextFile(paths.localConfigVdf(steamRoot, activeUser.userId));
+    } catch (e) {
+      warnings.push(`localconfig.vdf nicht lesbar: ${(e as Error).message}`);
+    }
+  }
+
   const games: Game[] = [];
   for (const lib of libraries) {
     try {
@@ -130,6 +147,9 @@ export async function scanLibrary(ports: Ports, opts: ScanOptions): Promise<Scan
           protonDb: null,
           localHeader: await resolveLocalHeader(fs, steamRoot, data.appId),
           headerImage: paths.headerImageUrl(data.appId),
+          launchOptions: localConfigText
+            ? readLaunchOptions(localConfigText, data.appId)
+            : undefined,
         });
       } catch (e) {
         warnings.push(`${entry.name} übersprungen: ${(e as Error).message}`);
@@ -159,5 +179,13 @@ export async function scanLibrary(ports: Ports, opts: ScanOptions): Promise<Scan
     if (delay > 0) await sleep(delay);
   }
 
-  return { steamRoot, libraries, games, compatToolsInstalled, defaultCompatTool, warnings };
+  return {
+    steamRoot,
+    libraries,
+    games,
+    compatToolsInstalled,
+    defaultCompatTool,
+    steamUserId,
+    warnings,
+  };
 }

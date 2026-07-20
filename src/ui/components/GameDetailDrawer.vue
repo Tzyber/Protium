@@ -5,10 +5,12 @@ import { protonDbAppUrl } from "../../core/protondb";
 import type { Tier } from "../../core/types";
 import { focusFirstFocusable, restoreFocus, trapFocus } from "../a11y";
 import { formatBytes } from "../format";
+import { useConfigStore } from "../stores/configStore";
 import { useUiStore } from "../stores/uiStore";
 import TierBadge from "./TierBadge.vue";
 
 const ui = useUiStore();
+const config = useConfigStore();
 const game = computed(() => ui.selectedGame);
 
 const TIER_LABEL: Record<Tier, string> = {
@@ -77,6 +79,35 @@ function launch() {
   if (!currentGame) return;
   void launchGame(currentGame.appId).catch(() => {});
 }
+
+// startoptionen (phase 4): "idle" | "saving" | "saved" | fehlermeldung
+const launchInput = ref("");
+const launchState = ref<"idle" | "saving" | "saved" | string>("idle");
+const launchDirty = computed(() => launchInput.value !== (game.value?.launchOptions ?? ""));
+
+watch(
+  game,
+  (g) => {
+    launchInput.value = g?.launchOptions ?? "";
+    launchState.value = "idle";
+  },
+  { immediate: true },
+);
+watch(launchInput, () => {
+  if (launchState.value === "saved") launchState.value = "idle";
+});
+
+async function saveLaunch() {
+  const g = game.value;
+  if (!g || launchState.value === "saving" || !launchDirty.value) return;
+  launchState.value = "saving";
+  try {
+    await config.saveLaunchOptions(g.appId, launchInput.value.trim());
+    launchState.value = "saved";
+  } catch (e) {
+    launchState.value = (e as Error).message;
+  }
+}
 </script>
 
 <template>
@@ -111,6 +142,36 @@ function launch() {
           <div class="row"><span class="k">größe</span><span class="v mono">{{ formatBytes(game.sizeBytes) }}</span></div>
           <div class="row"><span class="k">proton</span><span class="v mono">{{ game.compatTool }}</span></div>
           <div class="row"><span class="k">app-id</span><span class="v mono">{{ game.appId }}</span></div>
+        </div>
+
+        <div class="launch-block">
+          <label class="k" for="launch-options">startoptionen</label>
+          <div class="launch-row">
+            <input
+              id="launch-options"
+              v-model="launchInput"
+              type="text"
+              class="launch-input mono"
+              placeholder="z. b. gamemoderun %command% -novid"
+              spellcheck="false"
+              @keydown.enter="saveLaunch"
+            />
+            <button
+              class="save"
+              type="button"
+              :disabled="!launchDirty || launchState === 'saving'"
+              @click="saveLaunch"
+            >
+              {{ launchState === "saving" ? "…" : "speichern" }}
+            </button>
+          </div>
+          <p v-if="launchState === 'saved'" class="launch-note ok">gespeichert ✓</p>
+          <p v-else-if="launchState !== 'idle' && launchState !== 'saving'" class="launch-note err">
+            {{ launchState }}
+          </p>
+          <p v-else class="hint">
+            %command% = der eigentliche startbefehl; lässt man es weg, hängt steam die optionen nur an.
+          </p>
         </div>
 
         <div class="tier-block">
@@ -190,6 +251,37 @@ h2 { margin: 0 0 16px; font-family: var(--font-display); font-size: 20px; font-w
 .row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--line-soft); }
 .k { color: var(--fg-2); font-size: 12px; }
 .v { color: var(--fg-0); font-size: 12px; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.launch-block { margin-bottom: 18px; }
+.launch-row { display: flex; gap: 8px; margin-top: 6px; }
+.launch-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  color: var(--fg-0);
+  border-radius: var(--r-sm);
+  padding: 9px 12px;
+  font-size: 12px;
+}
+.launch-input:focus { outline: none; border-color: var(--signal-dim); }
+.save {
+  background: var(--signal);
+  border: 1px solid var(--signal);
+  color: var(--bg-1);
+  border-radius: var(--r-sm);
+  padding: 9px 14px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: filter 0.15s;
+}
+.save:hover:not(:disabled) { filter: brightness(1.12); }
+.save:disabled { opacity: 0.45; cursor: default; }
+.launch-note { margin: 8px 2px 0; font-size: 12px; }
+.launch-note.ok { color: var(--signal); }
+.launch-note.err { color: var(--tier-borked); }
 
 .tier-block {
   background: var(--bg-2);

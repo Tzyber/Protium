@@ -9,6 +9,7 @@ import {
   mkdir,
   readDir,
   readTextFile,
+  rename,
   writeTextFile,
 } from "@tauri-apps/plugin-fs";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
@@ -31,6 +32,9 @@ const fs: FileSystem = {
   // plugin-fs kann kein realpath → rust canonicalize
   realpath: (path) => invoke<string>("canonicalize_path", { path }),
   remove: (path, opts) => fsRemove(path, { recursive: opts?.recursive ?? false }),
+  writeTextFile: (path, content) => writeTextFile(path, content),
+  rename: (from, to) => rename(from, to),
+  mkdir: (path) => mkdir(path, { recursive: true }),
 };
 
 const http: Http = {

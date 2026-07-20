@@ -1,0 +1,104 @@
+// localconfig.vdf (pro steam-account): startoptionen lesen/schreiben + aktiven user finden.
+import { writeSteamFile } from "./configwrite.js";
+import { paths } from "./paths.js";
+import type { FileSystem, System } from "./ports.js";
+import { asInt, asNode, getPath, parseVdf } from "./vdf.js";
+import { getVdfValue, setVdfValue } from "./vdfpatch.js";
+
+/** pfad des LaunchOptions-werts eines spiels in localconfig.vdf. */
+export function launchOptionsPath(appId: number): string[] {
+  return [
+    "UserLocalConfigStore",
+    "Software",
+    "Valve",
+    "Steam",
+    "Apps",
+    String(appId),
+    "LaunchOptions",
+  ];
+}
+
+export function readLaunchOptions(localConfigText: string, appId: number): string | undefined {
+  return getVdfValue(localConfigText, launchOptionsPath(appId));
+}
+
+// steamID64 → accountID (= userdata-ordnername); nur individuelle accounts.
+function accountIdOf(steamId64: string): string | null {
+  const BASE = 76561197960265728n;
+  try {
+    const id = BigInt(steamId64);
+    return id > BASE ? (id - BASE).toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+// loginusers.vdf: der zuletzt eingeloggte account ("MostRecent" "1").
+async function mostRecentUser(fs: FileSystem, steamRoot: string): Promise<string | null> {
+  try {
+    const p = paths.loginusersVdf(steamRoot);
+    if (!(await fs.exists(p))) return null;
+    const users = asNode(getPath(parseVdf(await fs.readTextFile(p)), "users"));
+    if (!users) return null;
+    for (const key of Object.keys(users)) {
+      if (asInt(getPath(users, key, "MostRecent")) === 1) return accountIdOf(key);
+    }
+  } catch {
+    // INV-2: defekt → caller nutzt fallback
+  }
+  return null;
+}
+
+/**
+ * der account, dessen localconfig.vdf wir lesen/schreiben: kandidaten sind userdata-dirs
+ * MIT localconfig.vdf. bei mehreren entscheidet loginusers.vdf (MostRecent), sonst fallback.
+ * null wenn es keinen kandidaten gibt.
+ */
+export async function findActiveUser(
+  fs: FileSystem,
+  steamRoot: string,
+): Promise<{ userId: string; warning?: string } | null> {
+  const candidates: string[] = [];
+  try {
+    const dir = paths.userdataDir(steamRoot);
+    if (!(await fs.exists(dir))) return null;
+    for (const e of await fs.readDir(dir)) {
+      if (!e.isDirectory || !/^\d+$/.test(e.name)) continue;
+      if (await fs.exists(paths.localConfigVdf(steamRoot, e.name))) candidates.push(e.name);
+    }
+  } catch {
+    return null; // INV-2: userdata nicht lesbar → startoptionen bleiben unbekannt
+  }
+  const first = candidates.sort()[0];
+  if (first === undefined) return null;
+  if (candidates.length === 1) return { userId: first };
+
+  const recent = await mostRecentUser(fs, steamRoot);
+  if (recent && candidates.includes(recent)) return { userId: recent };
+  return {
+    userId: first,
+    warning: `mehrere steam-accounts gefunden, loginusers.vdf nicht eindeutig → nehme ${first}`,
+  };
+}
+
+export type LaunchWriteResult = "unchanged" | "written";
+
+/**
+ * setzt die startoptionen eines spiels (string-patch + write-gate).
+ * "unchanged" = wert stand schon so drin → kein write, kein backup.
+ */
+export async function writeLaunchOptions(
+  ports: { fs: FileSystem; system: System },
+  steamRoot: string,
+  userId: string,
+  appId: number,
+  value: string,
+  backupDir: string,
+): Promise<LaunchWriteResult> {
+  const path = paths.localConfigVdf(steamRoot, userId);
+  const text = await ports.fs.readTextFile(path);
+  if ((readLaunchOptions(text, appId) ?? "") === value) return "unchanged";
+  const patched = setVdfValue(text, launchOptionsPath(appId), value);
+  await writeSteamFile(ports.fs, ports.system, path, patched, backupDir);
+  return "written";
+}
