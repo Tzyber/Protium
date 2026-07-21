@@ -32,6 +32,8 @@ export interface ScanResult {
   compatToolsInstalled: CompatTool[];
   /** globaler default aus CompatToolMapping[0] ("für alle spiele"), sonst null. */
   defaultCompatTool: string | null;
+  /** account, dessen localconfig.vdf gelesen wird (null = keiner gefunden → keine startoptionen). */
+  steamUserId: string | null;
   warnings: string[];
 }
 

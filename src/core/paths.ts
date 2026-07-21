@@ -10,10 +10,14 @@ const ROOT_CANDIDATES = [
 ] as const;
 
 function join(...parts: string[]): string {
-  return parts
+  const joined = parts
     .map((p, i) => (i === 0 ? p.replace(/\/+$/, "") : p.replace(/^\/+|\/+$/g, "")))
     .filter(Boolean)
     .join("/");
+  if (joined.split("/").some((seg) => seg === "..")) {
+    throw new Error(`joinPath: ".." segment rejected for security`);
+  }
+  return joined;
 }
 
 // symlinks aufgelöst, damit scope-checks gegen den echten pfad matchen (S-4).
@@ -35,6 +39,7 @@ export const paths = {
   steamapps: (root: string) => join(root, "steamapps"),
   libraryFoldersVdf: (root: string) => join(root, "steamapps", "libraryfolders.vdf"),
   configVdf: (root: string) => join(root, "config", "config.vdf"), // mapping liegt in der root
+  loginusersVdf: (root: string) => join(root, "config", "loginusers.vdf"),
   compatToolsDir: (root: string) => join(root, "compatibilitytools.d"),
   compatToolVdf: (root: string, toolDir: string) =>
     join(root, "compatibilitytools.d", toolDir, "compatibilitytool.vdf"),
