@@ -17,8 +17,11 @@ export class SteamRunningError extends Error {
  * → ein write bei laufendem steam würde still revertiert.
  * backup nur wenn die zieldatei existiert; temp+rename im selben verzeichnis
  * (gleiches dateisystem → atomar, kein EXDEV-problem).
- * `backupText`: der vor dem patch gelesene originalstand.
- * nur so ist sichergestellt, dass backup und patch dieselbe basis haben (kein TOCTOU).
+ * `backupText`: der vor dem patch gelesene originalstand — so haben backup und patch
+ * dieselbe basis (backup-TOCTOU vermieden).
+ * NICHT abgedeckt: startet steam im schmalen fenster zwischen check und rename, wird der
+ * write nicht verhindert (steam überschreibt ihn dann beim beenden). desktop-seitig nicht
+ * atomar lösbar; risiko ist klein und die folge nur ein verworfener write, kein datenverlust.
  */
 export async function writeSteamFile(
   fs: FileSystem,

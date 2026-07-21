@@ -15,6 +15,9 @@ export type CompatWriteResult = "unchanged" | "written";
 /**
  * setzt das compat-tool eines spiels in config.vdf.
  * schreibt name + config("") + priority("250") — so legt steam den block auch an.
+ * ACHTUNG bewusst: bei einem tool-WECHSEL werden vorhandene config/priority auf den
+ * steam-default zurückgesetzt. eine tool-spezifische config (z. b. "noesync") gilt nur
+ * fürs alte tool und wäre fürs neue falsch → default ist die sichere wahl.
  */
 export async function writeCompatTool(
   ports: { fs: FileSystem; system: System },

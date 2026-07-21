@@ -11,26 +11,26 @@ const tmp = () => mkdtemp(join(tmpdir(), "protium-compatwrite-"));
 
 const CONFIG_VDF = `"InstallConfigStore"
 {
-\t"Software"
-\t{
-\t\t"Valve"
-\t\t{
-\t\t\t"Steam"
-\t\t\t{
-\t\t\t\t"CompatToolMapping"
-\t\t\t\t{
-\t\t\t\t\t"0"
-\t\t\t\t\t{
-\t\t\t\t\t\t"name"\t\t"proton-cachyos-slr"
-\t\t\t\t\t}
-\t\t\t\t\t"620"
-\t\t\t\t\t{
-\t\t\t\t\t\t"name"\t\t"GE-Proton9-27"
-\t\t\t\t\t}
-\t\t\t\t}
-\t\t\t}
-\t\t}
-\t}
+  \t"Software"
+  \t{
+    \t\t"Valve"
+    \t\t{
+      \t\t\t"Steam"
+      \t\t\t{
+        \t\t\t\t"CompatToolMapping"
+        \t\t\t\t{
+          \t\t\t\t\t"0"
+          \t\t\t\t\t{
+            \t\t\t\t\t\t"name"\t\t"proton-cachyos-slr"
+            \t\t\t\t\t}
+            \t\t\t\t\t"620"
+            \t\t\t\t\t{
+              \t\t\t\t\t\t"name"\t\t"GE-Proton9-27"
+              \t\t\t\t\t}
+              \t\t\t\t}
+              \t\t\t}
+              \t\t}
+              \t}
 }
 `;
 
@@ -106,6 +106,46 @@ describe("writeCompatTool", () => {
     expect(getVdfValue(text, [...C_PATH, "620", "config"])).toBe("");
     expect(getVdfValue(text, [...C_PATH, "620", "priority"])).toBe("250");
     expect(getVdfValue(text, [...C_PATH, "0", "name"])).toBe("proton-cachyos-slr"); // nachbar unberührt
+  });
+
+  it("tool-wechsel setzt vorhandene config/priority BEWUSST auf steam-default zurück", async () => {
+    const dir = await tmp();
+    const root = join(dir, ".steam");
+    await mkdir(join(root, "config"), { recursive: true });
+    // fixture mit tool-spezifischer config + abweichender priority
+    const withExtras = `"InstallConfigStore"
+    {
+      \t"Software"
+      \t{
+        \t\t"Valve"
+        \t\t{
+          \t\t\t"Steam"
+          \t\t\t{
+            \t\t\t\t"CompatToolMapping"
+            \t\t\t\t{
+              \t\t\t\t\t"620"
+              \t\t\t\t\t{
+                \t\t\t\t\t\t"name"\t\t"GE-Proton9-27"
+                \t\t\t\t\t\t"config"\t\t"noesync"
+                \t\t\t\t\t\t"priority"\t\t"90"
+                \t\t\t\t\t}
+                \t\t\t\t}
+                \t\t\t}
+                \t\t}
+                \t}
+    }
+    `;
+    const configPath = join(root, "config", "config.vdf");
+    await writeFile(configPath, withExtras, "utf8");
+    const backupDir = join(dir, "backups");
+
+    await writeCompatTool({ fs: nodeFs(), system: fakeSystem() }, root, 620, "NewTool", backupDir);
+
+    const text = await readFile(configPath, "utf8");
+    expect(getVdfValue(text, [...C_PATH, "620", "name"])).toBe("NewTool");
+    // dokumentiertes verhalten: alte tool-config/priority werden auf default zurückgesetzt
+    expect(getVdfValue(text, [...C_PATH, "620", "config"])).toBe("");
+    expect(getVdfValue(text, [...C_PATH, "620", "priority"])).toBe("250");
   });
 
   it("write → remove → block vollständig weg", async () => {
