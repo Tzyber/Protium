@@ -5,7 +5,7 @@ import { buildFakeSteam, fakeHttp, fakeSystem, memCache, nodeFs } from "../suppo
 
 describe("scanLibrary (integration — dominiks reales setup)", () => {
   it("dedupliziert libraries, findet system-compat-tools, erfüllt phase-1-akzeptanz", async () => {
-    const { home, root, lib2, lib2Dup, staleLib, systemCompat } = await buildFakeSteam();
+    const { home, root, lib2, lib2Dup, staleLib, systemCompat, userId } = await buildFakeSteam();
     const fs = nodeFs();
 
     const discovered = await discoverSteamRoot(fs, home);
@@ -70,6 +70,11 @@ describe("scanLibrary (integration — dominiks reales setup)", () => {
 
     // globaler default (CompatToolMapping[0]) separat ausgewiesen, nicht in usedBy
     expect(result.defaultCompatTool).toBe("proton-cachyos-slr");
+
+    // startoptionen aus localconfig.vdf des aktiven accounts (620 hat welche, rest nicht)
+    expect(result.steamUserId).toBe(userId);
+    expect(byId.get(620)?.launchOptions).toBe("gamemoderun %command%");
+    expect(byId.get(570)?.launchOptions).toBeUndefined();
 
     // korruptes acf → warning, kein crash
     expect(result.warnings.some((w) => w.includes("appmanifest_9999"))).toBe(true);

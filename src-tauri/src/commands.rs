@@ -4,6 +4,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use futures_util::StreamExt;
 use serde::Serialize;
@@ -12,6 +13,50 @@ use sysinfo::System;
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_fs::FsExt;
 use tokio::io::AsyncWriteExt;
+
+// ---- sicherheits-validierungen (webview-IPC-grenze) ----
+
+fn sanitize_path(p: &str, label: &str) -> Result<(), String> {
+    if !p.starts_with('/') {
+        return Err(format!("{label}: path must be absolute"));
+    }
+    if p.split('/').any(|seg| seg == "..") {
+        return Err(format!("{label}: path traversal rejected"));
+    }
+    Ok(())
+}
+
+/// canonicalisierte pfade, die NIE in den scope aufgenommen werden dürfen.
+fn is_safe_path(canonical: &str) -> bool {
+    let blocked: &[&str] = &["/", "/etc", "/proc", "/sys", "/dev"];
+    !blocked.iter().any(|b| canonical == *b || canonical.starts_with(&format!("{b}/")))
+}
+
+fn validate_download_url(url: &str) -> Result<(), String> {
+    if url.contains('@') {
+        return Err("URL must not contain credentials".into());
+    }
+    let lower = url.to_lowercase();
+    if !lower.starts_with("https://") {
+        return Err("only HTTPS URLs allowed for downloads".into());
+    }
+    let allowed = [
+        "https://objects.githubusercontent.com/",
+        "https://github.com/",
+    ];
+    if !allowed.iter().any(|p| lower.starts_with(p)) {
+        return Err("download URL domain not allowed".into());
+    }
+    Ok(())
+}
+
+fn random_suffix() -> String {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    format!("{:x}", nanos)
+}
 
 /// ids laufender downloads, die abgebrochen werden sollen.
 #[derive(Default)]
@@ -35,6 +80,8 @@ struct DownloadProgress {
 /// R-1: .tar.gz entpacken. temp im ziel-fs (EXDEV-safe), dann rename ins ziel.
 #[tauri::command]
 pub async fn extract_tarball(src: String, dest: String) -> Result<(), String> {
+    sanitize_path(&src, "extract source")?;
+    sanitize_path(&dest, "extract destination")?;
     tokio::task::spawn_blocking(move || extract_blocking(&src, &dest))
         .await
         .map_err(|e| e.to_string())?
@@ -46,19 +93,40 @@ fn extract_blocking(src: &str, dest_dir: &str) -> Result<(), String> {
 
     let dest = Path::new(dest_dir);
     fs::create_dir_all(dest).map_err(|e| e.to_string())?;
+    let canon = fs::canonicalize(dest).map_err(|e| e.to_string())?;
+    if !canon.is_dir() || !is_safe_path(&canon.to_string_lossy()) {
+        return Err("extract destination in blocked location".into());
+    }
 
-    // temp im ziel-fs → rename ohne EXDEV
-    let tmp = dest.join(format!(".protium-extract-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&tmp);
+    let src_path = Path::new(src);
+    if !src_path.is_file() {
+        return Err("extract source not a regular file".into());
+    }
+
+    // unpredictable temp name (pid + nanos) → kein race auf statischen pfad
+    let tag = format!(".protium-extract-{}-{}", std::process::id(), random_suffix());
+    let tmp = dest.join(&tag);
     fs::create_dir_all(&tmp).map_err(|e| e.to_string())?;
+    // symlink-guard: temp-dir darf selbst kein symlink sein (TOCTOU absicherung)
+    if fs::symlink_metadata(&tmp)
+        .map(|m| m.file_type().is_symlink())
+        .unwrap_or(true)
+    {
+        let _ = fs::remove_dir_all(&tmp);
+        return Err("temp dir is symlink — extraction aborted".into());
+    }
 
     let result = (|| -> Result<(), String> {
         let f = fs::File::open(src).map_err(|e| e.to_string())?;
         let mut ar = Archive::new(GzDecoder::new(f));
         ar.unpack(&tmp).map_err(|e| e.to_string())?;
-        // top-level-einträge (der versionsordner) ins ziel renamen
         for entry in fs::read_dir(&tmp).map_err(|e| e.to_string())? {
             let entry = entry.map_err(|e| e.to_string())?;
+            let ft = entry.file_type().map_err(|e| e.to_string())?;
+            if ft.is_symlink() {
+                let _ = fs::remove_file(entry.path());
+                continue;
+            }
             let target = dest.join(entry.file_name());
             if target.exists() {
                 let _ = fs::remove_dir_all(&target);
@@ -72,9 +140,13 @@ fn extract_blocking(src: &str, dest_dir: &str) -> Result<(), String> {
     result
 }
 
-/// R-2: prozess mit diesem namen aktiv? (steam-läuft-check, INV-1a)
+/// R-2: steam-läuft-check (INV-1a). nur "steam" als name erlaubt —
+/// bewusst kein generisches process-enumeration-werkzeug für die webview.
 #[tauri::command]
 pub fn is_process_running(name: String) -> Result<bool, String> {
+    if name.to_lowercase() != "steam" {
+        return Err("process check only allowed for steam".into());
+    }
     let sys = System::new_all();
     let target = name.to_lowercase();
     Ok(sys
@@ -117,6 +189,7 @@ async fn download_stream(
 ) -> Result<String, String> {
     let result: Result<String, String> = async {
         let client = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(|e| e.to_string())?;
         let resp = client.get(url).send().await.map_err(|e| e.to_string())?;
@@ -158,6 +231,7 @@ async fn download_stream(
 }
 
 /// R-4: tauri-wrapper um download_stream — cancel-registry + fortschritt (throttled ~1 MB).
+/// validiert URL (domain + https) und dest-pfad vor dem start.
 #[tauri::command]
 pub async fn download_file(
     app: AppHandle,
@@ -166,6 +240,23 @@ pub async fn download_file(
     dest: String,
     download_id: String,
 ) -> Result<String, String> {
+    validate_download_url(&url)?;
+    // dest: nur absolute pfade, kein .., elternverzeichnis nicht in blocked locations
+    sanitize_path(&dest, "download dest")?;
+    if let Some(parent) = Path::new(&dest).parent() {
+        if parent.as_os_str().is_empty() {
+            return Err("invalid download dest".into());
+        }
+        // falls das elternverzeichnis bereits existiert: canonicalisieren und prüfen
+        if parent.exists() {
+            let canon =
+                fs::canonicalize(parent).map_err(|e| format!("download dest parent: {e}"))?;
+            if !is_safe_path(&canon.to_string_lossy()) {
+                return Err("download dest in blocked location".into());
+            }
+        }
+    }
+
     let id = download_id.clone();
     let mut last_emit: u64 = 0;
 
@@ -193,18 +284,36 @@ pub async fn download_file(
 }
 
 /// R-5: verzeichnis zur laufzeit in den fs-scope aufnehmen.
+/// zwingend: canonicalize + sicherheitscheck — keine systemverzeichnisse.
 #[tauri::command]
 pub fn allow_library_scope(app: tauri::AppHandle, path: String) -> Result<(), String> {
-    let _ = app.fs_scope().allow_directory(&path, true);
+    sanitize_path(&path, "library path")?;
+    let real = fs::canonicalize(&path).map_err(|e| format!("cannot resolve library path: {e}"))?;
+    if !real.is_dir() {
+        return Err("library path is not a directory".into());
+    }
+    if !is_safe_path(&real.to_string_lossy()) {
+        return Err("library path in blocked system directory rejected".into());
+    }
+    let _ = app.fs_scope().allow_directory(real.to_string_lossy().as_ref(), true);
     Ok(())
 }
 
-/// symlink-auflösung (steam-root-discovery).
+/// symlink-auflösung (steam-root-discovery). `..` im input abgelehnt,
+/// auflösungen nach /proc /sys /dev verweigert (info-disclosure).
+/// blockt sowohl das verzeichnis selbst als auch inhalte darunter.
 #[tauri::command]
 pub fn canonicalize_path(path: String) -> Result<String, String> {
-    fs::canonicalize(&path)
-        .map(|p| p.to_string_lossy().into_owned())
-        .map_err(|e| e.to_string())
+    sanitize_path(&path, "canonicalize")?;
+    let canonical = fs::canonicalize(&path).map_err(|e| e.to_string())?;
+    let s = canonical.to_string_lossy();
+    if s == "/proc" || s.starts_with("/proc/")
+        || s == "/sys" || s.starts_with("/sys/")
+        || s == "/dev" || s.starts_with("/dev/")
+    {
+        return Err("path resolution in blocked filesystem".into());
+    }
+    Ok(s.into_owned())
 }
 
 /// R-6: realpath + (dev,ino) zur library-dedup.
@@ -230,10 +339,80 @@ pub fn path_identity(path: String) -> Result<PathIdentity, String> {
 #[cfg(test)]
 mod tests {
     use super::download_stream;
+    use super::{is_safe_path, sanitize_path, validate_download_url};
     use std::io::{Read, Write};
     use std::net::TcpListener;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::thread;
+
+    // ---- sicherheits-validierung ----
+
+    #[test]
+    fn sanitize_rejects_relative() {
+        assert!(sanitize_path("foo/bar", "test").is_err());
+        assert!(sanitize_path("./foo", "test").is_err());
+    }
+
+    #[test]
+    fn sanitize_rejects_dotdot() {
+        assert!(sanitize_path("/foo/../bar", "test").is_err());
+        assert!(sanitize_path("/../etc", "test").is_err());
+        assert!(sanitize_path("/home/user/../../../etc", "test").is_err());
+    }
+
+    #[test]
+    fn sanitize_accepts_normal() {
+        assert!(sanitize_path("/home/user/.steam", "test").is_ok());
+        assert!(sanitize_path("/mnt/games", "test").is_ok());
+        assert!(sanitize_path("/run/media/user/SteamLibrary", "test").is_ok());
+    }
+
+    #[test]
+    fn safe_path_blocks_system_dirs() {
+        assert!(!is_safe_path("/"));
+        assert!(!is_safe_path("/etc"));
+        assert!(!is_safe_path("/etc/cron.d"));
+        assert!(!is_safe_path("/proc"));
+        assert!(!is_safe_path("/proc/cpuinfo"));
+        assert!(!is_safe_path("/sys"));
+        assert!(!is_safe_path("/sys/class"));
+        assert!(!is_safe_path("/dev"));
+        assert!(!is_safe_path("/dev/null"));
+    }
+
+    #[test]
+    fn safe_path_allows_normal_dirs() {
+        assert!(is_safe_path("/home/user/.steam"));
+        assert!(is_safe_path("/mnt/games"));
+        assert!(is_safe_path("/run/media/user/lib"));
+        assert!(is_safe_path("/tmp/build"));
+    }
+
+    #[test]
+    fn download_url_rejects_http() {
+        assert!(validate_download_url("http://objects.githubusercontent.com/file.tar.gz").is_err());
+        assert!(validate_download_url("HTTP://example.com/file").is_err());
+    }
+
+    #[test]
+    fn download_url_rejects_credentials() {
+        assert!(validate_download_url("https://user:pass@objects.githubusercontent.com/f").is_err());
+        assert!(validate_download_url("https://objects.githubusercontent.com@evil.com/f").is_err());
+    }
+
+    #[test]
+    fn download_url_rejects_other_domains() {
+        assert!(validate_download_url("https://evil.com/payload.tar.gz").is_err());
+        assert!(validate_download_url("https://objects.githubusercontent.com.evil.com/f").is_err());
+    }
+
+    #[test]
+    fn download_url_allows_github_domains() {
+        assert!(validate_download_url("https://objects.githubusercontent.com/github-production-release-asset-2e/f.tar.gz").is_ok());
+        assert!(validate_download_url("https://github.com/GloriousEggroll/proton-ge-custom/releases/download/f.tar.gz").is_ok());
+    }
+
+    // ---- download-stream (bestehend) ----
 
     /// HTTP-stub: kündigt `announce` bytes an, sendet nur `send`.
     /// send < announce simuliert einen netzabbruch (vorzeitiger EOF).
