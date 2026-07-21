@@ -69,6 +69,7 @@ watch(
 );
 
 onBeforeUnmount(() => {
+  if (toastTimer) clearTimeout(toastTimer);
   restoreFocus(lastFocusedElement);
 });
 
@@ -163,6 +164,23 @@ async function saveCompat() {
     compatState.value = (e as Error).message;
   }
 }
+
+// fehler-toast: der state ist entweder ein bekanntes schlagwort oder die fehlermeldung.
+function stateError(s: string): string | null {
+  return s === "idle" || s === "saving" || s === "saved" ? null : s;
+}
+const errorMessage = computed(() => stateError(compatState.value) ?? stateError(launchState.value));
+function dismissError() {
+  if (stateError(compatState.value)) compatState.value = "idle";
+  if (stateError(launchState.value)) launchState.value = "idle";
+}
+
+// toast nach 6s automatisch schließen (bleibt bei erneutem fehler frisch stehen).
+let toastTimer: ReturnType<typeof setTimeout> | null = null;
+watch(errorMessage, (msg) => {
+  if (toastTimer) clearTimeout(toastTimer);
+  if (msg) toastTimer = setTimeout(dismissError, 6000);
+});
 </script>
 
 <template>
@@ -191,28 +209,37 @@ async function saveCompat() {
           <div v-else class="cover-fb"><span>{{ game.name }}</span></div>
         </div>
 
-        <h2 :id="titleId">{{ game.name }}</h2>
-
-        <div class="rows">
-          <div class="row"><span class="k">größe</span><span class="v mono">{{ formatBytes(game.sizeBytes) }}</span></div>
-          <div class="row">
-            <span class="k">app-id</span><span class="v mono">{{ game.appId }}</span></div>
+        <div class="head">
+          <h2 :id="titleId">{{ game.name }}</h2>
+          <TierBadge
+            v-if="game.protonDb"
+            :tier="game.protonDb.tier"
+            :confidence="game.protonDb.confidence"
+          />
         </div>
+        <p class="meta mono">{{ formatBytes(game.sizeBytes) }} · app {{ game.appId }}</p>
+        <p class="meta-tier">{{ TIER_LABEL[game.protonDb?.tier ?? "unknown"] }}</p>
 
-        <div class="compat-block">
+        <button
+          class="play"
+          type="button"
+          :title="`${game.name} starten`"
+          :aria-label="`${game.name} starten`"
+          @click.stop="launch"
+        >
+          spiel starten
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9l7-4.5z" /></svg>
+        </button>
+
+        <div class="divider" />
+        <p class="section-label mono">konfiguration</p>
+
+        <div class="field">
           <label class="k" for="compat-tool">proton / compat-tool</label>
-          <div class="compat-row">
-            <select
-              id="compat-tool"
-              v-model="compatSelected"
-              class="compat-select mono"
-            >
+          <div class="field-row">
+            <select id="compat-tool" v-model="compatSelected" class="control mono">
               <option value="__default__">standard (system-default)</option>
-              <option
-                v-for="o in compatOptions"
-                :key="o.value"
-                :value="o.value"
-              >{{ o.label }}</option>
+              <option v-for="o in compatOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
             </select>
             <button
               class="save"
@@ -220,23 +247,19 @@ async function saveCompat() {
               :disabled="!compatDirty || compatState === 'saving'"
               @click="saveCompat"
             >
-              {{ compatState === "saving" ? "…" : "speichern" }}
+              {{ compatState === "saving" ? "…" : compatState === "saved" ? "gespeichert ✓" : "speichern" }}
             </button>
           </div>
-          <p v-if="compatState === 'saved'" class="launch-note ok">gespeichert ✓</p>
-          <p v-else-if="compatState !== 'idle' && compatState !== 'saving'" class="launch-note err">
-            {{ compatState }}
-          </p>
         </div>
 
-        <div class="launch-block">
+        <div class="field">
           <label class="k" for="launch-options">startoptionen</label>
-          <div class="launch-row">
+          <div class="field-row">
             <input
               id="launch-options"
               v-model="launchInput"
               type="text"
-              class="launch-input mono"
+              class="control mono"
               placeholder="z. b. gamemoderun %command% -novid"
               spellcheck="false"
               @keydown.enter="saveLaunch"
@@ -247,45 +270,31 @@ async function saveCompat() {
               :disabled="!launchDirty || launchState === 'saving'"
               @click="saveLaunch"
             >
-              {{ launchState === "saving" ? "…" : "speichern" }}
+              {{ launchState === "saving" ? "…" : launchState === "saved" ? "gespeichert ✓" : "speichern" }}
             </button>
           </div>
-          <p v-if="launchState === 'saved'" class="launch-note ok">gespeichert ✓</p>
-          <p v-else-if="launchState !== 'idle' && launchState !== 'saving'" class="launch-note err">
-            {{ launchState }}
-          </p>
-          <p v-else class="hint">
-            %command% = der eigentliche startbefehl; lässt man es weg, hängt steam die optionen nur an.
+          <p class="hint">
+            %command% = der eigentliche startbefehl; weglassen hängt die optionen nur an.
           </p>
         </div>
 
-        <div class="tier-block">
-          <div class="tier-head">
-            <span class="k">protondb</span>
-            <TierBadge
-              v-if="game.protonDb"
-              :tier="game.protonDb.tier"
-              :confidence="game.protonDb.confidence"
-            />
-          </div>
-          <p class="tier-desc">{{ TIER_LABEL[game.protonDb?.tier ?? "unknown"] }}</p>
-          <p v-if="game.protonDb" class="conf mono">konfidenz: {{ game.protonDb.confidence }}</p>
-        </div>
-        <button class="play"
-            type="button"
-            :title="`${game.name} starten`"
-            :aria-label="`${game.name} starten`"
-            @click.stop="launch">
-          spiel starten
-          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9l7-4.5z" /></svg>
-        </button>
-        <button class="pdb" type="button" @click="openProtonDb">
-          auf protondb ansehen — berichte anderer nutzer ↗
-        </button>
+        <div class="divider" />
+
+        <a class="pdb-link mono" href="#" @click.prevent="openProtonDb">
+          auf protondb ansehen ↗
+        </a>
         <p class="hint">
-          zeigt reports mit betriebssystem, proton-version und notizen anderer spieler.
-          daten von protondb (ODbL).
+          reports mit betriebssystem, proton-version und notizen anderer spieler. daten von protondb (ODbL).
         </p>
+
+        <!-- fehler-toast: oben fixiert im drawer, direkt im blick der eingaben -->
+        <transition name="toast">
+          <div v-if="errorMessage" class="toast" role="alert">
+            <span class="toast-icon" aria-hidden="true">⚠</span>
+            <span class="toast-msg">{{ errorMessage }}</span>
+            <button class="toast-close" type="button" aria-label="meldung schließen" @click="dismissError">✕</button>
+          </div>
+        </transition>
       </aside>
     </div>
   </transition>
@@ -310,18 +319,16 @@ async function saveCompat() {
 .close {
   position: absolute; top: 14px; right: 16px;
   background: none; border: none; color: var(--fg-2);
-  font-size: 15px; cursor: pointer;
+  font-size: 15px; cursor: pointer; z-index: 2;
 }
 .close:hover { color: var(--fg-0); }
-
-
 
 .cover {
   aspect-ratio: 460 / 215;
   border-radius: var(--r-md);
   overflow: hidden;
   background: var(--bg-3);
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 .cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .cover-fb {
@@ -330,109 +337,113 @@ async function saveCompat() {
   font-family: var(--font-display); font-weight: 600; color: var(--fg-1);
 }
 
-h2 { margin: 0 0 16px; font-family: var(--font-display); font-size: 20px; font-weight: 600; letter-spacing: -0.02em; }
+.head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.head h2 { margin: 0; font-family: var(--font-display); font-size: 21px; font-weight: 600; letter-spacing: -0.02em; }
+.head :deep(*) { flex-shrink: 0; }
+.meta { margin: 6px 0 2px; color: var(--fg-2); font-size: 13px; }
+.meta-tier { margin: 0 0 20px; color: var(--fg-1); font-size: 13px; line-height: 1.5; }
 
-.rows { display: grid; gap: 8px; margin-bottom: 18px; }
-.row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--line-soft); }
-.k { color: var(--fg-2); font-size: 12px; }
-.v { color: var(--fg-0); font-size: 12px; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-.launch-block { margin-bottom: 18px; }
-.launch-row { display: flex; gap: 8px; margin-top: 6px; }
-.launch-input {
-  flex: 1;
-  min-width: 0;
-  background: var(--bg-2);
-  border: 1px solid var(--line);
-  color: var(--fg-0);
-  border-radius: var(--r-sm);
-  padding: 9px 12px;
-  font-size: 12px;
-}
-.launch-input:focus { outline: none; border-color: var(--signal-dim); }
-.save {
-  background: var(--signal);
-  border: 1px solid var(--signal);
-  color: var(--bg-1);
-  border-radius: var(--r-sm);
-  padding: 9px 14px;
-  font-family: var(--font-display);
-  font-weight: 600;
-  font-size: 13px;
-  cursor: pointer;
-  transition: filter 0.15s;
-}
-.save:hover:not(:disabled) { filter: brightness(1.12); }
-.save:disabled { opacity: 0.45; cursor: default; }
-.launch-note { margin: 8px 2px 0; font-size: 12px; }
-.launch-note.ok { color: var(--signal); }
-.launch-note.err { color: var(--tier-borked); }
-
-.compat-block { margin-bottom: 18px; }
-.compat-row { display: flex; gap: 8px; margin-top: 6px; }
-.compat-select {
-  flex: 1;
-  min-width: 0;
-  background: var(--bg-2);
-  border: 1px solid var(--line);
-  color: var(--fg-0);
-  border-radius: var(--r-sm);
-  padding: 9px 10px;
-  font-size: 12px;
-  cursor: pointer;
-}
-.compat-select:focus { outline: none; border-color: var(--signal-dim); }
-.compat-select option { background: var(--bg-1); color: var(--fg-0); }
-
-.tier-block {
-  background: var(--bg-2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  padding: 14px;
-  margin-bottom: 18px;
-}
-.tier-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-.tier-desc { margin: 0; color: var(--fg-1); font-size: 13px; }
-.conf { margin: 6px 0 0; color: var(--fg-2); font-size: 10.5px; }
-
-.pdb {
-  width: 100%;
-  background: transparent;
-  border: 1px solid var(--line);
-  color: var(--fg-1);
-  border-radius: var(--r-sm);
-  padding: 11px 14px;
-  font-family: var(--font-display);
-  font-weight: 600;
-  font-size: 13px;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-}
 .play {
   width: 100%;
   background: var(--signal);
   border: 1px solid var(--signal);
-  color: var(--bg-1);
+  color: var(--bg-0);
   border-radius: var(--r-sm);
-  padding: 12px 14px;
+  padding: 13px 14px;
   font-family: var(--font-display);
   font-weight: 700;
-  font-size: 16px;
+  font-size: 15px;
   cursor: pointer;
   transition: filter 0.15s, transform 0.1s;
-  margin-bottom: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
 }
-.play svg { width: 16px; height: 16px; fill: currentColor; }
+.play svg { width: 15px; height: 15px; fill: currentColor; }
 .play:hover { filter: brightness(1.12); }
 .play:active { transform: scale(0.98); }
 .play:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 
-.pdb:hover { background: var(--bg-2); border-color: var(--signal-dim); }
-.hint { margin: 10px 2px 0; color: var(--fg-2); font-size: 12px; line-height: 1.5; }
+.divider { height: 1px; background: var(--line-soft); margin: 20px 0 16px; }
+.section-label {
+  margin: 0 0 14px;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--fg-1);
+  text-transform: uppercase;
+}
+
+.field { margin-bottom: 16px; }
+.k { display: block; color: var(--fg-1); font-size: 13px; margin-bottom: 7px; }
+.field-row { display: flex; gap: 8px; }
+.control {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  color: var(--fg-0);
+  border-radius: var(--r-sm);
+  padding: 11px 13px;
+  font-size: 13px;
+}
+.control:focus { outline: none; border-color: var(--signal-dim); }
+select.control { cursor: pointer; }
+select.control option { background: var(--bg-1); color: var(--fg-0); }
+
+.save {
+  flex-shrink: 0;
+  background: var(--bg-2);
+  border: 1px solid var(--signal-dim);
+  color: var(--signal-bright);
+  border-radius: var(--r-sm);
+  padding: 11px 15px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+}
+.save:hover:not(:disabled) { background: var(--bg-3); border-color: var(--signal); }
+.save:disabled { opacity: 0.4; cursor: default; }
+
+.hint { margin: 9px 2px 0; color: var(--fg-2); font-size: 12.5px; line-height: 1.55; }
+
+.pdb-link {
+  display: inline-block;
+  color: var(--signal-bright);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: color 0.15s;
+}
+.pdb-link:hover { color: var(--signal); text-decoration: underline; }
+
+.toast {
+  position: sticky;
+  top: 8px;
+  z-index: 3;
+  margin: 12px 0 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  background: var(--bg-2);
+  border: 1px solid var(--tier-borked);
+  border-left: 3px solid var(--tier-borked);
+  border-radius: var(--r-sm);
+  padding: 11px 13px;
+  box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.6);
+}
+.toast-icon { color: var(--tier-borked); font-size: 14px; flex-shrink: 0; margin-top: 1px; }
+.toast-msg { flex: 1; color: var(--fg-0); font-size: 13.5px; line-height: 1.5; }
+.toast-close {
+  flex-shrink: 0; background: none; border: none; color: var(--fg-2);
+  font-size: 12px; cursor: pointer; padding: 0; line-height: 1;
+}
+.toast-close:hover { color: var(--fg-0); }
+.toast-enter-active, .toast-leave-active { transition: opacity 0.2s, transform 0.2s; }
+.toast-enter-from, .toast-leave-to { opacity: 0; transform: translateY(-6px); }
 
 .drawer-enter-active .drawer, .drawer-leave-active .drawer { transition: transform 0.2s ease; }
 .drawer-enter-from .drawer, .drawer-leave-to .drawer { transform: translateX(100%); }
