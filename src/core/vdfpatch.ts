@@ -232,3 +232,42 @@ export function setVdfValue(text: string, path: readonly string[], value: string
   const tokens = tokenize(text);
   return setInScope(text, tokens, 0, tokens.length, path, value);
 }
+
+function removeInScope(
+  text: string,
+  tokens: Token[],
+  from: number,
+  to: number,
+  keys: readonly string[],
+): string {
+  const key = keys[0];
+  if (key === undefined) return text;
+  const entry = findEntry(tokens, from, to, key);
+  if (!entry) return text;
+
+  if (keys.length > 1) {
+    if (!entry.block) throw new VdfPatchError(`"${key}" ist ein wert, kein block`);
+    return removeInScope(text, tokens, entry.block.from, entry.block.to, keys.slice(1));
+  }
+
+  let end = entry.value.end;
+  if (entry.block) {
+    const closeToken = tokenAt(tokens, entry.block.to);
+    end = closeToken.end;
+  }
+
+  const lineStart = text.lastIndexOf("\n", entry.key.start - 1) + 1;
+  let trailEnd = end;
+  while (trailEnd < text.length && " \t\r".includes(text.charAt(trailEnd))) trailEnd++;
+  if (trailEnd < text.length && text.charAt(trailEnd) === "\n") trailEnd++;
+
+  return splice(text, lineStart, trailEnd, "");
+}
+
+/** entfernt den key+block/scalar am pfad. no-op wenn der pfad nicht existiert.
+ *  wirft VdfPatchError bei strukturbruch. */
+export function removeVdfEntry(text: string, path: readonly string[]): string {
+  if (path.length === 0) throw new VdfPatchError("leerer pfad");
+  const tokens = tokenize(text);
+  return removeInScope(text, tokens, 0, tokens.length, path);
+}

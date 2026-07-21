@@ -6,11 +6,13 @@ import type { Tier } from "../../core/types";
 import { focusFirstFocusable, restoreFocus, trapFocus } from "../a11y";
 import { formatBytes } from "../format";
 import { useConfigStore } from "../stores/configStore";
+import { useScanStore } from "../stores/scanStore";
 import { useUiStore } from "../stores/uiStore";
 import TierBadge from "./TierBadge.vue";
 
 const ui = useUiStore();
 const config = useConfigStore();
+const scan = useScanStore();
 const game = computed(() => ui.selectedGame);
 
 const TIER_LABEL: Record<Tier, string> = {
@@ -108,6 +110,59 @@ async function saveLaunch() {
     launchState.value = (e as Error).message;
   }
 }
+
+// compat-tool-dropdown (phase 4, schritt 5)
+const compatSelected = ref("__default__");
+const compatState = ref<"idle" | "saving" | "saved" | string>("idle");
+
+const compatOptions = computed(() => {
+  const tools = scan.result?.compatToolsInstalled ?? [];
+  const current = game.value?.compatTool ?? "";
+  const list: { value: string; label: string }[] = [];
+
+  for (const t of tools) {
+    list.push({ value: t.internalName, label: t.displayName });
+  }
+
+  if (current && current !== "default" && !tools.some((t) => t.internalName === current)) {
+    list.push({ value: current, label: `${current} (nicht installiert)` });
+  }
+
+  return list;
+});
+
+const compatDirty = computed(() => {
+  const current = game.value?.compatTool ?? "default";
+  const expected = current === "default" ? "__default__" : current;
+  return compatSelected.value !== expected;
+});
+
+watch(
+  game,
+  (g) => {
+    const tool = g?.compatTool;
+    compatSelected.value = tool && tool !== "default" ? tool : "__default__";
+    compatState.value = "idle";
+  },
+  { immediate: true },
+);
+
+watch(compatSelected, () => {
+  if (compatState.value === "saved") compatState.value = "idle";
+});
+
+async function saveCompat() {
+  const g = game.value;
+  if (!g || compatState.value === "saving" || !compatDirty.value) return;
+  compatState.value = "saving";
+  try {
+    const name = compatSelected.value === "__default__" ? null : compatSelected.value;
+    await config.saveCompatTool(g.appId, name);
+    compatState.value = "saved";
+  } catch (e) {
+    compatState.value = (e as Error).message;
+  }
+}
 </script>
 
 <template>
@@ -140,8 +195,38 @@ async function saveLaunch() {
 
         <div class="rows">
           <div class="row"><span class="k">größe</span><span class="v mono">{{ formatBytes(game.sizeBytes) }}</span></div>
-          <div class="row"><span class="k">proton</span><span class="v mono">{{ game.compatTool }}</span></div>
-          <div class="row"><span class="k">app-id</span><span class="v mono">{{ game.appId }}</span></div>
+          <div class="row">
+            <span class="k">app-id</span><span class="v mono">{{ game.appId }}</span></div>
+        </div>
+
+        <div class="compat-block">
+          <label class="k" for="compat-tool">proton / compat-tool</label>
+          <div class="compat-row">
+            <select
+              id="compat-tool"
+              v-model="compatSelected"
+              class="compat-select mono"
+            >
+              <option value="__default__">standard (system-default)</option>
+              <option
+                v-for="o in compatOptions"
+                :key="o.value"
+                :value="o.value"
+              >{{ o.label }}</option>
+            </select>
+            <button
+              class="save"
+              type="button"
+              :disabled="!compatDirty || compatState === 'saving'"
+              @click="saveCompat"
+            >
+              {{ compatState === "saving" ? "…" : "speichern" }}
+            </button>
+          </div>
+          <p v-if="compatState === 'saved'" class="launch-note ok">gespeichert ✓</p>
+          <p v-else-if="compatState !== 'idle' && compatState !== 'saving'" class="launch-note err">
+            {{ compatState }}
+          </p>
         </div>
 
         <div class="launch-block">
@@ -282,6 +367,22 @@ h2 { margin: 0 0 16px; font-family: var(--font-display); font-size: 20px; font-w
 .launch-note { margin: 8px 2px 0; font-size: 12px; }
 .launch-note.ok { color: var(--signal); }
 .launch-note.err { color: var(--tier-borked); }
+
+.compat-block { margin-bottom: 18px; }
+.compat-row { display: flex; gap: 8px; margin-top: 6px; }
+.compat-select {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  color: var(--fg-0);
+  border-radius: var(--r-sm);
+  padding: 9px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.compat-select:focus { outline: none; border-color: var(--signal-dim); }
+.compat-select option { background: var(--bg-1); color: var(--fg-0); }
 
 .tier-block {
   background: var(--bg-2);

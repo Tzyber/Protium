@@ -1,6 +1,11 @@
 import { parse, stringify } from "@node-steam/vdf";
 import { describe, expect, it } from "vitest";
-import { getVdfValue, setVdfValue, VdfPatchError } from "../../src/core/vdfpatch.js";
+import {
+  getVdfValue,
+  removeVdfEntry,
+  setVdfValue,
+  VdfPatchError,
+} from "../../src/core/vdfpatch.js";
 
 // anonymisierte fixtures im stil echter steam-dateien (tabs, kommentar, leerer block)
 const LOCALCONFIG = `"UserLocalConfigStore"
@@ -177,6 +182,108 @@ describe("setVdfValue — schutz vor strukturbruch", () => {
     expect(() => setVdfValue(LOCALCONFIG, [...LAUNCH_620, "LaunchOptions"], "a\nb")).toThrow(
       VdfPatchError,
     );
+  });
+});
+
+describe("removeVdfEntry", () => {
+  const COMPAT = `"InstallConfigStore"
+{
+\t"Software"
+\t{
+\t\t"Valve"
+\t\t{
+\t\t\t"Steam"
+\t\t\t{
+\t\t\t\t"CompatToolMapping"
+\t\t\t\t{
+\t\t\t\t\t"0"
+\t\t\t\t\t{
+\t\t\t\t\t\t"name"\t\t"proton-cachyos-slr"
+\t\t\t\t\t}
+\t\t\t\t\t"620"
+\t\t\t\t\t{
+\t\t\t\t\t\t"name"\t\t"GE-Proton9-27"
+\t\t\t\t\t}
+\t\t\t\t\t"730"
+\t\t\t\t\t{
+\t\t\t\t\t\t"name"\t\t"proton-cachyos-slr"
+\t\t\t\t\t}
+\t\t\t\t}
+\t\t\t}
+\t\t}
+\t}
+}
+`;
+
+  it("entfernt einen block-eintrag", () => {
+    const result = removeVdfEntry(COMPAT, [
+      "InstallConfigStore",
+      "Software",
+      "Valve",
+      "Steam",
+      "CompatToolMapping",
+      "620",
+    ]);
+    expect(result).not.toContain('"620"');
+    expect(result).toContain('"0"');
+    expect(result).toContain('"730"');
+    expect(
+      getVdfValue(result, [
+        "InstallConfigStore",
+        "Software",
+        "Valve",
+        "Steam",
+        "CompatToolMapping",
+        "620",
+        "name",
+      ]),
+    ).toBeUndefined();
+    expect(() => parse(result)).not.toThrow();
+  });
+
+  it("entfernt einen scalar-eintrag (LaunchOptions)", () => {
+    const result = removeVdfEntry(LOCALCONFIG, [...LAUNCH_620, "LaunchOptions"]);
+    expect(getVdfValue(result, [...LAUNCH_620, "LaunchOptions"])).toBeUndefined();
+    expect(result).not.toContain('"LaunchOptions"');
+    expect(result).toContain('"228980"');
+    expect(() => parse(result)).not.toThrow();
+  });
+
+  it("no-op bei nicht-existentem pfad", () => {
+    expect(
+      removeVdfEntry(COMPAT, [
+        "InstallConfigStore",
+        "Software",
+        "Valve",
+        "Steam",
+        "CompatToolMapping",
+        "999",
+      ]),
+    ).toBe(COMPAT);
+  });
+
+  it("entfernt den letzten eintrag eines blocks → leerer block bleibt", () => {
+    const single = `"CompatToolMapping"\n{\n\t"620"\n\t{\n\t\t"name"\t\t"x"\n\t}\n}\n`;
+    const result = removeVdfEntry(single, ["CompatToolMapping", "620"]);
+    expect(result).toContain('"CompatToolMapping"');
+    expect(result).toContain("{");
+    expect(result).toContain("}");
+    expect(result).not.toContain('"620"');
+    expect(() => parse(result)).not.toThrow();
+  });
+
+  it("wirft bei scalar im pfad statt block", () => {
+    expect(() => removeVdfEntry(LOCALCONFIG, [...LAUNCH_620, "LaunchOptions", "tiefer"])).toThrow(
+      VdfPatchError,
+    );
+  });
+
+  it("set → remove ergibt semantisch das original (round-trip)", () => {
+    // leerer 228980-block: LaunchOptions anlegen → wieder entfernen → gleicher baum
+    const patched = setVdfValue(LOCALCONFIG, [...LAUNCH_228980, "LaunchOptions"], "-novid");
+    expect(patched).not.toBe(LOCALCONFIG);
+    const removed = removeVdfEntry(patched, [...LAUNCH_228980, "LaunchOptions"]);
+    expect(parse(removed)).toEqual(parse(LOCALCONFIG));
   });
 });
 
