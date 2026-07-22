@@ -1,6 +1,9 @@
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { discoverSteamRoot } from "../../src/core/paths.js";
 import { scanLibrary } from "../../src/core/scan.js";
+import type { SkippedLibrary } from "../../src/core/types.js";
 import { buildFakeSteam, fakeHttp, fakeSystem, memCache, nodeFs } from "../support/fakeSteam";
 
 describe("scanLibrary (integration — dominiks reales setup)", () => {
@@ -24,8 +27,12 @@ describe("scanLibrary (integration — dominiks reales setup)", () => {
       true,
     );
     expect(
-      result.warnings.some((w) => w.includes(staleLib) && w.includes("nicht erreichbar")),
+      result.warnings.some((w) => w.includes(staleLib) && w.includes("tote config-leiche")),
     ).toBe(true);
+
+    // skippedLibraries: staleLib als path-missing klassifiziert, keine blocking-skips
+    expect(result.skippedLibraries).toHaveLength(1);
+    expect(result.skippedLibraries[0]).toEqual({ path: staleLib, reason: "path-missing" });
 
     const byId = new Map(result.games.map((g) => [g.appId, g]));
 
@@ -78,5 +85,33 @@ describe("scanLibrary (integration — dominiks reales setup)", () => {
 
     // korruptes acf → warning, kein crash
     expect(result.warnings.some((w) => w.includes("appmanifest_9999"))).toBe(true);
+  });
+
+  it("klassifiziert scope-failed wenn pfad existiert aber allowLibraryScope wirft", async () => {
+    const { home, root, lib2 } = await buildFakeSteam();
+    const fs = nodeFs();
+
+    // extra library existiert, aber allowLibraryScope soll fehlschlagen
+    const scopeFailLib = join(home, "scope-fail-lib/SteamLibrary");
+    const scopeFailApps = join(scopeFailLib, "steamapps");
+    await mkdir(scopeFailApps, { recursive: true });
+
+    // libraryfolders.vdf um den extra pfad erweitern
+    const lfPath = join(root, "steamapps/libraryfolders.vdf");
+    const lfContent = await readFile(lfPath, "utf8");
+    const idx = lfContent.lastIndexOf("}");
+    const extra = `\t"99"\n\t{\n\t\t"path"\t\t"${scopeFailLib}"\n\t}\n`;
+    const patched = `${lfContent.slice(0, idx)}${extra}${lfContent.slice(idx)}`;
+    await writeFile(lfPath, patched, "utf8");
+
+    const system = fakeSystem({ failScope: new Set([scopeFailLib]) });
+    const result = await scanLibrary(
+      { fs, http: fakeHttp(), system, cache: memCache() },
+      { home, steamRoot: root, protonDbDelayMs: 0 },
+    );
+
+    expect(result.libraries).toEqual([root, lib2, scopeFailLib]);
+    const scopeFailed = result.skippedLibraries.find((s) => s.path === scopeFailLib);
+    expect(scopeFailed?.reason).toBe("scope-failed");
   });
 });

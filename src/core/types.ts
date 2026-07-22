@@ -35,6 +35,25 @@ export interface ScanResult {
   /** account, dessen localconfig.vdf gelesen wird (null = keiner gefunden → keine startoptionen). */
   steamUserId: string | null;
   warnings: string[];
+  skippedLibraries: SkippedLibrary[];
+}
+
+export type SkipReason = "path-missing" | "scope-failed" | "read-failed";
+
+export interface SkippedLibrary {
+  path: string;
+  reason: SkipReason;
+}
+
+export type OrphanType = "compatdata" | "shadercache";
+
+export interface OrphanEntry {
+  appId: number;
+  type: OrphanType;
+  path: string;
+  library: string;
+  sizeBytes?: number;
+  potentialShortcut?: boolean;
 }
 
 // StateFlags ist ein bitfield: bit 2 (=4) = fully installed. maskieren, nie === 4,
