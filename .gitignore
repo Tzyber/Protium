@@ -3,3 +3,12 @@ dist/
 src-tauri/target/
 src-tauri/gen/
 *.log
+.idea/vcs.xml
+.idea/Protium.iml
+.idea/modules.xml
+.opencode/phase4-step5.md
+AGENTS.md
+phase5-plan.md
+PROTIUM_STATUS.md
+befunde
+TODO.md

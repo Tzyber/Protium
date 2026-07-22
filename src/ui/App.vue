@@ -3,6 +3,7 @@ import { computed, onMounted } from "vue";
 import ProtiumLogo from "./components/ProtiumLogo.vue";
 import { useScanStore } from "./stores/scanStore";
 import { useUiStore, type ViewId } from "./stores/uiStore";
+import CleanupView from "./views/CleanupView.vue";
 import LibraryView from "./views/LibraryView.vue";
 import ProtonManagerView from "./views/ProtonManagerView.vue";
 
@@ -10,10 +11,10 @@ const scan = useScanStore();
 const ui = useUiStore();
 onMounted(() => scan.runScan());
 
-const nav: { id: ViewId | "cleanup" | "settings"; label: string; active: boolean }[] = [
+const nav: { id: ViewId | "settings"; label: string; active: boolean }[] = [
   { id: "library", label: "Library", active: true },
   { id: "proton", label: "Proton", active: true },
-  { id: "cleanup", label: "Cleanup", active: false },
+  { id: "cleanup", label: "Cleanup", active: true },
   { id: "settings", label: "Settings", active: false },
 ];
 
@@ -61,6 +62,7 @@ const rootShort = computed(() => {
     <main class="content">
       <LibraryView v-if="ui.activeView === 'library'" />
       <ProtonManagerView v-else-if="ui.activeView === 'proton'" />
+      <CleanupView v-else-if="ui.activeView === 'cleanup'" />
     </main>
   </div>
 </template>

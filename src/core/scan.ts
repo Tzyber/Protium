@@ -6,7 +6,7 @@ import { parseManifest } from "./manifest.js";
 import { joinPath, LOCAL_HEADER_FILENAME, paths } from "./paths.js";
 import type { DirEntry, Ports } from "./ports.js";
 import { ProtonDbClient } from "./protondb.js";
-import type { Game, ScanResult } from "./types.js";
+import type { Game, ScanResult, SkippedLibrary } from "./types.js";
 
 export interface ScanOptions {
   home: string;
@@ -47,6 +47,7 @@ export async function scanLibrary(ports: Ports, opts: ScanOptions): Promise<Scan
   const { fs, system } = ports;
   const { steamRoot } = opts;
   const warnings: string[] = [];
+  const skippedLibraries: SkippedLibrary[] = [];
 
   let libraries: string[] = [];
   try {
@@ -65,7 +66,14 @@ export async function scanLibrary(ports: Ports, opts: ScanOptions): Promise<Scan
   for (const lib of libraries) {
     const id = await system.pathIdentity(lib);
     if (!id) {
-      warnings.push(`library-pfad nicht erreichbar, übersprungen (evtl. nicht gemountet): ${lib}`);
+      const exists = await fs.exists(lib);
+      const reason = exists ? "scope-failed" : "path-missing";
+      warnings.push(
+        exists
+          ? `library-pfad nicht erreichbar (identity-check fehlgeschlagen), übersprungen: ${lib}`
+          : `library-pfad existiert nicht (tote config-leiche), übersprungen: ${lib}`,
+      );
+      skippedLibraries.push({ path: lib, reason });
       continue;
     }
     const key = `${id.dev}:${id.ino}`;
@@ -120,6 +128,7 @@ export async function scanLibrary(ports: Ports, opts: ScanOptions): Promise<Scan
       await system.allowLibraryScope(lib); // externe mounts vor read freigeben (R-5)
     } catch (e) {
       warnings.push(`library "${lib}" nicht scope-bar, übersprungen: ${(e as Error).message}`);
+      skippedLibraries.push({ path: lib, reason: "scope-failed" });
       continue;
     }
     const appsDir = paths.libraryAppsDir(lib);
@@ -129,6 +138,7 @@ export async function scanLibrary(ports: Ports, opts: ScanOptions): Promise<Scan
       entries = await fs.readDir(appsDir);
     } catch (e) {
       warnings.push(`library "${lib}" nicht lesbar: ${(e as Error).message}`);
+      skippedLibraries.push({ path: lib, reason: "read-failed" });
       continue;
     }
     for (const entry of entries) {
@@ -150,6 +160,7 @@ export async function scanLibrary(ports: Ports, opts: ScanOptions): Promise<Scan
           launchOptions: localConfigText
             ? readLaunchOptions(localConfigText, data.appId)
             : undefined,
+          prefixPath: paths.compatdataPath(lib, data.appId),
         });
       } catch (e) {
         warnings.push(`${entry.name} übersprungen: ${(e as Error).message}`);
@@ -187,5 +198,6 @@ export async function scanLibrary(ports: Ports, opts: ScanOptions): Promise<Scan
     defaultCompatTool,
     steamUserId,
     warnings,
+    skippedLibraries,
   };
 }

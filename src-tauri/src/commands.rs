@@ -1,6 +1,6 @@
 // rust-commands (R-1..R-6): das, was die webview nicht kann.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 use std::sync::Mutex;
@@ -123,7 +123,8 @@ fn extract_blocking(src: &str, dest_dir: &str) -> Result<(), String> {
         for entry in fs::read_dir(&tmp).map_err(|e| e.to_string())? {
             let entry = entry.map_err(|e| e.to_string())?;
             let ft = entry.file_type().map_err(|e| e.to_string())?;
-            if ft.is_symlink() {
+            // S-04: nur reguläre dateien + verzeichnisse durchlassen (keine devices/FIFOs/sockets)
+            if ft.is_symlink() || !(ft.is_file() || ft.is_dir()) {
                 let _ = fs::remove_file(entry.path());
                 continue;
             }
@@ -155,10 +156,15 @@ pub fn is_process_running(name: String) -> Result<bool, String> {
         .any(|p| p.name().to_string_lossy().to_lowercase().contains(&target)))
 }
 
-/// R-3
+/// R-3 (S-01: validierung nach batch_dir_sizes-vorlage)
 #[tauri::command]
 pub fn dir_size(path: String) -> Result<u64, String> {
-    Ok(dir_size_impl(Path::new(&path)))
+    sanitize_path(&path, "dir_size")?;
+    let real = fs::canonicalize(&path).map_err(|e| e.to_string())?;
+    if !is_safe_path(&real.to_string_lossy()) {
+        return Err(format!("blocked path: {path}"));
+    }
+    Ok(dir_size_impl(&real))
 }
 
 fn dir_size_impl(path: &Path) -> u64 {
@@ -177,6 +183,96 @@ fn dir_size_impl(path: &Path) -> u64 {
         }
     }
     total
+}
+
+/// R-3b: batch-version — sequentiell (IO-bound, kein rayon).
+#[tauri::command]
+pub fn batch_dir_sizes(paths: Vec<String>) -> Result<HashMap<String, u64>, String> {
+    let mut map = HashMap::new();
+    for p in paths {
+        sanitize_path(&p, "batch_dir_sizes")?;
+        let real = fs::canonicalize(&p).map_err(|e| e.to_string())?;
+        if !is_safe_path(&real.to_string_lossy()) {
+            return Err(format!("blocked path: {p}"));
+        }
+        map.insert(p, dir_size_impl(&real));
+    }
+    Ok(map)
+}
+
+/// löscht ein verwaistes compatdata- oder shadercache-verzeichnis.
+/// leitet library + typ selbst ab (defense-in-depth: backend traut frontend nicht).
+/// compatdata → trash (rename), shadercache → hard delete.
+#[tauri::command]
+pub fn remove_orphan_dir(app: AppHandle, path: String) -> Result<String, String> {
+    sanitize_path(&path, "remove_orphan_dir")?;
+    let canonical = fs::canonicalize(&path).map_err(|e| e.to_string())?;
+    let canon_str = canonical.to_string_lossy();
+    if !is_safe_path(&canon_str) {
+        return Err("blocked path".into());
+    }
+
+    let meta = fs::symlink_metadata(&canonical).map_err(|e| e.to_string())?;
+    if meta.file_type().is_symlink() {
+        return Err("symlink rejected — will not recurse".into());
+    }
+    if !meta.is_dir() {
+        return Err("not a directory".into());
+    }
+
+    let steamapps_marker = "/steamapps/";
+    let idx = canon_str
+        .rfind(steamapps_marker)
+        .ok_or("path does not contain /steamapps/".to_string())?;
+    let library = &canon_str[..idx];
+    let suffix = &canon_str[idx + steamapps_marker.len()..];
+
+    let (typ, app_id_str) = suffix
+        .split_once('/')
+        .ok_or("invalid suffix structure".to_string())?;
+
+    if typ != "compatdata" && typ != "shadercache" {
+        return Err(format!("unexpected type: {typ}"));
+    }
+    if app_id_str.is_empty() || !app_id_str.chars().all(|c| c.is_ascii_digit()) {
+        return Err(format!("non-numeric appId: {app_id_str}"));
+    }
+
+    let lib_path = Path::new(library);
+    allow_library_scope_inner(app, lib_path)?;
+
+    let trash_dir = lib_path.join("steamapps").join(".protium-trash");
+    fs::create_dir_all(&trash_dir).map_err(|e| e.to_string())?;
+
+    match typ {
+        "shadercache" => {
+            fs::remove_dir_all(&canonical).map_err(|e| e.to_string())?;
+            Ok("deleted".into())
+        }
+        "compatdata" => {
+            let ts = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis();
+            let trash_name = format!("compatdata_{app_id_str}_{ts}");
+            let trash_target = trash_dir.join(&trash_name);
+            fs::rename(&canonical, &trash_target).map_err(|e| e.to_string())?;
+            Ok(format!("trashed → {}", trash_target.display()))
+        }
+        _ => unreachable!(),
+    }
+}
+
+fn allow_library_scope_inner(app: AppHandle, path: &Path) -> Result<(), String> {
+    if !path.is_dir() {
+        return Err("library path is not a directory".into());
+    }
+    let real = fs::canonicalize(path).map_err(|e| format!("cannot resolve: {e}"))?;
+    if !is_safe_path(&real.to_string_lossy()) {
+        return Err("library path blocked".into());
+    }
+    let _ = app.fs_scope().allow_directory(real.to_string_lossy().as_ref(), true);
+    Ok(())
 }
 
 /// download-kern ohne tauri-typen (cargo-testbar). crash-fest: jeder fehlerausgang
@@ -300,17 +396,14 @@ pub fn allow_library_scope(app: tauri::AppHandle, path: String) -> Result<(), St
 }
 
 /// symlink-auflösung (steam-root-discovery). `..` im input abgelehnt,
-/// auflösungen nach /proc /sys /dev verweigert (info-disclosure).
-/// blockt sowohl das verzeichnis selbst als auch inhalte darunter.
+/// auflösungen in blockierte dateisysteme verweigert (info-disclosure).
+/// S-07: nutzt is_safe_path() statt eigener blocklist (konsistenz).
 #[tauri::command]
 pub fn canonicalize_path(path: String) -> Result<String, String> {
     sanitize_path(&path, "canonicalize")?;
     let canonical = fs::canonicalize(&path).map_err(|e| e.to_string())?;
     let s = canonical.to_string_lossy();
-    if s == "/proc" || s.starts_with("/proc/")
-        || s == "/sys" || s.starts_with("/sys/")
-        || s == "/dev" || s.starts_with("/dev/")
-    {
+    if !is_safe_path(&s) {
         return Err("path resolution in blocked filesystem".into());
     }
     Ok(s.into_owned())
@@ -324,10 +417,15 @@ pub struct PathIdentity {
     pub ino: String,
 }
 
+/// R-6: realpath + (dev,ino) zur library-dedup (S-02: validierung).
 #[tauri::command]
 pub fn path_identity(path: String) -> Result<PathIdentity, String> {
     use std::os::unix::fs::MetadataExt;
+    sanitize_path(&path, "path_identity")?;
     let real = fs::canonicalize(&path).map_err(|e| e.to_string())?;
+    if !is_safe_path(&real.to_string_lossy()) {
+        return Err("blocked path".into());
+    }
     let md = fs::metadata(&real).map_err(|e| e.to_string())?;
     Ok(PathIdentity {
         realpath: real.to_string_lossy().into_owned(),
@@ -339,7 +437,8 @@ pub fn path_identity(path: String) -> Result<PathIdentity, String> {
 #[cfg(test)]
 mod tests {
     use super::download_stream;
-    use super::{is_safe_path, sanitize_path, validate_download_url};
+    use super::{canonicalize_path, dir_size, is_safe_path, path_identity, sanitize_path,
+    validate_download_url};
     use std::io::{Read, Write};
     use std::net::TcpListener;
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -386,6 +485,65 @@ mod tests {
         assert!(is_safe_path("/mnt/games"));
         assert!(is_safe_path("/run/media/user/lib"));
         assert!(is_safe_path("/tmp/build"));
+    }
+
+    // S-01: dir_size lehnt blockierte/system-pfade ab
+    #[test]
+    fn dir_size_rejects_blocked_paths() {
+        assert!(dir_size("/etc".into()).is_err());
+        assert!(dir_size("/proc".into()).is_err());
+        assert!(dir_size("/sys".into()).is_err());
+        assert!(dir_size("/dev".into()).is_err());
+    }
+
+    #[test]
+    fn dir_size_rejects_dotdot() {
+        assert!(dir_size("/home/../etc".into()).is_err());
+    }
+
+    #[test]
+    fn dir_size_accepts_normal_paths() {
+        let tmp = std::env::temp_dir();
+        assert!(dir_size(tmp.to_string_lossy().into_owned()).is_ok());
+        assert!(dir_size("/tmp".into()).is_ok());
+    }
+
+    // S-02: path_identity lehnt blockierte pfade ab
+    #[test]
+    fn path_identity_rejects_blocked_paths() {
+        assert!(path_identity("/etc/passwd".into()).is_err());
+        assert!(path_identity("/proc/cpuinfo".into()).is_err());
+    }
+
+    #[test]
+    fn path_identity_rejects_dotdot() {
+        assert!(path_identity("/home/../etc/passwd".into()).is_err());
+    }
+
+    #[test]
+    fn path_identity_accepts_normal_paths() {
+        let tmp = std::env::temp_dir();
+        let s = tmp.to_string_lossy().into_owned();
+        assert!(path_identity(s).is_ok());
+    }
+
+    // S-03+S-07: canonicalize_path lehnt /etc ab (nutzt jetzt is_safe_path)
+    #[test]
+    fn canonicalize_rejects_etc() {
+        assert!(canonicalize_path("/etc".into()).is_err());
+        assert!(canonicalize_path("/etc/cron.d".into()).is_err());
+    }
+
+    // S-07: cross-check — derselbe pfad-satz den is_safe_path blockt wird abgelehnt
+    #[test]
+    fn canonicalize_rejects_all_blocked() {
+        for blocked in &["/", "/etc", "/etc/cron.d", "/proc", "/proc/cpuinfo",
+                          "/sys", "/sys/class", "/dev", "/dev/null"] {
+            assert!(
+                canonicalize_path(blocked.to_string()).is_err(),
+                "canonicalize_path should reject {blocked}"
+            );
+        }
     }
 
     #[test]

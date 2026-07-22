@@ -9,6 +9,7 @@ export interface DirEntry {
 export interface FileSystem {
   exists(path: string): Promise<boolean>;
   readTextFile(path: string): Promise<string>;
+  readFile(path: string): Promise<Uint8Array>;
   readDir(path: string): Promise<DirEntry[]>;
   /** symlinks aufgelöst. */
   realpath(path: string): Promise<string>;

@@ -119,6 +119,43 @@ const toolVdf = (internal: string, display: string) => `"compatibilitytools"
 }
 `;
 
+// binary shortcuts.vdf fixture: ein shortcut mit appId 3641016077
+// format: TYPE-KEY-VALUE
+const SHORTCUT_VDF_BINARY = new Uint8Array([
+  0x00,
+  ...new TextEncoder().encode("shortcuts"),
+  0x00,
+  0x00, // type: MAP
+  ...new TextEncoder().encode("0"),
+  0x00, // entry key
+  0x02, // type: int32
+  ...new TextEncoder().encode("appid"),
+  0x00,
+  0x0d,
+  0x7f,
+  0x05,
+  0xd9,
+  0x01, // type: string
+  ...new TextEncoder().encode("AppName"),
+  0x00,
+  ...new TextEncoder().encode("Test"),
+  0x00,
+  0x00, // type: MAP
+  ...new TextEncoder().encode("tags"),
+  0x00,
+  0x01, // type: string
+  ...new TextEncoder().encode("0"),
+  0x00,
+  ...new TextEncoder().encode("favorite"),
+  0x00,
+  0x08, // end tags
+  0x08, // end entry
+  0x08, // end root
+]);
+
+// trunkierte version: parse muss scheitern → "unreadable"
+export const CORRUPT_SHORTCUT_VDF_BINARY = SHORTCUT_VDF_BINARY.slice(0, 10);
+
 /**
  * baut einen fake-steam-baum, der dominiks reales setup abbildet:
  *  - root-library + externer mount (lib2)
@@ -193,10 +230,26 @@ export async function buildFakeSteam(): Promise<{
     acf(730, "Counter-Strike 2", 6, 98765432),
   );
 
+  // compatdata/shadercache — für cleanup-tests (phase 5)
+  await mkdir(join(root, "steamapps/compatdata/570"), { recursive: true });
+  await mkdir(join(root, "steamapps/compatdata/999999"), { recursive: true });
+  await mkdir(join(root, "steamapps/compatdata/3641016077"), { recursive: true });
+  await mkdir(join(root, "steamapps/compatdata/foo"), { recursive: true });
+  await mkdir(join(root, "steamapps/compatdata/0"), { recursive: true });
+  await mkdir(join(root, "steamapps/shadercache/570"), { recursive: true });
+  await mkdir(join(root, "steamapps/shadercache/888888"), { recursive: true });
+  await symlink("/etc", join(root, "steamapps/compatdata/symlink_123"), "dir");
+  await writeFile(
+    join(root, "steamapps/compatdata/not_a_dir"),
+    "sollte nicht als orphan gelistet werden",
+  );
+
   const userId = "113451388";
   await mkdir(join(root, "userdata", userId, "config"), { recursive: true });
   await writeFile(join(root, "userdata", userId, "config", "localconfig.vdf"), LOCALCONFIG_VDF);
   await writeFile(join(root, "config", "loginusers.vdf"), LOGINUSERS_VDF);
+
+  await writeFile(join(root, "userdata", userId, "config", "shortcuts.vdf"), SHORTCUT_VDF_BINARY);
 
   return { home, root, lib2, lib2Dup, staleLib, systemCompat, userId };
 }
@@ -214,6 +267,7 @@ export function nodeFs(): FileSystem {
       }
     },
     readTextFile: (p) => readFile(p, "utf8"),
+    readFile: (p) => readFile(p),
     async readDir(p) {
       const entries = await readdir(p, { withFileTypes: true });
       return entries.map(
@@ -234,8 +288,10 @@ export function nodeFs(): FileSystem {
   };
 }
 
-/** system-port: allowLibraryScope protokolliert; pathIdentity via echtem stat. */
-export function fakeSystem(): System & { scopedPaths: string[] } {
+/** system-port: allowLibraryScope protokolliert; pathIdentity via echtem stat.
+ *  `failScope` set of paths, bei denen allowLibraryScope werfen soll (für skip-tests). */
+export function fakeSystem(opts?: { failScope?: Set<string> }): System & { scopedPaths: string[] } {
+  const failScope = opts?.failScope ?? new Set<string>();
   const scopedPaths: string[] = [];
   return {
     scopedPaths,
@@ -246,6 +302,7 @@ export function fakeSystem(): System & { scopedPaths: string[] } {
       return 4096;
     },
     async allowLibraryScope(p) {
+      if (failScope.has(p)) throw new Error("scope rejected");
       scopedPaths.push(p);
     },
     async pathIdentity(p): Promise<PathIdentity | null> {

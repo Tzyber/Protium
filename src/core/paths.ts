@@ -51,9 +51,11 @@ export const paths = {
   libraryAppsDir: (libraryPath: string) => join(libraryPath, "steamapps"),
   appManifest: (libraryPath: string, appId: number) =>
     join(libraryPath, "steamapps", `appmanifest_${appId}.acf`),
-  compatdata: (libraryPath: string, appId: number) =>
+  compatdataDir: (libraryPath: string) => join(libraryPath, "steamapps", "compatdata"),
+  shadercacheDir: (libraryPath: string) => join(libraryPath, "steamapps", "shadercache"),
+  compatdataPath: (libraryPath: string, appId: number | string) =>
     join(libraryPath, "steamapps", "compatdata", String(appId)),
-  shadercache: (libraryPath: string, appId: number) =>
+  shadercachePath: (libraryPath: string, appId: number | string) =>
     join(libraryPath, "steamapps", "shadercache", String(appId)),
   headerImageUrl: (appId: number) =>
     `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/header.jpg`,

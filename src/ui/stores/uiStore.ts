@@ -2,7 +2,7 @@ import { defineStore } from "pinia";
 import type { Game } from "../../core/types";
 import { useLibraryStore } from "./libraryStore";
 
-export type ViewId = "library" | "proton";
+export type ViewId = "library" | "proton" | "cleanup";
 
 export const useUiStore = defineStore("ui", {
   state: () => ({

@@ -5,6 +5,7 @@ import { appCacheDir, homeDir } from "@tauri-apps/api/path";
 import {
   BaseDirectory,
   exists as fsExists,
+  readFile as fsReadFile,
   remove as fsRemove,
   mkdir,
   readDir,
@@ -17,8 +18,9 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import type { Cache, DirEntry, FileSystem, Http, HttpResponse, Ports, System } from "../ports.js";
 
 const fs: FileSystem = {
-  exists: (path) => fsExists(path),
+  exists: (path) => fsExists(path).catch(() => false),
   readTextFile: (path) => readTextFile(path),
+  readFile: (path) => fsReadFile(path),
   async readDir(path) {
     const entries = await readDir(path);
     return entries.map(
