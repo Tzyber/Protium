@@ -84,7 +84,9 @@ export const useCleanupStore = defineStore("cleanup", {
         this.orphans = await findOrphans(result.libraries, installedAppIds, tauriPorts.fs);
 
         if (this.shortcutUnreadable) {
-          // Wine-Prefix-Cleanup blockieren, Shader-Caches sind regenerierbar und dürfen laufen
+          // WHY fail-closed: unlesbares shortcuts.vdf → Non-Steam-Shortcuts sind nicht
+          // von echten Orphans unterscheidbar. compatdata kann echte Savegames enthalten,
+          // deshalb blockieren. shadercache ist regenerierbar und darf bereinigt werden.
           this.orphans = this.orphans.filter((o) => o.type === "shadercache");
           this.error = this.shortcutUnreadableDetail
             ? `userdata nicht lesbar — Wine-Prefix-Bereinigung deaktiviert: ${this.shortcutUnreadableDetail}`
