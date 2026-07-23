@@ -7,7 +7,7 @@ const CACHE_KEY = "gh:ge-releases";
 const TTL_MS = 60 * 60 * 1000; // 1h (FR-3.1)
 const MAX_NOTES = 280;
 
-export interface GeAsset {
+interface GeAsset {
   name: string;
   url: string;
   size: number;
@@ -155,7 +155,7 @@ function parseSha512Sum(text: string): string | null {
   return token && /^[0-9a-fA-F]{128}$/.test(token) ? token.toLowerCase() : null;
 }
 
-export interface InstallOpts {
+interface InstallOpts {
   steamRoot: string;
   cacheDir: string; // tarball-zwischenspeicher (app-cache)
   release: GeRelease;

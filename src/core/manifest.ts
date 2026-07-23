@@ -1,7 +1,7 @@
 import { isFullyInstalled } from "./types.js";
 import { asInt, asString, getKeyInsensitive, parseVdf } from "./vdf.js";
 
-export interface ManifestData {
+interface ManifestData {
   appId: number;
   name: string;
   sizeBytes: number;
