@@ -8,7 +8,7 @@ import type { DirEntry, Ports } from "./ports.js";
 import { ProtonDbClient } from "./protondb.js";
 import type { Game, ScanResult, SkippedLibrary } from "./types.js";
 
-export interface ScanOptions {
+interface ScanOptions {
   home: string;
   steamRoot: string;
   protonDbDelayMs?: number;

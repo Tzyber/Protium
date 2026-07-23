@@ -6,7 +6,7 @@ import { asInt, asNode, getPath, parseVdf } from "./vdf.js";
 import { getVdfValue, setVdfValue } from "./vdfpatch.js";
 
 /** pfad des LaunchOptions-werts eines spiels in localconfig.vdf. */
-export function launchOptionsPath(appId: number): string[] {
+function launchOptionsPath(appId: number): string[] {
   return [
     "UserLocalConfigStore",
     "Software",

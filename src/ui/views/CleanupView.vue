@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { size } from "@tauri-apps/plugin-fs";
 import { computed, onMounted, reactive, ref } from "vue";
 import type { OrphanEntry } from "../../core/types";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
@@ -21,17 +20,12 @@ function toggle(key: string) {
   else selected.add(key);
 }
 
-function getSizeOfAllOrphans() {
-  const all = shadercacheOrphans.value;
-  const size = all.reduce((sum, o) => sum + (o.sizeBytes ?? 0), 0);
-  return formatBytes(size);
-}
-
-function getSiteOfAllWinePrefixes() {
-  const all = compatdataOrphans.value;
-  const size = all.reduce((sum, o) => sum + (o.sizeBytes ?? 0), 0);
-  return formatBytes(size);
-}
+const shadercacheTotalBytes = computed(() =>
+  shadercacheOrphans.value.reduce((sum, o) => sum + (o.sizeBytes ?? 0), 0),
+);
+const compatdataTotalBytes = computed(() =>
+  compatdataOrphans.value.reduce((sum, o) => sum + (o.sizeBytes ?? 0), 0),
+);
 
 function selectAllShader() {
   const all = shadercacheOrphans.value.every((o) => selected.has(cleanup.key(o)));
@@ -87,7 +81,7 @@ const confirmTotalBytes = computed(() =>
 );
 const confirmPaths = computed(() => deleteCandidates.value.map((o) => o.path));
 
-const busying = computed(() => cleanup.scanning || cleanup.deleting.size > 0);
+const busy = computed(() => cleanup.scanning || cleanup.deleting.size > 0);
 </script>
 
 <template>
@@ -99,7 +93,7 @@ const busying = computed(() => cleanup.scanning || cleanup.deleting.size > 0);
       </div>
     </header>
 
-    <button class="scan-btn" type="button" :disabled="busying" @click="cleanup.scanOrphans()">
+    <button class="scan-btn" type="button" :disabled="busy" @click="cleanup.scanOrphans()">
       {{ cleanup.scanning ? "suche läuft…" : "nach verwaisten daten suchen" }}
     </button>
 
@@ -136,7 +130,7 @@ const busying = computed(() => cleanup.scanning || cleanup.deleting.size > 0);
     <template v-if="shadercacheOrphans.length">
       <div class="section-bar">
         <h3 class="section">Shader-Caches <span class="count">{{ shadercacheOrphans.length }} </span></h3>
-        <h3 class="section"> <span class="count">Insgesamt {{getSizeOfAllOrphans()}} </span></h3>
+        <h3 class="section"> <span class="count">Insgesamt {{ formatBytes(shadercacheTotalBytes) }} </span></h3>
         <button class="sel-all" type="button" @click="selectAllShader()">alle auswählen</button>
       </div>
 
@@ -166,7 +160,7 @@ const busying = computed(() => cleanup.scanning || cleanup.deleting.size > 0);
           <span class="count">{{ compatdataOrphans.length }}</span>
 
         </h3>
-        <span class="section"> <span class="count">Insgesamt {{getSiteOfAllWinePrefixes()}} </span></span>
+        <span class="section"> <span class="count">Insgesamt {{ formatBytes(compatdataTotalBytes) }} </span></span>
         <button class="sel-all warn" type="button" @click="selectAllCompat()">alle auswählen</button>
       </div>
 
@@ -205,7 +199,7 @@ const busying = computed(() => cleanup.scanning || cleanup.deleting.size > 0);
           v-if="shadercacheOrphans.length"
           class="action"
           type="button"
-          :disabled="busying"
+          :disabled="busy"
           @click="startDelete(shadercacheOrphans)"
         >
           Alle Shader-Caches bereinigen
@@ -213,7 +207,7 @@ const busying = computed(() => cleanup.scanning || cleanup.deleting.size > 0);
         <button
           class="action danger"
           type="button"
-          :disabled="busying || !selectedAll.length"
+          :disabled="busy || !selectedAll.length"
           @click="startDelete(selectedAll)"
         >
           {{ selectedAll.length }} - Ausgewählte löschen
