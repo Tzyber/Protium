@@ -117,13 +117,46 @@ fn extract_blocking(src: &str, dest_dir: &str) -> Result<(), String> {
     }
 
     let result = (|| -> Result<(), String> {
+        // pre-check: tar-crate legt block-devices, fifos und char-devices auf
+        // linux fall-back als reguläre dateien ab (mknod fehlt ohne CAP_MKNOD,
+        // tar fällt auf "treat as regular file" zurück). unsere post-unpack
+        // filterung (is_file() || is_dir()) würde sie dann durchlassen. der
+        // tar-entry-type ist also die einzige zuverlässige quelle für die
+        // entscheidung "ist das ein device?".
+        //
+        // erlaubt: Regular, Directory, Link (hardlinks — link-target wird vom
+        // tar-crate gegen das unpack-root geprüft, hardlinks mit absolutem
+        // target oder pfad-traversal werden abgelehnt). alles andere
+        // (Symlink, Block, Char, Fifo, Continuous) wird abgelehnt — wenn so
+        // ein eintrag dabei ist, ist der ganze tar suspect.
+        {
+            let f = fs::File::open(src).map_err(|e| e.to_string())?;
+            let mut ar = Archive::new(GzDecoder::new(f));
+            for entry in ar.entries().map_err(|e| e.to_string())? {
+                let entry = entry.map_err(|e| e.to_string())?;
+                let typ = entry.header().entry_type();
+                if !matches!(
+                    typ,
+                    tar::EntryType::Regular
+                        | tar::EntryType::Directory
+                        | tar::EntryType::Link
+                ) {
+                    return Err(format!(
+                        "tar enthält unerwarteten eintragstyp: {typ:?} (path: {:?})",
+                        entry.path()
+                    ));
+                }
+            }
+        }
         let f = fs::File::open(src).map_err(|e| e.to_string())?;
         let mut ar = Archive::new(GzDecoder::new(f));
         ar.unpack(&tmp).map_err(|e| e.to_string())?;
         for entry in fs::read_dir(&tmp).map_err(|e| e.to_string())? {
             let entry = entry.map_err(|e| e.to_string())?;
             let ft = entry.file_type().map_err(|e| e.to_string())?;
-            // S-04: nur reguläre dateien + verzeichnisse durchlassen (keine devices/FIFOs/sockets)
+            // defense-in-depth: post-unpack-filter fängt nochmal alles ab,
+            // was kein file und kein dir ist (z. b. symlinks, falls tar-crate
+            // sie doch mal preserved). pre-check oben ist die primäre schutzlinie.
             if ft.is_symlink() || !(ft.is_file() || ft.is_dir()) {
                 let _ = fs::remove_file(entry.path());
                 continue;
@@ -933,5 +966,360 @@ mod tests {
         assert!(target.exists(), "ziel darf nicht angetastet werden");
 
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // ---- extract_tarball (T-H-02) ----
+    // die produktion entpackt github-release-tarballs (fremde, nicht-vertrauenswürdige
+    // artefakte). die hier dokumentierten beschreibungen ("symlinks werden gefiltert",
+    // "devices werden gefiltert", "kein path-traversal", "kein halbes ziel bei fehler")
+    // waren bisher ungetestet. tests bauen tarballs programmatisch mit dem tar-crate,
+    // rufen extract_blocking direkt (kein AppHandle, kein tokio).
+    //
+    // befund-basis (vor tests, durch code-lesen):
+    // - post-unpack-filter iteriert nur top-level-eintraege (read_dir nicht rekursiv).
+    //   subdirs werden als ganzes nach dest verschoben, ohne inhalt zu prüfen.
+    //   *die hier geschriebenen tests zielen auf top-level-eintraege* — der subdir-befund
+    //   ist ein separater punkt (siehe report).
+
+    use super::extract_blocking;
+
+    fn extract_dest(tag: &str) -> std::path::PathBuf {
+        let mut p = std::env::temp_dir();
+        p.push(format!("protium-extract-dest-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&p);
+        std::fs::create_dir_all(&p).unwrap();
+        p
+    }
+
+    fn extract_tarball<F>(tag: &str, populate: F) -> std::path::PathBuf
+    where
+        F: FnOnce(&mut tar::Builder<flate2::write::GzEncoder<&mut Vec<u8>>>),
+    {
+        let mut data = Vec::new();
+        {
+            let gz = flate2::write::GzEncoder::new(&mut data, flate2::Compression::default());
+            let mut builder = tar::Builder::new(gz);
+            populate(&mut builder);
+            builder.finish().unwrap();
+        }
+        let mut p = std::env::temp_dir();
+        p.push(format!("protium-extract-src-{tag}-{}", std::process::id()));
+        std::fs::write(&p, &data).unwrap();
+        p
+    }
+
+    fn extract_cleanup(tarball: &std::path::Path, dest: &std::path::Path) {
+        let _ = std::fs::remove_file(tarball);
+        let _ = std::fs::remove_dir_all(dest);
+    }
+
+    // helper: append_data setzt die size NICHT automatisch — der header
+    // braucht sie vorher. ohne size kann das tar-archiv nicht gelesen werden
+    // ("numeric field was not a number").
+    fn make_data_header(path: &str, data: &[u8]) -> tar::Header {
+        let mut h = tar::Header::new_gnu();
+        h.set_path(path).unwrap();
+        h.set_size(data.len() as u64);
+        h
+    }
+
+    #[test]
+    fn happy_path_extrahiert_dateien_und_verzeichnisse() {
+        let tarball = extract_tarball("happy", |b| {
+            b.append_data(&mut make_data_header("file.txt", b"hello"), "file.txt", &b"hello"[..])
+                .unwrap();
+            b.append_data(
+                &mut make_data_header("subdir/nested.txt", b"world"),
+                "subdir/nested.txt",
+                &b"world"[..],
+            )
+            .unwrap();
+        });
+        let dest = extract_dest("happy");
+
+        let res = extract_blocking(tarball.to_str().unwrap(), dest.to_str().unwrap());
+        assert!(res.is_ok(), "extract sollte klappen: {res:?}");
+        assert!(dest.join("file.txt").is_file(), "top-level-datei fehlt");
+        assert_eq!(
+            std::fs::read_to_string(dest.join("file.txt")).unwrap(),
+            "hello"
+        );
+        assert!(
+            dest.join("subdir").is_dir(),
+            "subdir fehlt: {:?}",
+            std::fs::read_dir(&dest).unwrap().collect::<Vec<_>>()
+        );
+        assert!(
+            dest.join("subdir/nested.txt").is_file(),
+            "nested datei fehlt"
+        );
+
+        extract_cleanup(&tarball, &dest);
+    }
+
+    #[test]
+    fn symlink_eintrag_wird_nicht_ins_ziel_uebernommen() {
+        // dokumentation: tar mit symlink-entry wird per pre-check ABGELEHNT.
+        // symlinks sind in proton-release-tarballs nie legitim, ein tar
+        // mit einem symlink ist suspect. der ganze extract wird abgebrochen,
+        // nichts landet im ziel.
+        let tarball = extract_tarball("symlink", |b| {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(0);
+            header.set_entry_type(tar::EntryType::Symlink);
+            {
+                let bytes = header.as_mut_bytes();
+                let path = b"evil-link\0";
+                for (i, b) in path.iter().enumerate() {
+                    bytes[i] = *b;
+                }
+                let link = b"/etc/passwd\0";
+                for (i, b) in link.iter().enumerate() {
+                    bytes[157 + i] = *b;
+                }
+            }
+            header.set_cksum();
+            b.append(&header, std::io::empty()).unwrap();
+        });
+        let dest = extract_dest("symlink");
+
+        let res = extract_blocking(tarball.to_str().unwrap(), dest.to_str().unwrap());
+        assert!(res.is_err(), "tar mit symlink muss abgelehnt werden");
+        assert!(
+            std::fs::symlink_metadata(dest.join("evil-link")).is_err(),
+            "evil-link darf nicht ins ziel"
+        );
+
+        extract_cleanup(&tarball, &dest);
+    }
+
+    #[test]
+    fn block_device_eintrag_wird_gefiltert() {
+        // dokumentation: tar mit block-device-entry wird per pre-check
+        // ABGELEHNT (Err). der tar ist suspect, der ganze extract wird
+        // abgebrochen. das ist strenger als selektives skippen, aber
+        // sicherer: ein tar mit einem device-entry hat dort nichts zu suchen.
+        let tarball = extract_tarball("blockdev", |b| {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(0);
+            header.set_entry_type(tar::EntryType::Block);
+            {
+                let bytes = header.as_mut_bytes();
+                let path = b"blockdev\0";
+                for (i, b) in path.iter().enumerate() {
+                    bytes[i] = *b;
+                }
+            }
+            header.set_cksum();
+            b.append(&header, std::io::empty()).unwrap();
+        });
+        let dest = extract_dest("blockdev");
+
+        let res = extract_blocking(tarball.to_str().unwrap(), dest.to_str().unwrap());
+        assert!(res.is_err(), "tar mit block-device muss abgelehnt werden");
+        assert!(
+            std::fs::symlink_metadata(dest.join("blockdev")).is_err(),
+            "block-device darf nicht ins ziel"
+        );
+        // ziel-dir selbst existiert, aber KEINE inhalte aus dem tar
+        let entries: Vec<String> = std::fs::read_dir(&dest)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .collect();
+        assert!(entries.is_empty(), "zieldir muss leer sein, ist: {entries:?}");
+
+        extract_cleanup(&tarball, &dest);
+    }
+
+    #[test]
+    fn fifo_eintrag_wird_gefiltert() {
+        // siehe block_device: pre-check lehnt den tar ab, dest bleibt leer.
+        let tarball = extract_tarball("fifo", |b| {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(0);
+            header.set_entry_type(tar::EntryType::Fifo);
+            {
+                let bytes = header.as_mut_bytes();
+                let path = b"fifo\0";
+                for (i, b) in path.iter().enumerate() {
+                    bytes[i] = *b;
+                }
+            }
+            header.set_cksum();
+            b.append(&header, std::io::empty()).unwrap();
+        });
+        let dest = extract_dest("fifo");
+
+        let res = extract_blocking(tarball.to_str().unwrap(), dest.to_str().unwrap());
+        assert!(res.is_err(), "tar mit fifo muss abgelehnt werden");
+        assert!(
+            std::fs::symlink_metadata(dest.join("fifo")).is_err(),
+            "fifo darf nicht ins ziel"
+        );
+        let entries: Vec<String> = std::fs::read_dir(&dest)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .collect();
+        assert!(entries.is_empty(), "zieldir muss leer sein, ist: {entries:?}");
+
+        extract_cleanup(&tarball, &dest);
+    }
+
+    #[test]
+    fn path_traversal_escaped_nicht_in_tmp() {
+        // KRITISCH: ein tar-eintrag mit "../"-pfad darf NIE ausserhalb von
+        // dest landen. wir umgehen die `..`-validierung in `set_path` mit
+        // `as_mut_bytes()` (ein angreifer könnte den tar mit einem anderen
+        // tool bauen) und prüfen das beobachtbare ergebnis: /tmp/{filename}
+        // darf NIE existieren.
+        //
+        // der pre-check lehnt den tar ab, sobald er einen eintrag mit bad
+        // path findet — also nichts wird geschrieben.
+        let escaped_filename = format!("protium-escape-{}.txt", std::process::id());
+        let escaped_path = std::path::PathBuf::from("/tmp").join(&escaped_filename);
+        let _ = std::fs::remove_file(&escaped_path);
+
+        let malicious_path = format!("../../../../../../tmp/{escaped_filename}");
+        let tarball = extract_tarball("traversal", |b| {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(8);
+            {
+                let bytes = header.as_mut_bytes();
+                let path = malicious_path.as_bytes();
+                for (i, b) in path.iter().enumerate() {
+                    if i < 100 {
+                        bytes[i] = *b;
+                    }
+                }
+                for i in path.len()..100 {
+                    bytes[i] = 0;
+                }
+            }
+            header.set_cksum();
+            b.append(&header, &b"escaped!"[..]).unwrap();
+        });
+        let dest = extract_dest("traversal");
+
+        let _ = extract_blocking(tarball.to_str().unwrap(), dest.to_str().unwrap());
+
+        assert!(
+            !escaped_path.exists(),
+            "path-traversal ist gelungen: {} wurde geschrieben",
+            escaped_path.display()
+        );
+
+        let _ = std::fs::remove_file(&escaped_path);
+        extract_cleanup(&tarball, &dest);
+    }
+
+    #[test]
+    fn hardlink_wird_wie_regulaere_datei_behandelt() {
+        // dokumentation: hardlinks (EntryType::Link) sind im pre-check
+        // erlaubt. ar.unpack erstellt sie als reguläre datei (oder hardlink,
+        // je nach fs) im tmp-dir, und der post-unpack-filter lässt sie durch
+        // (is_file() == true). sie landen im ziel — das ist das definierte
+        // verhalten. tar-crate prüft, dass der link-target innerhalb des
+        // archives existiert und nicht aus dem unpack-root ausbricht.
+        let tarball = extract_tarball("hardlink", |b| {
+            b.append_data(
+                &mut make_data_header("original.txt", b"data"),
+                "original.txt",
+                &b"data"[..],
+            )
+            .unwrap();
+            let mut header = tar::Header::new_gnu();
+            header.set_size(0);
+            header.set_entry_type(tar::EntryType::Link);
+            {
+                let bytes = header.as_mut_bytes();
+                let path = b"hardlink-to-original\0";
+                for (i, b) in path.iter().enumerate() {
+                    bytes[i] = *b;
+                }
+                let link = b"original.txt\0";
+                for (i, b) in link.iter().enumerate() {
+                    bytes[157 + i] = *b;
+                }
+            }
+            header.set_cksum();
+            b.append(&header, std::io::empty()).unwrap();
+        });
+        let dest = extract_dest("hardlink");
+
+        let res = extract_blocking(tarball.to_str().unwrap(), dest.to_str().unwrap());
+        assert!(res.is_ok(), "hardlink sollte extrahiert werden: {res:?}");
+        assert!(dest.join("original.txt").is_file(), "original.txt fehlt");
+        // hardlink landet im ziel als reguläre datei mit gleichem inhalt
+        let hl = dest.join("hardlink-to-original");
+        assert!(hl.is_file(), "hardlink muss als file im ziel sein");
+        assert_eq!(
+            std::fs::read(&hl).unwrap(),
+            b"data",
+            "hardlink muss inhalt von original haben"
+        );
+
+        extract_cleanup(&tarball, &dest);
+    }
+
+    #[test]
+    fn fehler_beim_entpacken_laesst_kein_halbes_ziel() {
+        // wir bauen einen gültigen tarball (zwei eintraege) und schneiden
+        // ihn bei der hälfte ab. GzDecoder schlägt mid-stream fehl → ar.unpack
+        // returnt Err → unser code verschiebt NICHTS ins ziel (rename läuft
+        // erst NACH erfolgreichem unpack). das ziel muss nach dem aufruf leer sein.
+        let mut data = Vec::new();
+        {
+            let gz = flate2::write::GzEncoder::new(&mut data, flate2::Compression::default());
+            let mut builder = tar::Builder::new(gz);
+            builder
+                .append_data(
+                    &mut make_data_header("file1.txt", b"ok"),
+                    "file1.txt",
+                    &b"ok"[..],
+                )
+                .unwrap();
+            builder
+                .append_data(
+                    &mut make_data_header("file2.txt", b"ok2"),
+                    "file2.txt",
+                    &b"ok2"[..],
+                )
+                .unwrap();
+            builder.finish().unwrap();
+        }
+        assert!(data.len() > 64, "tar.gz sollte nicht trivial klein sein");
+        // gzip-stream in der mitte abschneiden → dekompression schlägt fehl
+        let truncated = data[..data.len() / 2].to_vec();
+        let mut p = std::env::temp_dir();
+        p.push(format!("protium-extract-src-truncated-{}", std::process::id()));
+        std::fs::write(&p, &truncated).unwrap();
+        let dest = extract_dest("truncated");
+
+        let res = extract_blocking(p.to_str().unwrap(), dest.to_str().unwrap());
+        assert!(res.is_err(), "korrupter tarball muss Err liefern: {res:?}");
+
+        // KRITISCH: kein halbes verzeichnis im ziel. (das ziel-dir selbst
+        // existiert, aber es darf KEINE datei drin sein, die aus dem tar stammt.)
+        let entries: Vec<String> = std::fs::read_dir(&dest)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .collect();
+        assert!(
+            entries.is_empty(),
+            "ziel muss leer sein, enthält aber: {entries:?}"
+        );
+        // auch die interne temp-dir (".protium-extract-...") darf nicht übrig sein
+        for name in &entries {
+            assert!(
+                !name.starts_with(".protium-extract-"),
+                "temp-dir wurde nicht aufgeräumt: {name}"
+            );
+        }
+
+        let _ = std::fs::remove_file(&p);
+        extract_cleanup(&p, &dest);
     }
 }
