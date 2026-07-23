@@ -22,6 +22,7 @@ export const useCleanupStore = defineStore("cleanup", {
     pathMissingDismissed: false,
     shortcutUnreadable: false,
     shortcutUnreadablePaths: [] as string[],
+    shortcutUnreadableDetail: null as string | null,
   }),
   getters: {
     compatdataOrphans: (s) => s.orphans.filter((o) => o.type === "compatdata"),
@@ -68,9 +69,11 @@ export const useCleanupStore = defineStore("cleanup", {
         if (shortcutResult.status === "unreadable") {
           this.shortcutUnreadable = true;
           this.shortcutUnreadablePaths = shortcutResult.paths;
+          this.shortcutUnreadableDetail = shortcutResult.detail ?? null;
         } else {
           this.shortcutUnreadable = false;
           this.shortcutUnreadablePaths = [];
+          this.shortcutUnreadableDetail = null;
         }
 
         const installedAppIds = new Set(result.games.map((g) => g.appId));
@@ -79,6 +82,14 @@ export const useCleanupStore = defineStore("cleanup", {
         }
 
         this.orphans = await findOrphans(result.libraries, installedAppIds, tauriPorts.fs);
+
+        if (this.shortcutUnreadable) {
+          // Wine-Prefix-Cleanup blockieren, Shader-Caches sind regenerierbar und dürfen laufen
+          this.orphans = this.orphans.filter((o) => o.type === "shadercache");
+          this.error = this.shortcutUnreadableDetail
+            ? `userdata nicht lesbar — Wine-Prefix-Bereinigung deaktiviert: ${this.shortcutUnreadableDetail}`
+            : "shortcuts.vdf nicht lesbar — Wine-Prefix-Bereinigung deaktiviert.";
+        }
 
         for (const o of this.orphans) {
           if (o.appId >= SHORTCUT_ID_THRESHOLD) o.potentialShortcut = true;
