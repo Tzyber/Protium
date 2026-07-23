@@ -124,27 +124,59 @@ fn extract_blocking(src: &str, dest_dir: &str) -> Result<(), String> {
         // tar-entry-type ist also die einzige zuverlässige quelle für die
         // entscheidung "ist das ein device?".
         //
-        // erlaubt: Regular, Directory, Link (hardlinks — link-target wird vom
-        // tar-crate gegen das unpack-root geprüft, hardlinks mit absolutem
-        // target oder pfad-traversal werden abgelehnt). alles andere
-        // (Symlink, Block, Char, Fifo, Continuous) wird abgelehnt — wenn so
-        // ein eintrag dabei ist, ist der ganze tar suspect.
+        // erlaubt: Regular, Directory, Link (hardlinks — link-target muss
+        // innerhalb des archives zeigen, sonst pfad-traversal-leck). alles
+        // andere (Symlink, Block, Char, Fifo, Continuous) wird abgelehnt —
+        // wenn so ein eintrag dabei ist, ist der ganze tar suspect.
+        //
+        // post-unpack-filter bleibt als defense-in-depth, ist aber nicht
+        // mehr die primäre schutzlinie (filter iteriert nur top-level, ein
+        // subdir mit bad entry würde ungeprüft durchkommen).
         {
             let f = fs::File::open(src).map_err(|e| e.to_string())?;
             let mut ar = Archive::new(GzDecoder::new(f));
             for entry in ar.entries().map_err(|e| e.to_string())? {
                 let entry = entry.map_err(|e| e.to_string())?;
                 let typ = entry.header().entry_type();
-                if !matches!(
-                    typ,
-                    tar::EntryType::Regular
-                        | tar::EntryType::Directory
-                        | tar::EntryType::Link
-                ) {
-                    return Err(format!(
-                        "tar enthält unerwarteten eintragstyp: {typ:?} (path: {:?})",
-                        entry.path()
-                    ));
+                match typ {
+                    tar::EntryType::Regular | tar::EntryType::Directory => {}
+                    tar::EntryType::Link => {
+                        // hardlink-target muss innerhalb des archives sein.
+                        // ein absoluter target oder .. würde aus dem unpack-root
+                        // ausbrechen — und da der post-unpack-filter nur top-level
+                        // iteriert, würde so ein hardlink in einem subdir ungeprüft
+                        // durchkommen. pre-check ist die einzige zuverlässige
+                        // schutzlinie für hardlinks.
+                        let link_name = entry.link_name().map_err(|e| e.to_string())?;
+                        match link_name {
+                            None => return Err("hardlink ohne link-target".into()),
+                            Some(target) => {
+                                if target.as_os_str().is_empty() {
+                                    return Err("hardlink-target ist leer".into());
+                                }
+                                if target.is_absolute() {
+                                    return Err(format!(
+                                        "hardlink-target ist absolut: {}",
+                                        target.display()
+                                    ));
+                                }
+                                if target.components().any(|c| {
+                                    matches!(c, std::path::Component::ParentDir)
+                                }) {
+                                    return Err(format!(
+                                        "hardlink-target enthält ..: {}",
+                                        target.display()
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                    _ => {
+                        return Err(format!(
+                            "tar enthält unerwarteten eintragstyp: {typ:?} (path: {:?})",
+                            entry.path()
+                        ));
+                    }
                 }
             }
         }
@@ -1259,6 +1291,79 @@ mod tests {
             b"data",
             "hardlink muss inhalt von original haben"
         );
+
+        extract_cleanup(&tarball, &dest);
+    }
+
+    // hardlink-target-validierung: ein hardlink in einem subdir auf einen
+    // pfad ausserhalb des archives würde vom post-unpack-filter nicht
+    // erfasst (der filter iteriert nur top-level und folgt subdirs ungeprüft).
+    // der pre-check fängt das ab, weil er link-target-pfade gegen absolute
+    // pfade und `..` prüft — unabhängig von der entry-position.
+    #[test]
+    fn hardlink_in_subdir_auf_aussenhardlink_wird_abgelehnt() {
+        // konkrete lage: tar mit subdir + hardlink `subdir/inner-hardlink`
+        // dessen target = `../../etc/shadow` ist. ohne pre-check würde der
+        // hardlink entpackt, das subdir (inkl. hardlink) per rename ins ziel
+        // wandern, und der hardlink hätte ein link auf /etc/shadow. pre-check
+        // lehnt den tar ab.
+        let tarball = extract_tarball("subdir-hardlink", |b| {
+            // subdir entry
+            let mut dir_header = tar::Header::new_gnu();
+            dir_header.set_size(0);
+            dir_header.set_entry_type(tar::EntryType::Directory);
+            {
+                let bytes = dir_header.as_mut_bytes();
+                let path = b"subdir\0";
+                for (i, b) in path.iter().enumerate() {
+                    bytes[i] = *b;
+                }
+            }
+            dir_header.set_cksum();
+            b.append(&dir_header, std::io::empty()).unwrap();
+
+            // hardlink im subdir, target ausserhalb archives
+            let mut link_header = tar::Header::new_gnu();
+            link_header.set_size(0);
+            link_header.set_entry_type(tar::EntryType::Link);
+            {
+                let bytes = link_header.as_mut_bytes();
+                let path = b"subdir/inner-hardlink\0";
+                for (i, b) in path.iter().enumerate() {
+                    bytes[i] = *b;
+                }
+                // linkname (offset 157) = "../../etc/shadow"
+                let target = b"../../etc/shadow\0";
+                for (i, b) in target.iter().enumerate() {
+                    bytes[157 + i] = *b;
+                }
+            }
+            link_header.set_cksum();
+            b.append(&link_header, std::io::empty()).unwrap();
+        });
+        let dest = extract_dest("subdir-hardlink");
+
+        let res = extract_blocking(tarball.to_str().unwrap(), dest.to_str().unwrap());
+        assert!(
+            res.is_err(),
+            "hardlink mit ..-target muss abgelehnt werden: {res:?}"
+        );
+        // weder subdir noch inner-hardlink im ziel
+        assert!(
+            !dest.join("subdir").exists(),
+            "subdir darf nicht entpackt sein"
+        );
+        assert!(
+            std::fs::symlink_metadata(dest.join("subdir/inner-hardlink")).is_err(),
+            "inner-hardlink darf nicht entpackt sein"
+        );
+        // zieldir selbst existiert, aber leer
+        let entries: Vec<String> = std::fs::read_dir(&dest)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .collect();
+        assert!(entries.is_empty(), "zieldir muss leer sein, ist: {entries:?}");
 
         extract_cleanup(&tarball, &dest);
     }
