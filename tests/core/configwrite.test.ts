@@ -15,7 +15,7 @@ describe("writeSteamFile (INV-1 write-gate)", () => {
     const system = { ...fakeSystem(), isProcessRunning: async () => true };
 
     await expect(
-      writeSteamFile(nodeFs(), system, target, "NEU", join(dir, "backups")),
+      writeSteamFile(nodeFs(), system, target, "NEU", join(dir, "backups"), "IRRELEVANT"),
     ).rejects.toBeInstanceOf(SteamRunningError);
     expect(await readFile(target, "utf8")).toBe("ORIGINAL");
     expect(await readdir(dir)).toEqual(["localconfig.vdf"]); // weder backup-dir noch temp
@@ -27,7 +27,7 @@ describe("writeSteamFile (INV-1 write-gate)", () => {
     await writeFile(target, "ORIGINAL", "utf8");
     const backupDir = join(dir, "tief", "verschachtelt", "backups"); // mkdir muss rekursiv können
 
-    await writeSteamFile(nodeFs(), fakeSystem(), target, "NEU", backupDir);
+    await writeSteamFile(nodeFs(), fakeSystem(), target, "NEU", backupDir, "ORIGINAL");
 
     expect(await readFile(target, "utf8")).toBe("NEU");
     const backups = await readdir(backupDir);
@@ -44,7 +44,7 @@ describe("writeSteamFile (INV-1 write-gate)", () => {
     const target = join(dir, "neu.vdf");
     const backupDir = join(dir, "backups");
 
-    await writeSteamFile(nodeFs(), fakeSystem(), target, "INHALT", backupDir);
+    await writeSteamFile(nodeFs(), fakeSystem(), target, "INHALT", backupDir, "IRRELEVANT");
 
     expect(await readFile(target, "utf8")).toBe("INHALT");
     expect(await readdir(dir)).toEqual(["neu.vdf"]); // kein backup-dir angelegt
