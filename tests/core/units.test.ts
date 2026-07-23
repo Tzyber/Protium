@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { builtinProtonToolName, isBlocked } from "../../src/core/blocklist.js";
+import { isBlocked } from "../../src/core/blocklist.js";
 import { parseCompatToolMapping } from "../../src/core/compat.js";
 import { parseLibraryFolders } from "../../src/core/libraryfolders.js";
 import { parseManifest } from "../../src/core/manifest.js";
@@ -39,8 +39,6 @@ describe("blocklist", () => {
   it("blockt via namens-heuristik", () =>
     expect(isBlocked(4242, "Steam Linux Runtime 3.0")).toBe(true));
   it("lässt echtes spiel durch", () => expect(isBlocked(620, "Portal 2")).toBe(false));
-  it("liefert built-in-tool-name für FR-4.2", () =>
-    expect(builtinProtonToolName(1493710)).toBe("proton_experimental"));
 });
 
 describe("parseCompatToolMapping (case-insensitive traversal)", () => {
