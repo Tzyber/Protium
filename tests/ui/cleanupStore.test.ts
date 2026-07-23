@@ -238,4 +238,25 @@ describe("cleanupStore — S-05 + shortcuts", () => {
     expect(store.orphans).toHaveLength(1);
     expect(store.orphans[0]).toMatchObject({ appId: 888888, type: "shadercache" });
   });
+
+  it("Policy: unlesbares shortcuts.vdf → compatdata fail-closed, shadercache regenerierbar", async () => {
+    mockReadAllShortcutAppIds.mockResolvedValue({
+      status: "unreadable",
+      paths: ["/home/u/.steam/userdata/123/config/shortcuts.vdf"],
+    });
+    mockFindOrphans.mockResolvedValue([
+      { appId: 111111, type: "compatdata", path: "/lib/compatdata/111111", library: "/lib" },
+      { appId: 222222, type: "shadercache", path: "/lib/shadercache/222222", library: "/lib" },
+    ]);
+    const scanStore = useScanStore();
+    scanStore.result = fakeScan([]);
+    const store = useCleanupStore();
+
+    await store.scanOrphans();
+
+    expect(store.orphans).toHaveLength(1);
+    expect(store.orphans.some((o) => o.type === "compatdata")).toBe(false);
+    expect(store.orphans.some((o) => o.type === "shadercache")).toBe(true);
+    expect(store.error).toMatch(/Wine-Prefix-Bereinigung deaktiviert/i);
+  });
 });
