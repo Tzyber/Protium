@@ -207,12 +207,23 @@ pub fn batch_dir_sizes(paths: Vec<String>) -> Result<HashMap<String, u64>, Strin
 pub fn remove_orphan_dir(app: AppHandle, path: String) -> Result<String, String> {
     sanitize_path(&path, "remove_orphan_dir")?;
     let canonical = fs::canonicalize(&path).map_err(|e| e.to_string())?;
+    let lib_path_for_scope = std::path::PathBuf::from(library_of(&canonical.to_string_lossy())
+        .map_err(|e| e.to_string())?);
+    allow_library_scope_inner(app, &lib_path_for_scope)?;
+    remove_orphan_dir_inner(&canonical)
+}
+
+/// reine lösch-logik: validierung (canonicalize, blocklist, symlink, muster, appid)
+/// + tatsächliches löschen/trash. extrahiert damit cargo-tests ohne AppHandle
+/// die gehärtete logik gegen temp-fixtures prüfen können.
+/// sicherheits-relevant: identische validierungen wie der command-wrapper.
+fn remove_orphan_dir_inner(canonical: &Path) -> Result<String, String> {
     let canon_str = canonical.to_string_lossy();
     if !is_safe_path(&canon_str) {
         return Err("blocked path".into());
     }
 
-    let meta = fs::symlink_metadata(&canonical).map_err(|e| e.to_string())?;
+    let meta = fs::symlink_metadata(canonical).map_err(|e| e.to_string())?;
     if meta.file_type().is_symlink() {
         return Err("symlink rejected — will not recurse".into());
     }
@@ -220,16 +231,12 @@ pub fn remove_orphan_dir(app: AppHandle, path: String) -> Result<String, String>
         return Err("not a directory".into());
     }
 
-    let steamapps_marker = "/steamapps/";
-    let idx = canon_str
-        .rfind(steamapps_marker)
-        .ok_or("path does not contain /steamapps/".to_string())?;
-    let library = &canon_str[..idx];
-    let suffix = &canon_str[idx + steamapps_marker.len()..];
+    let library = library_of(&canon_str)?;
+    let suffix = suffix_after_steamapps(&canon_str)?;
 
     let (typ, app_id_str) = suffix
         .split_once('/')
-        .ok_or("invalid suffix structure".to_string())?;
+        .ok_or_else(|| "invalid suffix structure".to_string())?;
 
     if typ != "compatdata" && typ != "shadercache" {
         return Err(format!("unexpected type: {typ}"));
@@ -239,28 +246,46 @@ pub fn remove_orphan_dir(app: AppHandle, path: String) -> Result<String, String>
     }
 
     let lib_path = Path::new(library);
-    allow_library_scope_inner(app, lib_path)?;
-
-    let trash_dir = lib_path.join("steamapps").join(".protium-trash");
-    fs::create_dir_all(&trash_dir).map_err(|e| e.to_string())?;
 
     match typ {
         "shadercache" => {
-            fs::remove_dir_all(&canonical).map_err(|e| e.to_string())?;
+            // hard delete; trash-ordner wird NICHT angelegt (würde leer zurückbleiben)
+            fs::remove_dir_all(canonical).map_err(|e| e.to_string())?;
             Ok("deleted".into())
         }
         "compatdata" => {
+            let trash_dir = lib_path.join("steamapps").join(".protium-trash");
+            fs::create_dir_all(&trash_dir).map_err(|e| e.to_string())?;
             let ts = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_millis();
             let trash_name = format!("compatdata_{app_id_str}_{ts}");
             let trash_target = trash_dir.join(&trash_name);
-            fs::rename(&canonical, &trash_target).map_err(|e| e.to_string())?;
+            fs::rename(canonical, &trash_target).map_err(|e| e.to_string())?;
             Ok(format!("trashed → {}", trash_target.display()))
         }
         _ => unreachable!(),
     }
+}
+
+/// extrahiert das library-verzeichnis (alles vor dem letzten "/steamapps/").
+/// `rfind` ist sicher, weil das folgende muster-check die echte anwendung garantiert.
+fn library_of(canon_str: &str) -> Result<&str, String> {
+    let marker = "/steamapps/";
+    let idx = canon_str
+        .rfind(marker)
+        .ok_or_else(|| "path does not contain /steamapps/".to_string())?;
+    Ok(&canon_str[..idx])
+}
+
+/// alles nach dem letzten "/steamapps/". gibt None wenn der marker fehlt.
+fn suffix_after_steamapps(canon_str: &str) -> Result<&str, String> {
+    let marker = "/steamapps/";
+    let idx = canon_str
+        .rfind(marker)
+        .ok_or_else(|| "path does not contain /steamapps/".to_string())?;
+    Ok(&canon_str[idx + marker.len()..])
 }
 
 fn allow_library_scope_inner(app: AppHandle, path: &Path) -> Result<(), String> {
@@ -648,5 +673,173 @@ mod tests {
         assert_eq!(res.unwrap_err(), "cancelled");
         assert!(!dest.exists(), "abbruch: keine datei zurücklassen");
         let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    // ---- remove_orphan_dir (T-H-01) ----
+    // gehärtete logik via remove_orphan_dir_inner (extrahiert, AppHandle-frei).
+    // tests nutzen temp-fixtures unter /tmp; keine berührung von /mnt o. ä.
+
+    use super::remove_orphan_dir_inner;
+    use std::os::unix::fs as unixfs;
+
+    fn orphan_fixture(tag: &str) -> std::path::PathBuf {
+        let mut p = std::env::temp_dir();
+        p.push(format!("protium-orphan-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&p);
+        std::fs::create_dir_all(&p).unwrap();
+        p
+    }
+
+    fn touch(dir: &std::path::Path) {
+        std::fs::create_dir_all(dir).unwrap();
+        std::fs::write(dir.join("marker"), b"x").unwrap();
+    }
+
+    #[test]
+    fn compatdata_orphan_wird_in_trash_verschoben() {
+        let root = orphan_fixture("compat-trash");
+        let lib = root.join("lib");
+        let compat = lib.join("steamapps/compatdata/12345");
+        touch(&compat);
+
+        let canonical = std::fs::canonicalize(&compat).unwrap();
+        let res = remove_orphan_dir_inner(&canonical);
+        assert!(res.is_ok(), "sollte klappen: {res:?}");
+        assert!(res.unwrap().contains("trashed"));
+        assert!(!compat.exists(), "quelle muss weg sein");
+
+        let trash = lib.join("steamapps/.protium-trash");
+        assert!(trash.is_dir(), ".protium-trash muss angelegt sein");
+        let entries: Vec<_> = std::fs::read_dir(&trash)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .starts_with("compatdata_12345_")
+            })
+            .collect();
+        assert_eq!(entries.len(), 1, "genau ein trash-eintrag für 12345");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn shadercache_orphan_wird_hard_deleted() {
+        let root = orphan_fixture("shadercache-del");
+        let lib = root.join("lib");
+        let cache = lib.join("steamapps/shadercache/67890");
+        touch(&cache);
+
+        let canonical = std::fs::canonicalize(&cache).unwrap();
+        let res = remove_orphan_dir_inner(&canonical);
+        assert_eq!(res.as_deref(), Ok("deleted"));
+        assert!(!cache.exists(), "shadercache muss weg sein");
+
+        // KEIN trash-eintrag (nur compatdata wird getrasht)
+        let trash = lib.join("steamapps/.protium-trash");
+        assert!(
+            !trash.exists(),
+            "shadercache darf keinen trash-ordner anlegen"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn symlink_als_ziel_wird_abgelehnt() {
+        let root = orphan_fixture("symlink");
+        let lib = root.join("lib");
+        let compat_dir = lib.join("steamapps/compatdata");
+        std::fs::create_dir_all(&compat_dir).unwrap();
+        // ziel liegt absichtlich innerhalb der library, damit die nachfolgenden
+        // path-checks (steamapps-anker, numerische appid) greifen würden — der
+        // symlink-guard in symlink_metadata MUSS aber zuerst zuschlagen.
+        let target = lib.join("steamapps/compatdata/22222");
+        std::fs::create_dir_all(&target).unwrap();
+        let link = compat_dir.join("99999");
+        unixfs::symlink(&target, &link).unwrap();
+
+        // remove_orphan_dir_inner bekommt den nicht-kanonischen symlink als input.
+        let res = remove_orphan_dir_inner(&link);
+        assert!(res.is_err(), "symlink muss abgelehnt werden");
+        assert!(res.as_ref().unwrap_err().contains("symlink"));
+        assert!(link.exists(), "symlink selbst darf nicht angetastet werden");
+        assert!(target.exists(), "ziel darf nicht angetastet werden");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn pfad_ohne_steamapps_anker_wird_abgelehnt() {
+        let root = orphan_fixture("no-anchor");
+        let random = root.join("lib/some/other/dir");
+        touch(&random);
+
+        let canonical = std::fs::canonicalize(&random).unwrap();
+        let res = remove_orphan_dir_inner(&canonical);
+        assert!(res.is_err(), "ohne /steamapps/ muss abgelehnt werden");
+        assert!(
+            res.as_ref().unwrap_err().contains("/steamapps/"),
+            "fehler soll den marker nennen: {:?}",
+            res
+        );
+        assert!(random.exists(), "verzeichnis darf nicht angetastet werden");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn nichtnumerische_appid_wird_abgelehnt() {
+        let root = orphan_fixture("nonnumeric");
+        let lib = root.join("lib");
+        let bad = lib.join("steamapps/compatdata/foo");
+        touch(&bad);
+
+        let canonical = std::fs::canonicalize(&bad).unwrap();
+        let res = remove_orphan_dir_inner(&canonical);
+        assert!(res.is_err(), "nicht-numerische appid muss abgelehnt werden");
+        assert!(res.as_ref().unwrap_err().contains("non-numeric"));
+        assert!(bad.exists(), "quelle darf nicht angetastet werden");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn doppelter_steamapps_anker_bleibt_innerhalb_des_scopes() {
+        // /tmp/.../lib/steamapps/compatdata/123/steamapps/compatdata/456
+        // rfind("/steamapps/") findet den letzten anker → library wird zu
+        // /tmp/.../lib/steamapps/compatdata/123. das ist INNERHALB des inputs.
+        // akzeptiert: erfolgreich (in trash) ODER reject.
+        // nicht akzeptabel: ein delete der outer (lib/steamapps/compatdata/123) zerstört.
+        let root = orphan_fixture("double-anchor");
+        let lib = root.join("lib");
+        let outer = lib.join("steamapps/compatdata/123");
+        let inner = outer.join("steamapps/compatdata/456");
+        touch(&inner);
+        // marker in outer, um zu prüfen dass outer nicht gelöscht wird
+        std::fs::write(outer.join("keep"), b"important").unwrap();
+
+        let canonical = std::fs::canonicalize(&inner).unwrap();
+        let res = remove_orphan_dir_inner(&canonical);
+
+        // outer (lib + steamapps + compatdata/123) muss IMMER noch existieren
+        assert!(outer.exists(), "outer darf nicht gelöscht werden");
+        assert!(outer.join("keep").exists(), "marker in outer muss bleiben");
+        assert!(lib.exists(), "library-root muss bleiben");
+        assert!(lib.join("steamapps").exists(), "steamapps muss bleiben");
+
+        match res {
+            Ok(msg) => {
+                assert!(msg.contains("trashed"));
+                assert!(!inner.exists());
+            }
+            Err(_) => {
+                // reject ist auch ok, solange nichts zerstört wurde
+                assert!(inner.exists(), "bei reject: inner muss noch da sein");
+            }
+        }
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
