@@ -148,6 +148,8 @@ pub fn is_process_running(name: String) -> Result<bool, String> {
     if name.to_lowercase() != "steam" {
         return Err("process check only allowed for steam".into());
     }
+    // Substring-Match schließt absichtlich Steam-Helper wie steamwebhelper ein;
+    // false-positive Blockade ist sicherer als false-negative während Writes.
     let sys = System::new_all();
     let target = name.to_lowercase();
     Ok(sys
