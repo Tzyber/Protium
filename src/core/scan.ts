@@ -1,4 +1,4 @@
-import { isBlocked } from "./blocklist.js";
+import { availableBuiltinProtons, isBlocked } from "./blocklist.js";
 import { type CompatToolMapping, listCompatTools, parseCompatToolMapping } from "./compat.js";
 import { parseLibraryFolders } from "./libraryfolders.js";
 import { findActiveUser, readLaunchOptions } from "./localconfig.js";
@@ -123,6 +123,7 @@ export async function scanLibrary(ports: Ports, opts: ScanOptions): Promise<Scan
   }
 
   const games: Game[] = [];
+  const blockedAppIds = new Set<number>();
   for (const lib of libraries) {
     try {
       await system.allowLibraryScope(lib); // externe mounts vor read freigeben (R-5)
@@ -146,7 +147,10 @@ export async function scanLibrary(ports: Ports, opts: ScanOptions): Promise<Scan
       if (!m) continue;
       try {
         const data = parseManifest(await fs.readTextFile(`${appsDir}/${entry.name}`));
-        if (isBlocked(data.appId, data.name)) continue;
+        if (isBlocked(data.appId, data.name)) {
+          blockedAppIds.add(data.appId);
+          continue;
+        }
         games.push({
           appId: data.appId,
           name: data.name,
@@ -169,6 +173,7 @@ export async function scanLibrary(ports: Ports, opts: ScanOptions): Promise<Scan
   }
 
   const installedAppIds = new Set(games.map((g) => g.appId));
+  const builtinProtonsInstalled = availableBuiltinProtons(blockedAppIds);
   const defaultCompatTool = mapping.get(0) ?? null; // mapping[0] = globaler default
   const compatToolsInstalled = await listCompatTools(
     fs,
@@ -195,6 +200,7 @@ export async function scanLibrary(ports: Ports, opts: ScanOptions): Promise<Scan
     libraries,
     games,
     compatToolsInstalled,
+    builtinProtonsInstalled,
     defaultCompatTool,
     steamUserId,
     warnings,

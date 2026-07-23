@@ -78,3 +78,12 @@ export function builtinProtons(): { appId: number; toolName: string; label: stri
     label: e.label,
   }));
 }
+
+/** die built-in protons, deren steam-app im scan als installiert erkannt wurde. */
+export function availableBuiltinProtons(
+  installedAppIds: ReadonlySet<number>,
+): { internalName: string; displayName: string }[] {
+  return BLOCKLIST.filter(
+    (e) => e.category === "proton-builtin" && installedAppIds.has(e.appId),
+  ).map((e) => ({ internalName: e.toolName as string, displayName: e.label }));
+}

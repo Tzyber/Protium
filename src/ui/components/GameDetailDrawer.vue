@@ -117,15 +117,21 @@ const compatSelected = ref("__default__");
 const compatState = ref<"idle" | "saving" | "saved" | string>("idle");
 
 const compatOptions = computed(() => {
+  const builtIns = scan.result?.builtinProtonsInstalled ?? [];
   const tools = scan.result?.compatToolsInstalled ?? [];
   const current = game.value?.compatTool ?? "";
   const list: { value: string; label: string }[] = [];
+
+  for (const t of builtIns) {
+    list.push({ value: t.internalName, label: t.displayName });
+  }
 
   for (const t of tools) {
     list.push({ value: t.internalName, label: t.displayName });
   }
 
-  if (current && current !== "default" && !tools.some((t) => t.internalName === current)) {
+  const seen = new Set(list.map((o) => o.value));
+  if (current && current !== "default" && !seen.has(current)) {
     list.push({ value: current, label: `${current} (nicht installiert)` });
   }
 
