@@ -85,6 +85,14 @@ describe("scanLibrary (integration — dominiks reales setup)", () => {
 
     // korruptes acf → warning, kein crash
     expect(result.warnings.some((w) => w.includes("appmanifest_9999"))).toBe(true);
+
+    // installierte built-in protons (proton experimental) werden erfasst, obwohl sie aus games rausgefiltert sind
+    expect(result.builtinProtonsInstalled).toEqual(
+      expect.arrayContaining([
+        { internalName: "proton_experimental", displayName: "Proton Experimental" },
+      ]),
+    );
+    expect(result.games.some((g) => g.appId === 1493710)).toBe(false);
   });
 
   it("klassifiziert scope-failed wenn pfad existiert aber allowLibraryScope wirft", async () => {

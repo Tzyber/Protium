@@ -30,6 +30,8 @@ export interface ScanResult {
   libraries: string[];
   games: Game[];
   compatToolsInstalled: CompatTool[];
+  /** installierte built-in protons (experimental, hotfix, proton_9/10/…). */
+  builtinProtonsInstalled: { internalName: string; displayName: string }[];
   /** globaler default aus CompatToolMapping[0] ("für alle spiele"), sonst null. */
   defaultCompatTool: string | null;
   /** account, dessen localconfig.vdf gelesen wird (null = keiner gefunden → keine startoptionen). */

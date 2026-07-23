@@ -36,6 +36,7 @@ function fakeScan(skipped?: ScanResult["skippedLibraries"]): ScanResult {
     libraries: ["/home/u/.steam"],
     games: [],
     compatToolsInstalled: [],
+    builtinProtonsInstalled: [],
     defaultCompatTool: null,
     steamUserId: null,
     warnings: [],
