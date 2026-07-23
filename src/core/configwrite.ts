@@ -29,7 +29,7 @@ export async function writeSteamFile(
   path: string,
   content: string,
   backupDir: string,
-  backupText?: string,
+  backupText: string,
 ): Promise<void> {
   // "steam" matcht per substring auch steamwebhelper — im zweifel lieber blockieren (sichere richtung)
   if (await system.isProcessRunning("steam")) throw new SteamRunningError();
@@ -38,7 +38,7 @@ export async function writeSteamFile(
     await fs.mkdir(backupDir);
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
     const base = path.split("/").pop() ?? "steam-datei";
-    const text = backupText ?? (await fs.readTextFile(path));
+    const text = backupText;
     await fs.writeTextFile(joinPath(backupDir, `${base}.${stamp}`), text);
   }
 
