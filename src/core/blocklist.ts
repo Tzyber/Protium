@@ -1,4 +1,5 @@
-// tabelle statt liste (FR-1.4): FR-4.2 leitet die wählbaren built-in-protons hieraus ab.
+// tabelle statt liste (FR-1.4): kanonische quelle für FR-4.2 + phase-4-dropdown
+// (availableBuiltinProtons filtert hier nach `installedAppIds`).
 
 export type BlockCategory =
   | "proton-builtin" // valve-eigene proton-builds, eigene steam-app
@@ -63,20 +64,6 @@ const NAME_PREFIXES = [
 export function isBlocked(appId: number, name: string): boolean {
   if (BLOCKED_IDS.has(appId)) return true;
   return NAME_PREFIXES.some((p) => name.startsWith(p));
-}
-
-/** FR-4.2: appId → interner tool-name für built-in protons. */
-export function builtinProtonToolName(appId: number): string | undefined {
-  return BLOCKLIST.find((e) => e.appId === appId && e.category === "proton-builtin")?.toolName;
-}
-
-/** alle bekannten built-in protons (für das compat-tool-dropdown in phase 4). */
-export function builtinProtons(): { appId: number; toolName: string; label: string }[] {
-  return BLOCKLIST.filter((e) => e.category === "proton-builtin").map((e) => ({
-    appId: e.appId,
-    toolName: e.toolName as string,
-    label: e.label,
-  }));
 }
 
 /** die built-in protons, deren steam-app im scan als installiert erkannt wurde. */
