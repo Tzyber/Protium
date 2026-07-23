@@ -533,6 +533,39 @@ mod tests {
         assert!(dir_size("/tmp".into()).is_ok());
     }
 
+    // T-M-01: dir_size darf symlinks nicht folgen — sonst zählt ein symlink
+    // auf ein riesiges verzeichnis dessen gesamten inhalt mit (DoS / falsche anzeige).
+    // fixture liegt komplett unter /tmp, kein bezug auf /mnt oder systempfade.
+    #[test]
+    fn dir_size_skipped_symlinks() {
+        use std::os::unix::fs as unixfs;
+
+        let mut root = std::env::temp_dir();
+        root.push(format!("protium-dirsymlink-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+
+        // echtes ziel: 5 MB große datei
+        let real = root.join("real");
+        std::fs::create_dir_all(&real).unwrap();
+        std::fs::write(real.join("big.bin"), vec![0u8; 5_000_000]).unwrap();
+
+        // verzeichnis mit einem symlink der auf `real` zeigt
+        let via = root.join("via-link");
+        std::fs::create_dir_all(&via).unwrap();
+        unixfs::symlink(&real, via.join("link-to-real")).unwrap();
+
+        let res = dir_size(via.to_string_lossy().into_owned()).unwrap();
+        // ohne symlink-follow: nur die paar bytes des symlinks selbst (~50 bytes).
+        // MIT symlink-follow: mindestens 5 MB.
+        assert!(
+            res < 1000,
+            "symlink wurde gefolgt — dir_size={res} (sollte < 1000 sein)"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     // S-02: path_identity lehnt blockierte pfade ab
     #[test]
     fn path_identity_rejects_blocked_paths() {
