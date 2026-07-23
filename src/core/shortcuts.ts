@@ -1,12 +1,12 @@
 import { joinPath, paths } from "./paths.js";
-import type { FileSystem } from "./ports.js";
+import type { DirEntry, FileSystem } from "./ports.js";
 
 export const SHORTCUT_ID_THRESHOLD = 2_147_483_648; // 2^31
 
 export type ShortcutResult =
   | { status: "none" }
   | { status: "ok"; ids: Set<number> }
-  | { status: "unreadable"; paths: string[] };
+  | { status: "unreadable"; paths: string[]; detail?: string };
 
 // ---- binär-VDF-minimalparser (nur appid-extraktion) ----
 // format: TYPE-KEY-VALUE (typ-byte VOR dem key-string)
@@ -158,26 +158,35 @@ export async function readAllShortcutAppIds(
   const unreadable: string[] = [];
   let anyExists = false;
 
+  const dir = paths.userdataDir(steamRoot);
+  let dirExists: boolean;
   try {
-    const dir = paths.userdataDir(steamRoot);
-    if (!(await fs.exists(dir))) return { status: "none" };
+    dirExists = await fs.exists(dir);
+  } catch (e) {
+    return { status: "unreadable", paths: [], detail: (e as Error).message };
+  }
+  if (!dirExists) return { status: "none" };
 
-    for (const entry of await fs.readDir(dir)) {
-      if (!entry.isDirectory || !/^\d+$/.test(entry.name)) continue;
-      const scPath = joinPath(dir, entry.name, "config", "shortcuts.vdf");
-      if (!(await fs.exists(scPath))) continue;
+  let entries: DirEntry[];
+  try {
+    entries = await fs.readDir(dir);
+  } catch (e) {
+    return { status: "unreadable", paths: [], detail: (e as Error).message };
+  }
 
-      anyExists = true;
-      try {
-        const buf = await fs.readFile(scPath);
-        const shortcutIds = parseBinaryShortcutIds(buf);
-        for (const id of shortcutIds) ids.add(id);
-      } catch {
-        unreadable.push(scPath);
-      }
+  for (const entry of entries) {
+    if (!entry.isDirectory || !/^\d+$/.test(entry.name)) continue;
+    const scPath = joinPath(dir, entry.name, "config", "shortcuts.vdf");
+    if (!(await fs.exists(scPath))) continue;
+
+    anyExists = true;
+    try {
+      const buf = await fs.readFile(scPath);
+      const shortcutIds = parseBinaryShortcutIds(buf);
+      for (const id of shortcutIds) ids.add(id);
+    } catch {
+      unreadable.push(scPath);
     }
-  } catch {
-    return { status: "none" }; // INV-2: userdata nicht lesbar
   }
 
   if (unreadable.length > 0) return { status: "unreadable", paths: unreadable };

@@ -2,6 +2,18 @@ import { describe, expect, it } from "vitest";
 import { parseBinaryShortcutIds, readAllShortcutAppIds } from "../../src/core/shortcuts.js";
 import { buildFakeSteam, CORRUPT_SHORTCUT_VDF_BINARY, nodeFs } from "../support/fakeSteam";
 
+function fsWithUnreadableUserdata(base: ReturnType<typeof nodeFs>): ReturnType<typeof nodeFs> {
+  return {
+    ...base,
+    readDir: (path: string) => {
+      if (path.endsWith("/userdata") || path.includes("/userdata/")) {
+        throw new Error("EACCES: permission denied");
+      }
+      return base.readDir(path);
+    },
+  };
+}
+
 // ---- binary-VDF-fixtures ----
 
 const td = new TextDecoder();
@@ -210,6 +222,18 @@ describe("readAllShortcutAppIds", () => {
     expect(result.status).toBe("unreadable");
     if (result.status === "unreadable") {
       expect(result.paths.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("unlesbares userdata → status unreadable mit detail", async () => {
+    const { root } = await buildFakeSteam();
+    const fs = fsWithUnreadableUserdata(nodeFs());
+
+    const result = await readAllShortcutAppIds(fs, root);
+    expect(result.status).toBe("unreadable");
+    if (result.status === "unreadable") {
+      expect(result.paths).toEqual([]);
+      expect(result.detail).toContain("permission denied");
     }
   });
 });

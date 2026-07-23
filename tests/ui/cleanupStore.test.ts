@@ -215,4 +215,26 @@ describe("cleanupStore — S-05 + shortcuts", () => {
     expect(store.error).toContain("nicht lesbar"); // wine-prefix blocked
     expect(store.error).not.toContain("888888"); // shadercache NOT blocked
   });
+
+  it("scanOrphans blockiert compatdata aber erlaubt shadercache bei unlesbarem userdata", async () => {
+    mockReadAllShortcutAppIds.mockResolvedValue({
+      status: "unreadable",
+      paths: [],
+      detail: "EACCES: permission denied",
+    });
+    mockFindOrphans.mockResolvedValue([
+      { appId: 999999, type: "compatdata", path: "/fake/wine", library: "/lib" },
+      { appId: 888888, type: "shadercache", path: "/fake/shader", library: "/lib" },
+    ]);
+    const scanStore = useScanStore();
+    scanStore.result = fakeScan([]);
+    const store = useCleanupStore();
+
+    await store.scanOrphans();
+
+    expect(store.shortcutUnreadable).toBe(true);
+    expect(store.error).toContain("Wine-Prefix-Bereinigung deaktiviert");
+    expect(store.orphans).toHaveLength(1);
+    expect(store.orphans[0]).toMatchObject({ appId: 888888, type: "shadercache" });
+  });
 });
