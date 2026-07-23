@@ -9,7 +9,6 @@ import { ProtonDbClient } from "./protondb.js";
 import type { Game, ScanResult, SkippedLibrary } from "./types.js";
 
 interface ScanOptions {
-  home: string;
   steamRoot: string;
   protonDbDelayMs?: number;
   /** compat-dirs überschreiben — für tests. */

@@ -17,7 +17,7 @@ describe("scanLibrary (integration — dominiks reales setup)", () => {
     const system = fakeSystem();
     const result = await scanLibrary(
       { fs, http: fakeHttp(), system, cache: memCache() },
-      { home, steamRoot: root, protonDbDelayMs: 0, extraCompatDirs: [systemCompat] },
+      { steamRoot: root, protonDbDelayMs: 0, extraCompatDirs: [systemCompat] },
     );
 
     // library-dedup: symlink-dup + staler eintrag raus, nur root + lib2 bleiben
@@ -115,7 +115,7 @@ describe("scanLibrary (integration — dominiks reales setup)", () => {
     const system = fakeSystem({ failScope: new Set([scopeFailLib]) });
     const result = await scanLibrary(
       { fs, http: fakeHttp(), system, cache: memCache() },
-      { home, steamRoot: root, protonDbDelayMs: 0 },
+      { steamRoot: root, protonDbDelayMs: 0 },
     );
 
     expect(result.libraries).toEqual([root, lib2, scopeFailLib]);
