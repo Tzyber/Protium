@@ -207,24 +207,48 @@ pub fn batch_dir_sizes(paths: Vec<String>) -> Result<HashMap<String, u64>, Strin
 /// compatdata → trash (rename), shadercache → hard delete.
 #[tauri::command]
 pub fn remove_orphan_dir(app: AppHandle, path: String) -> Result<String, String> {
-    sanitize_path(&path, "remove_orphan_dir")?;
-    let canonical = fs::canonicalize(&path).map_err(|e| e.to_string())?;
-    let lib_path_for_scope = std::path::PathBuf::from(library_of(&canonical.to_string_lossy())
-        .map_err(|e| e.to_string())?);
-    allow_library_scope_inner(app, &lib_path_for_scope)?;
-    remove_orphan_dir_inner(&canonical)
+    let (library, canonical) = validate_and_prepare(&path)?;
+    allow_library_scope_inner(app, &library)?;
+    remove_orphan_dir_inner(&canonical, &library)
 }
 
-/// reine lösch-logik: validierung (canonicalize, blocklist, symlink, muster, appid)
-/// + tatsächliches löschen/trash. extrahiert damit cargo-tests ohne AppHandle
-/// die gehärtete logik gegen temp-fixtures prüfen können.
-/// sicherheits-relevant: identische validierungen wie der command-wrapper.
-fn remove_orphan_dir_inner(canonical: &Path) -> Result<String, String> {
+/// testbare validierungskette für den command-wrapper: sanitized input
+/// (kein `..`, absolut) → symlink-guard auf roh-input → canonicalize →
+/// library-derive. der symlink-guard auf roh-input ist nötig, weil
+/// canonicalize symlinks folgt und der nachgelagerte symlink-check in
+/// inner dann effektiv tot wäre. library wird hier einmal berechnet und
+/// an inner weitergereicht (entfernt das doppelte `rfind` aus inner,
+/// ohne die guard-reihenfolge zu verändern).
+fn validate_and_prepare(path_str: &str) -> Result<(std::path::PathBuf, std::path::PathBuf), String> {
+    sanitize_path(path_str, "remove_orphan_dir")?;
+    // symlink-guard auf roh-input: ein orphan-eintrag, der selbst ein symlink
+    // ist, ist nie ein legitimer löschkandidat (findOrphans skippt symlinks).
+    // ohne diesen check würde canonicalize dem symlink folgen, und der
+    // symlink_metadata-check in inner (auf dem gefolgten pfad) wäre tot.
+    let raw_meta = fs::symlink_metadata(path_str).map_err(|e| e.to_string())?;
+    if raw_meta.file_type().is_symlink() {
+        return Err("symlink rejected — will not recurse".into());
+    }
+    let canonical = fs::canonicalize(path_str).map_err(|e| e.to_string())?;
+    let binding = canonical.to_string_lossy();
+    let lib_str = library_of(&binding)?;
+    Ok((std::path::PathBuf::from(lib_str), canonical))
+}
+
+/// reine lösch-logik: validierung (blocklist, symlink-defense-in-depth, is_dir,
+/// muster, appid) + tatsächliches löschen/trash. `library` wird vom
+/// command-wrapper durchgereicht (nicht erneut abgeleitet) — guard-reihenfolge
+/// bleibt unverändert: erst sicherheit, dann parsing, dann delete.
+fn remove_orphan_dir_inner(canonical: &Path, library: &Path) -> Result<String, String> {
     let canon_str = canonical.to_string_lossy();
     if !is_safe_path(&canon_str) {
         return Err("blocked path".into());
     }
 
+    // symlink-guard bleibt als defense-in-depth: validate_and_prepare im
+    // command-wrapper hat symlinks auf roh-input bereits abgewiesen, sodass
+    // dieser check im normalen aufruf nie zuschlägt. er schützt direkte
+    // inner-aufrufer (tests, zukünftige code-pfade) und kostet nichts.
     let meta = fs::symlink_metadata(canonical).map_err(|e| e.to_string())?;
     if meta.file_type().is_symlink() {
         return Err("symlink rejected — will not recurse".into());
@@ -233,7 +257,6 @@ fn remove_orphan_dir_inner(canonical: &Path) -> Result<String, String> {
         return Err("not a directory".into());
     }
 
-    let library = library_of(&canon_str)?;
     let suffix = suffix_after_steamapps(&canon_str)?;
 
     let (typ, app_id_str) = suffix
@@ -247,8 +270,6 @@ fn remove_orphan_dir_inner(canonical: &Path) -> Result<String, String> {
         return Err(format!("non-numeric appId: {app_id_str}"));
     }
 
-    let lib_path = Path::new(library);
-
     match typ {
         "shadercache" => {
             // hard delete; trash-ordner wird NICHT angelegt (würde leer zurückbleiben)
@@ -256,7 +277,7 @@ fn remove_orphan_dir_inner(canonical: &Path) -> Result<String, String> {
             Ok("deleted".into())
         }
         "compatdata" => {
-            let trash_dir = lib_path.join("steamapps").join(".protium-trash");
+            let trash_dir = library.join("steamapps").join(".protium-trash");
             fs::create_dir_all(&trash_dir).map_err(|e| e.to_string())?;
             let ts = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -711,10 +732,11 @@ mod tests {
     }
 
     // ---- remove_orphan_dir (T-H-01) ----
-    // gehärtete logik via remove_orphan_dir_inner (extrahiert, AppHandle-frei).
+    // gehärtete logik via remove_orphan_dir_inner (extrahiert, AppHandle-frei)
+    // + validate_and_prepare (wrapper-kette, AppHandle-frei).
     // tests nutzen temp-fixtures unter /tmp; keine berührung von /mnt o. ä.
 
-    use super::remove_orphan_dir_inner;
+    use super::{library_of, remove_orphan_dir_inner, validate_and_prepare};
     use std::os::unix::fs as unixfs;
 
     fn orphan_fixture(tag: &str) -> std::path::PathBuf {
@@ -730,6 +752,15 @@ mod tests {
         std::fs::write(dir.join("marker"), b"x").unwrap();
     }
 
+    // helper: ruft inner mit korrekt abgeleiteter library auf, damit die
+    // bestehenden tests nicht jeden library-pfad selbst berechnen müssen.
+    fn call_inner(canonical: &std::path::Path) -> Result<String, String> {
+        let lib = std::path::PathBuf::from(
+            library_of(&canonical.to_string_lossy()).map_err(|e| e.to_string())?,
+        );
+        remove_orphan_dir_inner(canonical, &lib)
+    }
+
     #[test]
     fn compatdata_orphan_wird_in_trash_verschoben() {
         let root = orphan_fixture("compat-trash");
@@ -738,7 +769,7 @@ mod tests {
         touch(&compat);
 
         let canonical = std::fs::canonicalize(&compat).unwrap();
-        let res = remove_orphan_dir_inner(&canonical);
+        let res = call_inner(&canonical);
         assert!(res.is_ok(), "sollte klappen: {res:?}");
         assert!(res.unwrap().contains("trashed"));
         assert!(!compat.exists(), "quelle muss weg sein");
@@ -767,7 +798,7 @@ mod tests {
         touch(&cache);
 
         let canonical = std::fs::canonicalize(&cache).unwrap();
-        let res = remove_orphan_dir_inner(&canonical);
+        let res = call_inner(&canonical);
         assert_eq!(res.as_deref(), Ok("deleted"));
         assert!(!cache.exists(), "shadercache muss weg sein");
 
@@ -783,20 +814,22 @@ mod tests {
 
     #[test]
     fn symlink_als_ziel_wird_abgelehnt() {
+        // defense-in-depth: der command-wrapper lehnt bereits in
+        // validate_and_prepare ab, aber inner soll auch direkte aufrufer
+        // schützen (z. b. tests, zukünftige code-pfade). canonicalize wurde
+        // hier absichtlich übersprungen, damit symlink_metadata den symlink
+        // selbst sieht (sonst folgt canonicalize und der guard wäre tot).
         let root = orphan_fixture("symlink");
         let lib = root.join("lib");
         let compat_dir = lib.join("steamapps/compatdata");
         std::fs::create_dir_all(&compat_dir).unwrap();
-        // ziel liegt absichtlich innerhalb der library, damit die nachfolgenden
-        // path-checks (steamapps-anker, numerische appid) greifen würden — der
-        // symlink-guard in symlink_metadata MUSS aber zuerst zuschlagen.
         let target = lib.join("steamapps/compatdata/22222");
         std::fs::create_dir_all(&target).unwrap();
         let link = compat_dir.join("99999");
         unixfs::symlink(&target, &link).unwrap();
 
-        // remove_orphan_dir_inner bekommt den nicht-kanonischen symlink als input.
-        let res = remove_orphan_dir_inner(&link);
+        let lib_path = std::path::PathBuf::from(library_of(&link.to_string_lossy()).unwrap());
+        let res = remove_orphan_dir_inner(&link, &lib_path);
         assert!(res.is_err(), "symlink muss abgelehnt werden");
         assert!(res.as_ref().unwrap_err().contains("symlink"));
         assert!(link.exists(), "symlink selbst darf nicht angetastet werden");
@@ -812,7 +845,7 @@ mod tests {
         touch(&random);
 
         let canonical = std::fs::canonicalize(&random).unwrap();
-        let res = remove_orphan_dir_inner(&canonical);
+        let res = call_inner(&canonical);
         assert!(res.is_err(), "ohne /steamapps/ muss abgelehnt werden");
         assert!(
             res.as_ref().unwrap_err().contains("/steamapps/"),
@@ -832,7 +865,7 @@ mod tests {
         touch(&bad);
 
         let canonical = std::fs::canonicalize(&bad).unwrap();
-        let res = remove_orphan_dir_inner(&canonical);
+        let res = call_inner(&canonical);
         assert!(res.is_err(), "nicht-numerische appid muss abgelehnt werden");
         assert!(res.as_ref().unwrap_err().contains("non-numeric"));
         assert!(bad.exists(), "quelle darf nicht angetastet werden");
@@ -856,7 +889,7 @@ mod tests {
         std::fs::write(outer.join("keep"), b"important").unwrap();
 
         let canonical = std::fs::canonicalize(&inner).unwrap();
-        let res = remove_orphan_dir_inner(&canonical);
+        let res = call_inner(&canonical);
 
         // outer (lib + steamapps + compatdata/123) muss IMMER noch existieren
         assert!(outer.exists(), "outer darf nicht gelöscht werden");
@@ -874,6 +907,30 @@ mod tests {
                 assert!(inner.exists(), "bei reject: inner muss noch da sein");
             }
         }
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // validate_and_prepare: testbare wrapper-kette (sanitize + symlink-guard
+    // auf roh-input + canonicalize + library-derive). symlink-guard auf dem
+    // nicht-kanonisierten input ist nötig, weil canonicalize symlinks folgt
+    // und der nachgelagerte symlink-check in inner dann effektiv tot wäre.
+    #[test]
+    fn validate_and_prepare_lehnt_symlink_auf_roh_input_ab() {
+        let root = orphan_fixture("raw-symlink");
+        let lib = root.join("lib");
+        let compat_dir = lib.join("steamapps/compatdata");
+        std::fs::create_dir_all(&compat_dir).unwrap();
+        let target = lib.join("steamapps/compatdata/22222");
+        std::fs::create_dir_all(&target).unwrap();
+        let link = compat_dir.join("99999");
+        unixfs::symlink(&target, &link).unwrap();
+
+        let res = validate_and_prepare(link.to_str().unwrap());
+        assert!(res.is_err(), "symlink auf roh-input muss abgelehnt werden");
+        assert!(res.as_ref().unwrap_err().contains("symlink"));
+        assert!(link.exists(), "symlink selbst darf nicht angetastet werden");
+        assert!(target.exists(), "ziel darf nicht angetastet werden");
 
         let _ = std::fs::remove_dir_all(&root);
     }
