@@ -132,6 +132,7 @@ function parseEntryBody(
 /**
  * extrahiert appIds aus binärem shortcuts.vdf.
  * wirft BinVdfError bei strukturbruch — caller entscheidet "unreadable".
+ * @internal — nur intern + für tests exportiert; produktion ruft readAllShortcutAppIds.
  */
 function parseBinaryShortcutIds(buf: Uint8Array): Set<number> {
   const ids = new Set<number>();
