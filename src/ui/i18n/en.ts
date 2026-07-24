@@ -162,6 +162,7 @@ export const en = {
     scanIncomplete: "scan incomplete — libraries skipped: {paths}",
     errorShortcutUnreadable: "{type}/{appId}: shortcuts.vdf unreadable — skipped",
     errorNowInstalled: "{type}/{appId}: now installed — skipped",
+    noScanResult: "no scan result — please scan the library first",
   },
   time: {
     justNow: "just now",

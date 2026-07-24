@@ -267,6 +267,18 @@ describe("cleanupStore — S-05 + shortcuts", () => {
     expect(store.orphans.some((o) => o.type === "shadercache")).toBe(true);
     expect(store.error).toMatch(/Wine-Prefix-Bereinigung deaktiviert/i);
   });
+
+  it("deleteOrphans blockiert ohne scan-ergebnis (fail-closed)", async () => {
+    const scanStore = useScanStore();
+    scanStore.result = null;
+    const store = useCleanupStore();
+
+    await store.deleteOrphans([{ appId: 1, type: "compatdata", path: "/fake", library: "/lib" }]);
+
+    expect(mockInvoke).not.toHaveBeenCalled();
+    expect(store.error).toContain("scan-ergebnis");
+    expect(store.orphans).toEqual([]);
+  });
 });
 
 // batch_dir_sizes-skip-semantik: ein von rust übersprungener pfad (NotFound-race)

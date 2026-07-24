@@ -4,12 +4,9 @@ import { tauriPorts } from "../../core/adapters/tauri";
 import { findOrphans } from "../../core/cleanup";
 import { readAllShortcutAppIds, SHORTCUT_ID_THRESHOLD } from "../../core/shortcuts";
 import { type OrphanEntry } from "../../core/types";
+import { errMsg } from "../format";
 import { t } from "../i18n";
 import { useScanStore } from "./scanStore";
-
-function errMsg(e: unknown): string {
-  return typeof e === "string" ? e : ((e as Error)?.message ?? String(e));
-}
 
 export const useCleanupStore = defineStore("cleanup", {
   state: () => ({
@@ -129,18 +126,21 @@ export const useCleanupStore = defineStore("cleanup", {
       // S-05: frischen installed-status bauen (games + shortcuts)
       const scan = useScanStore();
       const result = scan.result;
-      const installedAppIds = new Set(result?.games.map((g) => g.appId) ?? []);
+      if (!result) {
+        this.error = t("errors.noScanResult");
+        return;
+      }
 
-      const shortcutResult = result
-        ? await readAllShortcutAppIds(tauriPorts.fs, result.steamRoot)
-        : null;
-      if (shortcutResult?.status === "ok") {
+      const installedAppIds = new Set(result.games.map((g) => g.appId));
+
+      const shortcutResult = await readAllShortcutAppIds(tauriPorts.fs, result.steamRoot);
+      if (shortcutResult.status === "ok") {
         for (const id of shortcutResult.ids) installedAppIds.add(id);
       }
 
       const errors: string[] = [];
       for (const entry of entries) {
-        if (shortcutResult?.status === "unreadable" && entry.type === "compatdata") {
+        if (shortcutResult.status === "unreadable" && entry.type === "compatdata") {
           errors.push(
             t("errors.errorShortcutUnreadable", { type: entry.type, appId: entry.appId }),
           );

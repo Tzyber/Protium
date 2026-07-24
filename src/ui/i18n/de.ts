@@ -160,6 +160,7 @@ export const de = {
     scanIncomplete: "Scan unvollständig — Libraries übersprungen: {paths}",
     errorShortcutUnreadable: "{type}/{appId}: shortcuts.vdf nicht lesbar — übersprungen",
     errorNowInstalled: "{type}/{appId}: inzwischen installiert — übersprungen",
+    noScanResult: "kein scan-ergebnis vorhanden — bitte erst die library scannen",
   },
   time: {
     justNow: "gerade eben",
