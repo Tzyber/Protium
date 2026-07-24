@@ -91,6 +91,37 @@ pub async fn extract_tarball(src: String, dest: String) -> Result<(), String> {
         .map_err(|e| e.to_string())?
 }
 
+/// prueft, ob `target`, relativ zu `base_dir` aufgeloest, innerhalb der archiv-wurzel bleibt.
+/// rein lexikalisch (kein fs-zugriff): `..` popt eine komponente, ein pop unterhalb der
+/// wurzel ist ein ausbruch. absolute targets sind immer ein ausbruch.
+fn link_target_stays_inside(base_dir: &Path, target: &Path) -> bool {
+    if target.is_absolute() {
+        return false;
+    }
+    let mut depth: isize = 0;
+    for c in base_dir.components() {
+        match c {
+            std::path::Component::Normal(_) => depth += 1,
+            std::path::Component::CurDir => {}
+            _ => return false,
+        }
+    }
+    for c in target.components() {
+        match c {
+            std::path::Component::Normal(_) => depth += 1,
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                depth -= 1;
+                if depth < 0 {
+                    return false;
+                }
+            }
+            _ => return false,
+        }
+    }
+    depth > 0
+}
+
 fn extract_blocking(src: &str, dest_dir: &str) -> Result<(), String> {
     use flate2::read::GzDecoder;
     use tar::Archive;
@@ -103,7 +134,11 @@ fn extract_blocking(src: &str, dest_dir: &str) -> Result<(), String> {
     }
 
     let src_path = Path::new(src);
-    if !src_path.is_file() {
+    let src_canon = fs::canonicalize(src_path).map_err(|e| format!("extract source canonicalize: {e}"))?;
+    if !is_safe_path(&src_canon.to_string_lossy()) {
+        return Err("extract source in blocked location".into());
+    }
+    if !src_canon.is_file() {
         return Err("extract source not a regular file".into());
     }
 
@@ -129,9 +164,11 @@ fn extract_blocking(src: &str, dest_dir: &str) -> Result<(), String> {
         // entscheidung "ist das ein device?".
         //
         // erlaubt: Regular, Directory, Link (hardlinks — link-target muss
-        // innerhalb des archives zeigen, sonst pfad-traversal-leck). alles
-        // andere (Symlink, Block, Char, Fifo, Continuous) wird abgelehnt —
-        // wenn so ein eintrag dabei ist, ist der ganze tar suspect.
+        // innerhalb des archives zeigen, sonst pfad-traversal-leck) und
+        // Symlink (legitime lib-versionslinks in GE-tarballs — ausbruch wird
+        // lexikalisch via link_target_stays_inside geprüft statt pauschal
+        // verboten). alles andere (Block, Char, Fifo, Continuous) wird
+        // abgelehnt.
         //
         // post-unpack-filter bleibt als defense-in-depth, ist aber nicht
         // mehr die primäre schutzlinie (filter iteriert nur top-level, ein
@@ -173,6 +210,30 @@ fn extract_blocking(src: &str, dest_dir: &str) -> Result<(), String> {
                                     ));
                                 }
                             }
+                        }
+                    }
+                    tar::EntryType::Symlink => {
+                        let path = entry.path().map_err(|e| e.to_string())?.into_owned();
+                        if path.is_absolute()
+                            || path.components().any(|c| matches!(c, std::path::Component::ParentDir))
+                        {
+                            return Err(format!("symlink-eintragspfad ungültig: {}", path.display()));
+                        }
+                        let target = entry
+                            .link_name()
+                            .map_err(|e| e.to_string())?
+                            .ok_or_else(|| "symlink ohne link-target".to_string())?
+                            .into_owned();
+                        if target.as_os_str().is_empty() {
+                            return Err("symlink-target ist leer".into());
+                        }
+                        let base = path.parent().unwrap_or_else(|| Path::new(""));
+                        if !link_target_stays_inside(base, &target) {
+                            return Err(format!(
+                                "symlink-target verlässt das archiv: {} -> {}",
+                                path.display(),
+                                target.display()
+                            ));
                         }
                     }
                     _ => {
@@ -1301,6 +1362,48 @@ mod tests {
     //   *die hier geschriebenen tests zielen auf top-level-eintraege* — der subdir-befund
     //   ist ein separater punkt (siehe report).
 
+    use super::link_target_stays_inside;
+
+    #[test]
+    fn stays_inside_einfacher_relativer_pfad() {
+        assert!(link_target_stays_inside(
+            std::path::Path::new("dir/lib"),
+            std::path::Path::new("libfoo.so.1.2.3")
+        ));
+    }
+
+    #[test]
+    fn stays_inside_legtitimer_parentdir() {
+        assert!(link_target_stays_inside(
+            std::path::Path::new("dir/a/b"),
+            std::path::Path::new("../c/y")
+        ));
+    }
+
+    #[test]
+    fn stays_inside_ausbruch_durch_parentdir() {
+        assert!(!link_target_stays_inside(
+            std::path::Path::new("dir/lib"),
+            std::path::Path::new("../../../../etc/passwd")
+        ));
+    }
+
+    #[test]
+    fn stays_inside_absolutes_target() {
+        assert!(!link_target_stays_inside(
+            std::path::Path::new("dir"),
+            std::path::Path::new("/etc/passwd")
+        ));
+    }
+
+    #[test]
+    fn stays_inside_genau_an_der_wurzel() {
+        assert!(!link_target_stays_inside(
+            std::path::Path::new("dir"),
+            std::path::Path::new("..")
+        ));
+    }
+
     use super::extract_blocking;
 
     fn extract_dest(tag: &str) -> std::path::PathBuf {
@@ -1378,11 +1481,10 @@ mod tests {
     }
 
     #[test]
-    fn symlink_eintrag_wird_nicht_ins_ziel_uebernommen() {
-        // dokumentation: tar mit symlink-entry wird per pre-check ABGELEHNT.
-        // symlinks sind in proton-release-tarballs nie legitim, ein tar
-        // mit einem symlink ist suspect. der ganze extract wird abgebrochen,
-        // nichts landet im ziel.
+    fn symlink_mit_absolutem_target_wird_abgelehnt() {
+        // symlink auf absoluten pfad (/etc/passwd) muss via
+        // link_target_stays_inside abgelehnt werden — target.is_absolute()
+        // liefert false. der ganze extract wird abgebrochen, nichts im ziel.
         let tarball = extract_tarball("symlink", |b| {
             let mut header = tar::Header::new_gnu();
             header.set_size(0);
@@ -1408,6 +1510,169 @@ mod tests {
         assert!(
             std::fs::symlink_metadata(dest.join("evil-link")).is_err(),
             "evil-link darf nicht ins ziel"
+        );
+
+        extract_cleanup(&tarball, &dest);
+    }
+
+    #[test]
+    fn symlink_legitim_wird_extrahiert_und_bleibt_als_symlink() {
+        let tarball = extract_tarball("symlink-legit", |b| {
+            let mut dir_h = tar::Header::new_gnu();
+            dir_h.set_path("dir").unwrap();
+            dir_h.set_entry_type(tar::EntryType::Directory);
+            dir_h.set_size(0);
+            dir_h.set_cksum();
+            b.append(&dir_h, std::io::empty()).unwrap();
+
+            let mut libdir_h = tar::Header::new_gnu();
+            libdir_h.set_path("dir/lib").unwrap();
+            libdir_h.set_entry_type(tar::EntryType::Directory);
+            libdir_h.set_size(0);
+            libdir_h.set_cksum();
+            b.append(&libdir_h, std::io::empty()).unwrap();
+
+            b.append_data(
+                &mut make_data_header("dir/lib/libfoo.so.1.2.3", b"fake-lib"),
+                "dir/lib/libfoo.so.1.2.3",
+                &b"fake-lib"[..],
+            )
+            .unwrap();
+
+            let mut hy = tar::Header::new_gnu();
+            hy.set_path("dir/lib/libfoo.so.1").unwrap();
+            hy.set_entry_type(tar::EntryType::Symlink);
+            hy.set_size(0);
+            {
+                let bytes = hy.as_mut_bytes();
+                let ln = b"libfoo.so.1.2.3\0";
+                for (i, b) in ln.iter().enumerate() {
+                    bytes[157 + i] = *b;
+                }
+            }
+            hy.set_cksum();
+            b.append(&hy, std::io::empty()).unwrap();
+        });
+        let dest = extract_dest("symlink-legit");
+
+        let res = extract_blocking(tarball.to_str().unwrap(), dest.to_str().unwrap());
+        assert!(res.is_ok(), "legitimer symlink muss durchlaufen: {res:?}");
+        assert!(
+            dest.join("dir/lib/libfoo.so.1.2.3").is_file(),
+            "target-datei fehlt"
+        );
+        let md = std::fs::symlink_metadata(dest.join("dir/lib/libfoo.so.1")).unwrap();
+        assert!(
+            md.file_type().is_symlink(),
+            "symlink muss als symlink im ziel sein"
+        );
+
+        extract_cleanup(&tarball, &dest);
+    }
+
+    #[test]
+    fn symlink_mit_traversal_target_wird_abgelehnt() {
+        let tarball = extract_tarball("symlink-traversal", |b| {
+            let mut dir_h = tar::Header::new_gnu();
+            dir_h.set_path("dir").unwrap();
+            dir_h.set_entry_type(tar::EntryType::Directory);
+            dir_h.set_size(0);
+            dir_h.set_cksum();
+            b.append(&dir_h, std::io::empty()).unwrap();
+
+            let mut libdir_h = tar::Header::new_gnu();
+            libdir_h.set_path("dir/lib").unwrap();
+            libdir_h.set_entry_type(tar::EntryType::Directory);
+            libdir_h.set_size(0);
+            libdir_h.set_cksum();
+            b.append(&libdir_h, std::io::empty()).unwrap();
+
+            let mut hy = tar::Header::new_gnu();
+            hy.set_path("dir/lib/x").unwrap();
+            hy.set_entry_type(tar::EntryType::Symlink);
+            hy.set_size(0);
+            {
+                let bytes = hy.as_mut_bytes();
+                let ln = b"../../../../etc/passwd\0";
+                for (i, b) in ln.iter().enumerate() {
+                    bytes[157 + i] = *b;
+                }
+            }
+            hy.set_cksum();
+            b.append(&hy, std::io::empty()).unwrap();
+        });
+        let dest = extract_dest("symlink-traversal");
+
+        let res = extract_blocking(tarball.to_str().unwrap(), dest.to_str().unwrap());
+        assert!(res.is_err(), "symlink mit traversal-target muss abgelehnt werden: {res:?}");
+        assert!(
+            !dest.join("dir").exists(),
+            "kein inhalt darf ins ziel bei abbruch"
+        );
+
+        extract_cleanup(&tarball, &dest);
+    }
+
+    #[test]
+    fn symlink_mit_legitimen_parentdir_wird_extrahiert() {
+        let tarball = extract_tarball("symlink-parent", |b| {
+            let mut dir_h = tar::Header::new_gnu();
+            dir_h.set_path("dir").unwrap();
+            dir_h.set_entry_type(tar::EntryType::Directory);
+            dir_h.set_size(0);
+            dir_h.set_cksum();
+            b.append(&dir_h, std::io::empty()).unwrap();
+
+            let mut a_h = tar::Header::new_gnu();
+            a_h.set_path("dir/a").unwrap();
+            a_h.set_entry_type(tar::EntryType::Directory);
+            a_h.set_size(0);
+            a_h.set_cksum();
+            b.append(&a_h, std::io::empty()).unwrap();
+
+            let mut bdir_h = tar::Header::new_gnu();
+            bdir_h.set_path("dir/a/b").unwrap();
+            bdir_h.set_entry_type(tar::EntryType::Directory);
+            bdir_h.set_size(0);
+            bdir_h.set_cksum();
+            b.append(&bdir_h, std::io::empty()).unwrap();
+
+            let mut c_h = tar::Header::new_gnu();
+            c_h.set_path("dir/c").unwrap();
+            c_h.set_entry_type(tar::EntryType::Directory);
+            c_h.set_size(0);
+            c_h.set_cksum();
+            b.append(&c_h, std::io::empty()).unwrap();
+
+            b.append_data(
+                &mut make_data_header("dir/c/y", b"data"),
+                "dir/c/y",
+                &b"data"[..],
+            )
+            .unwrap();
+
+            let mut hy = tar::Header::new_gnu();
+            hy.set_path("dir/a/b/x").unwrap();
+            hy.set_entry_type(tar::EntryType::Symlink);
+            hy.set_size(0);
+            {
+                let bytes = hy.as_mut_bytes();
+                let ln = b"../c/y\0";
+                for (i, b) in ln.iter().enumerate() {
+                    bytes[157 + i] = *b;
+                }
+            }
+            hy.set_cksum();
+            b.append(&hy, std::io::empty()).unwrap();
+        });
+        let dest = extract_dest("symlink-parent");
+
+        let res = extract_blocking(tarball.to_str().unwrap(), dest.to_str().unwrap());
+        assert!(res.is_ok(), "symlink mit legitimem parentdir muss durchlaufen: {res:?}");
+        let md = std::fs::symlink_metadata(dest.join("dir/a/b/x")).unwrap();
+        assert!(
+            md.file_type().is_symlink(),
+            "symlink mit legitimem .. muss im ziel sein"
         );
 
         extract_cleanup(&tarball, &dest);
@@ -1714,5 +1979,18 @@ mod tests {
 
         let _ = std::fs::remove_file(&p);
         extract_cleanup(&p, &dest);
+    }
+
+    #[test]
+    fn blockierte_pfade_als_src_werden_abgelehnt() {
+        // S-H-02: src muss canonicalize + is_safe_path durchlaufen,
+        // nicht nur sanitize_path. /etc als tarball-source ist blockiert.
+        let res = extract_blocking("/etc", "/tmp/protium-extract-blocked-src-test");
+        assert!(res.is_err(), "/etc darf nicht als tarball-source akzeptiert werden: {res:?}");
+        assert!(
+            res.as_ref().unwrap_err().contains("blocked"),
+            "fehlermeldung soll blockiert nennen: {:?}",
+            res
+        );
     }
 }
