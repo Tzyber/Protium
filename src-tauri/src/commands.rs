@@ -258,7 +258,17 @@ pub fn batch_dir_sizes(paths: Vec<String>) -> Result<HashMap<String, u64>, Strin
     let mut map = HashMap::new();
     for p in paths {
         sanitize_path(&p, "batch_dir_sizes")?;
-        let real = fs::canonicalize(&p).map_err(|e| e.to_string())?;
+        let real = match fs::canonicalize(&p) {
+            Ok(r) => r,
+            // race: pfad ist zwischen findOrphans und diesem aufruf weg
+            // (z. b. externer filemanager, parallel steam-update). nicht
+            // fatal: restliche größen liefern, frontend zeigt für den
+            // eintrag 0 / unbekannt an. andere canonicalize-fehler
+            // (PermissionDenied, InvalidInput, IO, symlink-schleife) und
+            // alle validierungs-/blocklist-fehler propagieren weiterhin.
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(e.to_string()),
+        };
         if !is_safe_path(&real.to_string_lossy()) {
             return Err(format!("blocked path: {p}"));
         }
@@ -627,6 +637,72 @@ mod tests {
         let tmp = std::env::temp_dir();
         assert!(dir_size(tmp.to_string_lossy().into_owned()).is_ok());
         assert!(dir_size("/tmp".into()).is_ok());
+    }
+
+    // R-3b: batch_dir_sizes mit einem verschwundenen pfad (NotFound-Race)
+    // darf den ganzen batch NICHT fehlschlagen lassen. ein einzelner
+    // not-found wird übersprungen, der rest liefert normal. UI bekommt
+    // für den fehlenden eintrag schlicht keinen map-eintrag (frontend
+    // fällt auf 0 / unbekannt zurück).
+    #[test]
+    fn batch_dir_sizes_partial_failure_skips_missing_paths() {
+        use super::batch_dir_sizes;
+
+        let mut root = std::env::temp_dir();
+        root.push(format!("protium-batch-partial-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+
+        // echter eintrag: 8 KB große datei → größe muss 8192 sein
+        let real = root.join("compatdata/12345");
+        std::fs::create_dir_all(&real).unwrap();
+        std::fs::write(real.join("payload"), vec![0u8; 8192]).unwrap();
+        let real_canon = std::fs::canonicalize(&real).unwrap();
+
+        // nicht-existenter eintrag: nur den pfad konstruieren, NICHT anlegen
+        let missing = root.join("compatdata/99999_gone");
+
+        let res = batch_dir_sizes(vec![
+            real_canon.to_string_lossy().into_owned(),
+            missing.to_string_lossy().into_owned(),
+        ]);
+        assert!(
+            res.is_ok(),
+            "batch darf trotz missing-pfad nicht fehlschlagen: {res:?}"
+        );
+        let map = res.unwrap();
+        assert_eq!(
+            map.len(),
+            1,
+            "nur der echte pfad soll im map sein, ist: {:?}",
+            map.keys().collect::<Vec<_>>()
+        );
+        assert_eq!(map[&real_canon.to_string_lossy().into_owned()], 8192);
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // R-3b regression: andere canonicalize-fehler (nicht NotFound) und
+    // validierungs-/blocklist-fehler müssen weiterhin propagieren.
+    // ohne diese absicherung wäre die partial-failure-änderung eine
+    // generische "alle fehler verschlucken"-lücke.
+    #[test]
+    fn batch_dir_sizes_propagates_blocked_path() {
+        use super::batch_dir_sizes;
+
+        // /etc ist geblockt (is_safe_path). auch wenn ein gültiger pfad
+        // vorne steht, schlägt der batch fehl sobald /etc drankommt.
+        let tmp = std::env::temp_dir();
+        let res = batch_dir_sizes(vec![
+            tmp.to_string_lossy().into_owned(),
+            "/etc".to_string(),
+        ]);
+        assert!(res.is_err(), "blockierter pfad muss Err liefern");
+        assert!(
+            res.as_ref().unwrap_err().contains("blocked path"),
+            "fehlermeldung soll den blocklist-grund nennen: {:?}",
+            res
+        );
     }
 
     // T-M-01: dir_size darf symlinks nicht folgen — sonst zählt ein symlink
