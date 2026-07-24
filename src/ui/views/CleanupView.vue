@@ -188,7 +188,7 @@ const busy = computed(() => cleanup.scanning || cleanup.deleting.size > 0);
 
     <!-- sticky aktionsleiste: immer erreichbar ohne ans listenende zu scrollen -->
     <div v-if="cleanup.orphans.length" class="actionbar">
-      <span class="sel-info mono">
+      <span class="sel-info">
         {{ t("cleanup.selectedInfo", { n: selectedAll.length, size: formatBytes(selectedBytes) }) }}
       </span>
       <div class="actionbar-btns">
@@ -235,12 +235,12 @@ const busy = computed(() => cleanup.scanning || cleanup.deleting.size > 0);
 .cv { padding: 20px 24px 96px; }
 .bar { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 16px; }
 .title h2 { margin: 2px 0 0; font-family: var(--font-display); font-size: 26px; font-weight: 600; letter-spacing: -0.02em; }
-.title .label { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.14em; color: var(--fg-2); text-transform: uppercase; }
+.title .label { font-family: var(--font-body); font-size: 11px; letter-spacing: 0.14em; color: var(--fg-2); text-transform: uppercase; }
 
 .scan-btn {
   background: var(--bg-2); color: var(--fg-1);
   border: 1px solid var(--line); border-radius: var(--r-sm);
-  padding: 10px 16px; font-family: var(--font-mono); font-size: 13px; cursor: pointer;
+  padding: 10px 16px; font-family: var(--font-body); font-size: 13px; cursor: pointer;
   margin-bottom: 16px;
 }
 .scan-btn:hover:not(:disabled) { color: var(--fg-0); border-color: var(--signal-dim); }
@@ -252,7 +252,7 @@ const busy = computed(() => cleanup.scanning || cleanup.deleting.size > 0);
   color: var(--tier-borked);
   border-radius: var(--r-sm);
   padding: 12px 16px;
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: 13px;
   margin-bottom: 16px;
 }
@@ -277,7 +277,7 @@ const busy = computed(() => cleanup.scanning || cleanup.deleting.size > 0);
 .pm-btn:hover { background: var(--signal-bright); }
 
 .summary {
-  font-family: var(--font-mono); font-size: 14px; color: var(--fg-1);
+  font-family: var(--font-body); font-size: 14px; color: var(--fg-1);
   background: var(--bg-2); border: 1px solid var(--line);
   border-radius: var(--r-sm); padding: 12px 16px; margin-bottom: 20px;
 }
@@ -289,7 +289,7 @@ const busy = computed(() => cleanup.scanning || cleanup.deleting.size > 0);
 }
 .section .count { color: var(--fg-2); font-weight: 400; }
 .section .warn-label {
-  font-family: var(--font-mono); font-size: 11px; color: var(--tier-gold);
+  font-family: var(--font-body); font-size: 11px; color: var(--tier-gold);
   border: 1px solid color-mix(in srgb, var(--tier-gold) 45%, transparent);
   border-radius: 999px; padding: 2px 9px;
 }
@@ -297,7 +297,7 @@ const busy = computed(() => cleanup.scanning || cleanup.deleting.size > 0);
 .sel-all {
   background: none; border: 1px solid var(--line); color: var(--fg-1);
   border-radius: var(--r-sm); padding: 6px 12px;
-  font-family: var(--font-mono); font-size: 12px; cursor: pointer;
+  font-family: var(--font-body); font-size: 12px; cursor: pointer;
 }
 .sel-all:hover { color: var(--fg-0); border-color: var(--signal-dim); }
 .sel-all.warn:hover { border-color: var(--tier-gold); color: var(--tier-gold); }
@@ -366,8 +366,8 @@ const busy = computed(() => cleanup.scanning || cleanup.deleting.size > 0);
 }
 .action.danger:hover:not(:disabled) { background: color-mix(in srgb, var(--tier-borked) 30%, transparent); }
 
-.hint { color: var(--tier-gold); font-family: var(--font-mono); font-size: 13px; margin-bottom: 12px; }
-.empty { color: var(--fg-2); font-family: var(--font-mono); font-size: 14px; padding: 32px 0; text-align: center; }
+.hint { color: var(--tier-gold); font-family: var(--font-body); font-size: 13px; margin-bottom: 12px; }
+.empty { color: var(--fg-2); font-family: var(--font-body); font-size: 14px; padding: 32px 0; text-align: center; }
 
 .paths { margin: 8px 0 0; padding-left: 18px; color: var(--fg-1); max-height: 160px; overflow-y: auto; }
 .paths li { font-size: 12px; margin: 2px 0; }

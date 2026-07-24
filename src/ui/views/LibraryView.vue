@@ -48,7 +48,7 @@ const showWarnings = ref(false);
         >
           ⚠ {{ scan.warnings.length }}
         </button>
-        <span class="status mono" role="status" aria-live="polite" aria-atomic="true">{{ scan.statusText }}</span>
+        <span class="status" role="status" aria-live="polite" aria-atomic="true">{{ scan.statusText }}</span>
         <button class="rescan" type="button" :disabled="scan.status === 'scanning'" @click="scan.runScan()">
           {{ scan.status === "scanning" ? t("library.scanning") : t("library.rescan") }}
         </button>
@@ -129,7 +129,7 @@ const showWarnings = ref(false);
   border: 1px solid color-mix(in srgb, var(--tier-gold) 40%, transparent);
   border-radius: var(--r-sm);
   padding: 6px 10px;
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: 11px;
   cursor: pointer;
 }
@@ -142,7 +142,7 @@ const showWarnings = ref(false);
   border: 1px solid var(--line);
   border-left: 2px solid var(--tier-gold);
   border-radius: var(--r-sm);
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: 12px;
   color: var(--fg-1);
   display: grid;
@@ -159,7 +159,7 @@ const showWarnings = ref(false);
   padding: 60px 0;
   text-align: center;
   color: var(--fg-2);
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
 }
 .empty.err { color: var(--tier-borked); }
 .linklike { background: none; border: none; color: var(--signal-bright); cursor: pointer; font: inherit; text-decoration: underline; }

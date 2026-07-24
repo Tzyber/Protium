@@ -28,7 +28,7 @@ const color = computed(() => COLORS[props.tier]);
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.08em;

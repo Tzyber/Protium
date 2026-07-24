@@ -144,7 +144,7 @@ const statusLine = computed(() => {
           <div class="rsub mono">{{ formatBytes(r.tarball.size) }}</div>
           <div v-if="proton.jobs[r.tag]" class="progress">
             <div class="track"><div class="fill" :style="{ width: (pct(r.tag) ?? 30) + '%' }" /></div>
-            <span class="phase mono">{{ t("phase." + proton.jobs[r.tag]?.phase) }}<span v-if="pct(r.tag) !== null"> · {{ pct(r.tag) }}%</span></span>
+            <span class="phase">{{ t("phase." + proton.jobs[r.tag]?.phase) }}<span v-if="pct(r.tag) !== null"> · {{ pct(r.tag) }}%</span></span>
           </div>
         </div>
         <button
@@ -192,7 +192,7 @@ const statusLine = computed(() => {
 .bar { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 20px; }
 .update { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .statusline {
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: 11px;
   color: var(--fg-1);
   display: flex;
@@ -217,7 +217,7 @@ const statusLine = computed(() => {
 .rescan {
   background: var(--bg-2); color: var(--fg-1);
   border: 1px solid var(--line); border-radius: var(--r-sm);
-  padding: 8px 14px; font-family: var(--font-mono); font-size: 12px; cursor: pointer;
+  padding: 8px 14px; font-family: var(--font-body); font-size: 12px; cursor: pointer;
 }
 .rescan:hover:not(:disabled) { color: var(--fg-0); border-color: var(--signal-dim); }
 
@@ -234,14 +234,14 @@ const statusLine = computed(() => {
 .rname { font-family: var(--font-display); font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px; }
 .rsub { color: var(--fg-2); font-size: 11px; margin-top: 3px; }
 
-.tag { font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; padding: 2px 6px; border-radius: 999px; }
+.tag { font-family: var(--font-body); font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; padding: 2px 6px; border-radius: 999px; }
 .tag.ok { color: var(--tier-platinum); background: color-mix(in srgb, var(--tier-platinum) 14%, transparent); }
 .tag.distro { color: var(--fg-2); border: 1px solid var(--line); margin-left: 8px; }
 
-.used { background: none; border: 1px solid var(--signal-dim); color: var(--signal-bright); border-radius: var(--r-sm); padding: 5px 9px; font-family: var(--font-mono); font-size: 11px; cursor: pointer; white-space: nowrap; }
+.used { background: none; border: 1px solid var(--signal-dim); color: var(--signal-bright); border-radius: var(--r-sm); padding: 5px 9px; font-family: var(--font-body); font-size: 11px; cursor: pointer; white-space: nowrap; }
 .used.muted { color: var(--fg-2); border-color: var(--line); cursor: default; }
 
-.rm { background: none; border: 1px solid color-mix(in srgb, var(--tier-borked) 45%, transparent); color: var(--tier-borked); border-radius: var(--r-sm); padding: 5px 10px; font-family: var(--font-mono); font-size: 11px; cursor: pointer; }
+.rm { background: none; border: 1px solid color-mix(in srgb, var(--tier-borked) 45%, transparent); color: var(--tier-borked); border-radius: var(--r-sm); padding: 5px 10px; font-family: var(--font-body); font-size: 11px; cursor: pointer; }
 .rm:hover:not(:disabled) { background: color-mix(in srgb, var(--tier-borked) 14%, transparent); }
 .rm-lock { color: var(--fg-2); font-size: 13px; }
 
@@ -254,7 +254,7 @@ const statusLine = computed(() => {
   color: var(--tier-borked);
   border-radius: var(--r-sm);
   padding: 7px 12px;
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: 11px;
   cursor: pointer;
   white-space: nowrap;
@@ -266,7 +266,7 @@ const statusLine = computed(() => {
 .fill { height: 100%; background: var(--signal); transition: width 0.2s; }
 .phase { color: var(--fg-2); font-size: 10px; }
 
-.hint { color: var(--tier-gold); font-family: var(--font-mono); font-size: 12px; margin-bottom: 10px; }
+.hint { color: var(--tier-gold); font-family: var(--font-body); font-size: 12px; margin-bottom: 10px; }
 .games { margin: 8px 0 0; padding-left: 18px; color: var(--fg-1); }
 .games li { margin: 2px 0; }
 </style>

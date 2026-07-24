@@ -158,7 +158,7 @@ function libShort(path: string): string {
   color: var(--fg-1);
   border-radius: var(--r-sm);
   padding: 6px 10px;
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: 13px;
   cursor: pointer;
   transition: border-color 0.12s, color 0.12s, background 0.12s;
@@ -179,7 +179,7 @@ function libShort(path: string): string {
   color: color-mix(in srgb, var(--c) 75%, var(--fg-1));
   border-radius: 999px;
   padding: 5px 10px;
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -193,6 +193,11 @@ function libShort(path: string): string {
 .t-borked { --c: var(--tier-borked); }
 .t-unknown { --c: var(--tier-unknown); }
 
+/* filter-gruppen-labels (SORT / PROTON / DISK) werden gelesen, nicht gescannt —
+   vom globalen .label (mono) auf body umstellen. gleiche schrift wie die chips
+   daneben, damit das gruppen-label nicht aus dem raster fällt. */
+.label { font-family: var(--font-body); }
+
 .reset {
   margin-left: auto;
   background: none;
@@ -200,7 +205,7 @@ function libShort(path: string): string {
   color: var(--fg-2);
   border-radius: var(--r-sm);
   padding: 6px 10px;
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: 12px;
   cursor: pointer;
 }
