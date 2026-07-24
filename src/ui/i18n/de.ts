@@ -112,10 +112,10 @@ export const de = {
     statusOffline: "offline · letzter stand {when}",
   },
   phase: {
-    queued: "queued",
-    downloading: "downloading",
-    verifying: "verifying",
-    extracting: "extracting",
+    queued: "wartet",
+    downloading: "lädt",
+    verifying: "prüfe",
+    extracting: "entpacke",
   },
   drawer: {
     close: "schließen",

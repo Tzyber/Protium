@@ -143,8 +143,11 @@ const statusLine = computed(() => {
           </div>
           <div class="rsub mono">{{ formatBytes(r.tarball.size) }}</div>
           <div v-if="proton.jobs[r.tag]" class="progress">
-            <div class="track"><div class="fill" :style="{ width: (pct(r.tag) ?? 30) + '%' }" /></div>
-            <span class="phase">{{ t("phase." + proton.jobs[r.tag]?.phase) }}<span v-if="pct(r.tag) !== null"> · {{ pct(r.tag) }}%</span></span>
+            <template v-if="proton.jobs[r.tag]?.phase === 'downloading'">
+              <div class="track"><div class="fill" :style="{ width: (pct(r.tag) ?? 30) + '%' }" /></div>
+              <span class="phase">{{ t("phase." + proton.jobs[r.tag]?.phase) }}<span v-if="pct(r.tag) !== null"> · {{ pct(r.tag) }}%</span></span>
+            </template>
+            <span v-else class="phase act">{{ t("phase." + proton.jobs[r.tag]?.phase) }}</span>
           </div>
         </div>
         <button
@@ -265,6 +268,19 @@ const statusLine = computed(() => {
 .track { flex: 1; max-width: 320px; height: 5px; background: var(--bg-0); border-radius: 999px; overflow: hidden; }
 .fill { height: 100%; background: var(--signal); transition: width 0.2s; }
 .phase { color: var(--fg-2); font-size: 10px; }
+.phase.act::before {
+  content: "·";
+  display: inline-block;
+  animation: phase-pulse 1s ease-in-out infinite;
+}
+.phase.act { color: var(--signal-bright); }
+@keyframes phase-pulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .phase.act::before { opacity: 0.6; animation: none; }
+}
 
 .hint { color: var(--tier-gold); font-family: var(--font-body); font-size: 12px; margin-bottom: 10px; }
 .games { margin: 8px 0 0; padding-left: 18px; color: var(--fg-1); }

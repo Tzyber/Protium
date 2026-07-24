@@ -133,10 +133,15 @@ export const useProtonStore = defineStore("proton", {
       try {
         if (!steamRoot) throw new Error(t("proton.noScanResult"));
         const cacheDir = `${await appCacheDir()}/downloads`;
-        job.phase = "downloading";
-        // verify/extract-phasen setzen wir um die core-schritte herum
-        await installRelease(tauriPorts, { steamRoot, cacheDir, release, downloadId: tag });
-        job.phase = "extracting";
+        await installRelease(tauriPorts, {
+          steamRoot,
+          cacheDir,
+          release,
+          downloadId: tag,
+          onPhase: (p) => {
+            job.phase = p;
+          },
+        });
         await scan.runScan(); // frische compatToolsInstalled + usedBy
         delete this.jobs[tag];
       } catch (e) {

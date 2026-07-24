@@ -155,11 +155,14 @@ function parseSha512Sum(text: string): string | null {
   return token && /^[0-9a-fA-F]{128}$/.test(token) ? token.toLowerCase() : null;
 }
 
+export type InstallPhase = "downloading" | "verifying" | "extracting";
+
 interface InstallOpts {
   steamRoot: string;
   cacheDir: string; // tarball-zwischenspeicher (app-cache)
   release: GeRelease;
   downloadId: string; // korreliert die progress-events
+  onPhase?: (phase: InstallPhase) => void;
 }
 
 // download → sha512-prüfung → entpacken. tarball wird immer aufgeräumt; wirft bei mismatch.
@@ -182,12 +185,17 @@ export async function installRelease(
   }
 
   try {
+    opts.onPhase?.("downloading");
     const actual = await system.downloadFile(opts.release.tarball.url, dest, opts.downloadId);
-    if (expected && actual.toLowerCase() !== expected) {
-      throw new Error(
-        `checksum stimmt nicht (erwartet ${expected.slice(0, 12)}…, war ${actual.slice(0, 12)}…)`,
-      );
+    if (expected) {
+      opts.onPhase?.("verifying");
+      if (actual.toLowerCase() !== expected) {
+        throw new Error(
+          `checksum stimmt nicht (erwartet ${expected.slice(0, 12)}…, war ${actual.slice(0, 12)}…)`,
+        );
+      }
     }
+    opts.onPhase?.("extracting");
     await system.extractTarball(dest, paths.compatToolsDir(opts.steamRoot));
   } finally {
     await fs.remove(dest).catch(() => {}); // tarball immer weg

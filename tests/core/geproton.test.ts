@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { fetchReleases, type GeRelease, installRelease } from "../../src/core/geproton.js";
+import {
+  fetchReleases,
+  type GeRelease,
+  type InstallPhase,
+  installRelease,
+} from "../../src/core/geproton.js";
 import type { FileSystem, Http, HttpResponse, System } from "../../src/core/ports.js";
 import { memCache } from "../support/fakeSteam";
 
@@ -168,5 +173,24 @@ describe("installRelease", () => {
     ).rejects.toThrow(/checksum/);
     expect(m.extracted).toHaveLength(0);
     expect(m.removed).toContain("/cache/GE-Proton9-27.tar.gz");
+  });
+
+  it("onPhase wird in der reihenfolge downloading → verifying → extracting aufgerufen", async () => {
+    const m = installMocks(goodHash, `${goodHash}  GE-Proton9-27.tar.gz`);
+    const phases: InstallPhase[] = [];
+    await installRelease(m, {
+      steamRoot: "/root",
+      cacheDir: "/cache",
+      release,
+      downloadId: "1",
+      onPhase: (p) => phases.push(p),
+    });
+    expect(phases).toEqual(["downloading", "verifying", "extracting"]);
+  });
+
+  it("ohne onPhase (undefined) läuft installRelease unverändert durch", async () => {
+    const m = installMocks(goodHash, `${goodHash}  GE-Proton9-27.tar.gz`);
+    await installRelease(m, { steamRoot: "/root", cacheDir: "/cache", release, downloadId: "1" });
+    expect(m.extracted).toHaveLength(1); // normaler durchlauf
   });
 });
