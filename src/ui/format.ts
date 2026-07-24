@@ -9,3 +9,8 @@ export function formatBytes(bytes: number): string {
   }
   return `${v.toFixed(v >= 100 || i === 0 ? 0 : 1)} ${units[i]}`;
 }
+
+/** rust-commands rejecten mit einem rohen string (kein Error-objekt) → sicher auslesen. */
+export function errMsg(e: unknown): string {
+  return typeof e === "string" ? e : ((e as Error)?.message ?? String(e));
+}
