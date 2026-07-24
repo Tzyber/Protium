@@ -152,7 +152,8 @@ export const de = {
   errors: {
     steamRunning:
       "steam läuft gerade — die änderung würde beim beenden überschrieben. bitte steam erst beenden.",
-    shortcutUnreadable: "shortcuts.vdf nicht lesbar — Non-Steam-Spiele können nicht identifiziert werden.",
+    shortcutUnreadable:
+      "shortcuts.vdf nicht lesbar — Non-Steam-Spiele können nicht identifiziert werden.",
     userdataUnreadableWithDetail:
       "userdata nicht lesbar — Wine-Prefix-Bereinigung deaktiviert: {detail}",
     shortcutsUnreadable: "shortcuts.vdf nicht lesbar — Wine-Prefix-Bereinigung deaktiviert.",

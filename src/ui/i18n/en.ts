@@ -103,7 +103,7 @@ export const en = {
     cancel: "cancel",
     deleteTitle: "delete {name}?",
     usedByConfirm:
-      "this version is used by {n} game(s) — Steam will fall back to \"default\" afterwards:",
+      'this version is used by {n} game(s) — Steam will fall back to "default" afterwards:',
     unusedConfirm: "the directory will be removed. no games use this version.",
     appId: "app {id}",
     noReleases: "no releases (offline or rate-limit?)",
@@ -155,8 +155,7 @@ export const en = {
     steamRunning:
       "steam is running — the change would be overwritten on exit. please close steam first.",
     shortcutUnreadable: "shortcuts.vdf unreadable — non-Steam games cannot be identified.",
-    userdataUnreadableWithDetail:
-      "userdata unreadable — Wine-prefix cleanup disabled: {detail}",
+    userdataUnreadableWithDetail: "userdata unreadable — Wine-prefix cleanup disabled: {detail}",
     shortcutsUnreadable: "shortcuts.vdf unreadable — Wine-prefix cleanup disabled.",
     scanIncomplete: "Scan incomplete — libraries skipped: {paths}",
     errorShortcutUnreadable: "{type}/{appId}: shortcuts.vdf unreadable — skipped",

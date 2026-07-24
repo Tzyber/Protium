@@ -56,8 +56,8 @@ type DotPath<T, P extends string = ""> = {
   [K in keyof T & string]: T[K] extends string
     ? `${P}${K}`
     : T[K] extends object
-    ? DotPath<T[K], `${P}${K}.`>
-    : never;
+      ? DotPath<T[K], `${P}${K}.`>
+      : never;
 }[keyof T & string];
 
 export type Key = DotPath<Dict>;
