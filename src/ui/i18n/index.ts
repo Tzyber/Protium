@@ -10,9 +10,19 @@ import { de } from "./de.js";
 import { en } from "./en.js";
 
 export type Locale = "de" | "en";
-export type Dict = typeof de;
 
-const tables: Record<Locale, Dict> = { de, en };
+// struktur-sync: `de` ist die wahrheit, `en` muss die gleiche form haben
+// (gleiche keys, gleiche nesting-tiefe). `Dict` ist absichtlich generisch
+// über string-values, damit de und en im `tables`-record koexistieren
+// können — sonst verlangt TS exakt gleiche string-literale.
+type DeepStringify<T> = T extends string
+  ? string
+  : T extends object
+    ? { [K in keyof T]: DeepStringify<T[K]> }
+    : T;
+export type Dict = DeepStringify<typeof de>;
+
+const tables: Record<Locale, Dict> = { de, en: en as unknown as Dict };
 
 function detectLocale(): Locale {
   if (typeof navigator === "undefined") return "en";
