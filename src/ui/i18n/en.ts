@@ -1,11 +1,12 @@
-// englische übersetzung. lowercase-stil beibehalten. eigennamen (Proton, Wine-Prefix,
-// Shadercache, AppID, shortcuts.vdf) bleiben unübersetzt. platzhalter {n}, {name},
-// {size}, {error}, {when}, {detail}, {appId}, {type}, {tag}, {msg}, {id}, {paths},
-// {compatTool} müssen in de und en identisch vorhanden sein.
+// englische übersetzung. lowercase-stil durchgängig: string-anfang klein,
+// mitten im string auch nach satzzeichen klein — Ausnahme nur die
+// eigennamen (Steam, Proton, Wine-Prefix, Shadercache, GE-Proton, AppID,
+// shortcuts.vdf, Steam Cloud, ProtonDB). de bleibt unverändert
+// (deutsche substantiv-großschreibung ist pflicht).
 //
-// REVIEW-PFLICHT: diese datei wird nach fertigstellung als de/en-tabelle an den
-// assistant zum gegenlesen gegeben. idiomatik, kürze, ton werden dort geprüft.
-// bis dahin stehen hier vorläufige werte.
+// platzhalter {n}, {name}, {size}, {error}, {when}, {detail}, {appId},
+// {type}, {tag}, {msg}, {id}, {paths}, {compatTool} müssen in de und en
+// identisch vorhanden sein.
 
 export const en = {
   common: {
@@ -15,10 +16,10 @@ export const en = {
   },
   app: {
     navAria: "main navigation",
-    navLibrary: "Library",
+    navLibrary: "library",
     navProton: "Proton",
-    navCleanup: "Cleanup",
-    navSettings: "Settings",
+    navCleanup: "cleanup",
+    navSettings: "settings",
     phaseUpcoming: "phase 5+",
     brandTagline: "steam · proton",
     root: "root",
@@ -61,20 +62,20 @@ export const en = {
     orphanedData: "orphaned data",
     searching: "searching…",
     searchButton: "scan for orphaned data",
-    scanBlocked: "Scan incomplete: libraries were skipped. Cleanup is blocked.",
-    pathMissingTitle: "These libraries from Steam's config do not exist:",
+    scanBlocked: "scan incomplete: libraries were skipped. cleanup is blocked.",
+    pathMissingTitle: "these libraries from Steam's config do not exist:",
     pathMissingNote:
-      "Are these old/removed drives? Then cleanup is safe. If they are disconnected drives with games on them: mount them first, or you risk data loss.",
+      "are these old/removed drives? then cleanup is safe. if they are disconnected drives with games on them: mount them first, or you risk data loss.",
     pathMissingDismiss: "ignore old drives and continue",
     shortcutUnreadableMessage:
-      "shortcuts.vdf unreadable — non-Steam games cannot be identified. Wine-prefix cleanup is blocked. Affected files:",
+      "shortcuts.vdf unreadable — non-Steam games cannot be identified. Wine-prefix cleanup is blocked. affected files:",
     summary: "{n} orphaned entries · {size} reclaimable",
-    shaderCaches: "Shader-Caches",
+    shaderCaches: "shader-caches",
     winePrefixes: "Wine-Prefixes",
-    winePrefixWarn: "Warning — may contain local savegames!",
-    total: "Total {size}",
+    winePrefixWarn: "warning — may contain local savegames!",
+    total: "total {size}",
     selectAll: "select all",
-    potentialShortcutTooltip: "possible non-Steam shortcut — not identifiable via app manifest",
+    potentialShortcutTooltip: "possible non-Steam shortcut — not identifiable via AppID manifest",
     empty: "no orphaned data found",
     selectedInfo: "{n} selected · {size}",
     cleanAllShaders: "clean all shader caches",
@@ -82,8 +83,8 @@ export const en = {
     deleteConfirmTitle: "delete {n} orphaned entries?",
     deleteAction: "delete",
     savegameWarning:
-      "Wine-Prefixes may contain local savegames that are NOT in Steam Cloud! Deleted prefixes land in .protium-trash — manually recoverable from there.",
-    totalSize: "Total size: {size}",
+      "Wine-Prefixes may contain local savegames that are NOT synced to Steam Cloud! deleted prefixes land in .protium-trash — manually recoverable from there.",
+    totalSize: "total size: {size}",
   },
   proton: {
     label: "proton",
@@ -112,7 +113,7 @@ export const en = {
     noScanResult: "no scan result — scan the library first",
     statusUpdated: "updated · {n} releases · just now",
     statusCurrent: "current · last checked {when}",
-    statusOffline: "offline · last update {when}",
+    statusOffline: "offline · as of {when}",
   },
   phase: {
     queued: "queued",
@@ -122,7 +123,7 @@ export const en = {
   },
   drawer: {
     close: "close",
-    srDescription: "details for {name}. size {size}, proton {compatTool}, app-id {appId}.",
+    srDescription: "details for {name}. size {size}, proton {compatTool}, AppID {appId}.",
     configuration: "configuration",
     compatToolLabel: "proton / compat-tool",
     compatDefault: "default (system default)",
@@ -130,7 +131,8 @@ export const en = {
     saved: "saved ✓",
     launchOptionsLabel: "launch options",
     launchOptionsPlaceholder: "e.g. gamemoderun %command% -novid",
-    launchOptionsHint: "%command% = the actual start command; omit it to only append the options.",
+    launchOptionsHint:
+      "%command% = the actual start command; omit %command% to only append the options.",
     protondbLink: "view on protondb ↗",
     protondbHint:
       "reports with operating system, proton version and notes from other players. data from protondb (ODbL).",
@@ -157,7 +159,7 @@ export const en = {
     shortcutUnreadable: "shortcuts.vdf unreadable — non-Steam games cannot be identified.",
     userdataUnreadableWithDetail: "userdata unreadable — Wine-prefix cleanup disabled: {detail}",
     shortcutsUnreadable: "shortcuts.vdf unreadable — Wine-prefix cleanup disabled.",
-    scanIncomplete: "Scan incomplete — libraries skipped: {paths}",
+    scanIncomplete: "scan incomplete — libraries skipped: {paths}",
     errorShortcutUnreadable: "{type}/{appId}: shortcuts.vdf unreadable — skipped",
     errorNowInstalled: "{type}/{appId}: now installed — skipped",
   },
