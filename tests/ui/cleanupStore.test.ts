@@ -2,9 +2,10 @@ import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ScanResult } from "../../src/core/types";
 
-const { mockFindOrphans, mockReadAllShortcutAppIds } = vi.hoisted(() => ({
+const { mockFindOrphans, mockReadAllShortcutAppIds, mockInvoke } = vi.hoisted(() => ({
   mockFindOrphans: vi.fn(async () => []),
   mockReadAllShortcutAppIds: vi.fn(async () => ({ status: "none" as const })),
+  mockInvoke: vi.fn(async (_cmd: string, _args?: unknown) => "deleted"),
 }));
 
 vi.mock("../../src/core/cleanup", () => ({
@@ -15,7 +16,7 @@ vi.mock("../../src/core/shortcuts", () => ({
   SHORTCUT_ID_THRESHOLD: 2_147_483_648,
 }));
 vi.mock("@tauri-apps/api/core", () => ({
-  invoke: vi.fn(async () => "deleted"),
+  invoke: mockInvoke,
 }));
 vi.mock("../../src/core/adapters/tauri", async () => {
   const tauriPorts = {
@@ -66,6 +67,8 @@ describe("cleanupStore gate logic", () => {
     setActivePinia(createPinia());
     mockFindOrphans.mockReset();
     mockReadAllShortcutAppIds.mockReset();
+    mockInvoke.mockReset();
+    mockInvoke.mockResolvedValue("deleted");
     mockReadAllShortcutAppIds.mockResolvedValue({ status: "none" });
   });
 
@@ -168,6 +171,8 @@ describe("cleanupStore — S-05 + shortcuts", () => {
     setActivePinia(createPinia());
     mockFindOrphans.mockReset();
     mockReadAllShortcutAppIds.mockReset();
+    mockInvoke.mockReset();
+    mockInvoke.mockResolvedValue("deleted");
     mockReadAllShortcutAppIds.mockResolvedValue({ status: "none" });
   });
 
@@ -258,5 +263,58 @@ describe("cleanupStore — S-05 + shortcuts", () => {
     expect(store.orphans.some((o) => o.type === "compatdata")).toBe(false);
     expect(store.orphans.some((o) => o.type === "shadercache")).toBe(true);
     expect(store.error).toMatch(/Wine-Prefix-Bereinigung deaktiviert/i);
+  });
+});
+
+// batch_dir_sizes-skip-semantik: ein von rust übersprungener pfad (NotFound-race)
+// darf im store NICHT als sizeBytes=0 landen — sonst ist er im UI nicht von einem
+// echten 0-byte-orphan (leeres verzeichnis) unterscheidbar. stattdessen bleibt
+// sizeBytes undefined → CleanupView rendert "…" (≠ "—" für leer, ≠ "0 B").
+describe("cleanupStore — batch_dir_sizes NotFound-Skip", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    mockFindOrphans.mockReset();
+    mockReadAllShortcutAppIds.mockReset();
+    mockInvoke.mockReset();
+    mockReadAllShortcutAppIds.mockResolvedValue({ status: "none" });
+  });
+
+  it("übersprungener pfad → sizeBytes undefined, vorhandener pfad → gemessene größe", async () => {
+    mockFindOrphans.mockResolvedValue([
+      { appId: 12345, type: "compatdata", path: "/lib/compatdata/12345", library: "/lib" },
+      { appId: 99999, type: "compatdata", path: "/lib/compatdata/99999_gone", library: "/lib" },
+    ]);
+    // batch_dir_sizes überspringt 99999_gone (NotFound) → kein map-eintrag
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === "batch_dir_sizes") return { "/lib/compatdata/12345": 8192 };
+      return "deleted";
+    });
+
+    const scanStore = useScanStore();
+    scanStore.result = fakeScan([]);
+    const store = useCleanupStore();
+
+    await store.scanOrphans();
+
+    expect(store.orphans).toHaveLength(2);
+    const real = store.orphans.find((o) => o.appId === 12345);
+    const vanished = store.orphans.find((o) => o.appId === 99999);
+    expect(real?.sizeBytes).toBe(8192);
+    expect(vanished?.sizeBytes).toBeUndefined();
+
+    // rechner müssen ?? 0 nutzen, damit die summe kein NaN wird:
+    expect(store.totalOrphanBytes).toBe(8192);
+  });
+
+  it("UI-ternary: undefined-sizeBytes rendert '…' (nicht '—', nicht '0 B')", () => {
+    // derselbe ausdruck wie CleanupView.vue:150,183 — als regressionstest,
+    // damit eine zukünftige änderung an formatBytes oder dem ternären
+    // operator die unterscheidung "verschwunden (…)" vs "leer (—)" nicht
+    // versehentlich wieder verwischt.
+    const formatBytes = (b: number) => (!b || b < 0 ? "—" : `${b} B`);
+    const renderSize = (sb?: number) => (sb != null ? formatBytes(sb) : "…");
+    expect(renderSize(undefined)).toBe("…");
+    expect(renderSize(0)).toBe("—"); // echtes leeres verzeichnis
+    expect(renderSize(8192)).toBe("8192 B");
   });
 });

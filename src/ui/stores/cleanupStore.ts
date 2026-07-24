@@ -102,7 +102,13 @@ export const useCleanupStore = defineStore("cleanup", {
         const paths = this.orphans.map((o) => o.path);
         const sizes = await invoke<Record<string, number>>("batch_dir_sizes", { paths });
         for (const o of this.orphans) {
-          o.sizeBytes = sizes[o.path] ?? 0;
+          // KEIN default auf 0: ein fehlender map-eintrag bedeutet, dass
+          // batch_dir_sizes den pfad übersprungen hat (NotFound-race). das
+          // sizeBytes bleibt dann undefined → UI rendert "…", ein leeres
+          // verzeichnis (real 0 byte) rendert "—" via formatBytes. die 0
+          // für summen/sort gehört in die rechner (?? 0 dort), nicht in
+          // die anzeige.
+          o.sizeBytes = sizes[o.path];
         }
       } catch (e) {
         this.error = errMsg(e);
