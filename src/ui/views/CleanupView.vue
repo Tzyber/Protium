@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from "vue";
 import type { OrphanEntry } from "../../core/types";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
 import { formatBytes } from "../format";
+import { t } from "../i18n";
 import { useCleanupStore } from "../stores/cleanupStore";
 
 const cleanup = useCleanupStore();
@@ -88,50 +89,46 @@ const busy = computed(() => cleanup.scanning || cleanup.deleting.size > 0);
   <section class="cv">
     <header class="bar">
       <div class="title">
-        <span class="label">cleanup</span>
-        <h2>verwaiste daten</h2>
+        <span class="label">{{ t("cleanup.label") }}</span>
+        <h2>{{ t("cleanup.orphanedData") }}</h2>
       </div>
     </header>
 
     <button class="scan-btn" type="button" :disabled="busy" @click="cleanup.scanOrphans()">
-      {{ cleanup.scanning ? "suche läuft…" : "nach verwaisten daten suchen" }}
+      {{ cleanup.scanning ? t("cleanup.searching") : t("cleanup.searchButton") }}
     </button>
 
     <div v-if="cleanup.blockedBySkipped" class="blocked">
-      Scan unvollständig: Libraries wurden übersprungen. Bereinigung blockiert.
+      {{ t("cleanup.scanBlocked") }}
     </div>
 
     <div v-if="cleanup.pathMissingLibs.length" class="pathmissing">
-      <p class="pm-title">Diese Libraries aus Steams Config existieren nicht:</p>
+      <p class="pm-title">{{ t("cleanup.pathMissingTitle") }}</p>
       <ul class="pm-list">
         <li v-for="p in cleanup.pathMissingLibs" :key="p">{{ p }}</li>
       </ul>
-      <p class="pm-note">
-        Sind das alte/entfernte Platten? Dann ist die Bereinigung sicher. Falls es abgehängte
-        Platten mit Spielen sind: erst einhängen, sonst droht Datenverlust.
-      </p>
+      <p class="pm-note">{{ t("cleanup.pathMissingNote") }}</p>
       <button class="pm-btn" type="button" @click="cleanup.dismissPathMissing()">
-        alte Platten ignorieren und fortfahren
+        {{ t("cleanup.pathMissingDismiss") }}
       </button>
     </div>
 
     <div v-if="cleanup.shortcutUnreadable" class="blocked">
-      shortcuts.vdf nicht lesbar — Non-Steam-Spiele können nicht identifiziert werden.
-      Wine-Prefix-Bereinigung ist daher blockiert. Betroffene Dateien:
+      {{ t("cleanup.shortcutUnreadableMessage") }}
       <ul class="pm-list"><li v-for="p in cleanup.shortcutUnreadablePaths" :key="p" class="mono">{{ p }}</li></ul>
     </div>
 
     <div v-if="cleanup.error" class="hint">{{ cleanup.error }}</div>
 
     <div v-if="cleanup.orphans.length" class="summary">
-      {{ cleanup.orphans.length }} verwaiste Einträge · {{ formatBytes(cleanup.totalOrphanBytes) }} freigebbar
+      {{ t("cleanup.summary", { n: cleanup.orphans.length, size: formatBytes(cleanup.totalOrphanBytes) }) }}
     </div>
 
     <template v-if="shadercacheOrphans.length">
       <div class="section-bar">
-        <h3 class="section">Shader-Caches <span class="count">{{ shadercacheOrphans.length }} </span></h3>
-        <h3 class="section"> <span class="count">Insgesamt {{ formatBytes(shadercacheTotalBytes) }} </span></h3>
-        <button class="sel-all" type="button" @click="selectAllShader()">alle auswählen</button>
+        <h3 class="section">{{ t("cleanup.shaderCaches") }} <span class="count">{{ shadercacheOrphans.length }} </span></h3>
+        <h3 class="section"> <span class="count">{{ t("cleanup.total", { size: formatBytes(shadercacheTotalBytes) }) }} </span></h3>
+        <button class="sel-all" type="button" @click="selectAllShader()">{{ t("cleanup.selectAll") }}</button>
       </div>
 
       <div class="list">
@@ -155,13 +152,13 @@ const busy = computed(() => cleanup.scanning || cleanup.deleting.size > 0);
     <template v-if="compatdataOrphans.length">
       <div class="section-bar">
         <h3 class="section">
-          Wine-Prefixes
-          <span class="warn-label">Vorsicht — kann lokale Spielstände enthalten!</span>
+          {{ t("cleanup.winePrefixes") }}
+          <span class="warn-label">{{ t("cleanup.winePrefixWarn") }}</span>
           <span class="count">{{ compatdataOrphans.length }}</span>
 
         </h3>
-        <span class="section"> <span class="count">Insgesamt {{ formatBytes(compatdataTotalBytes) }} </span></span>
-        <button class="sel-all warn" type="button" @click="selectAllCompat()">alle auswählen</button>
+        <span class="section"> <span class="count">{{ t("cleanup.total", { size: formatBytes(compatdataTotalBytes) }) }} </span></span>
+        <button class="sel-all warn" type="button" @click="selectAllCompat()">{{ t("cleanup.selectAll") }}</button>
       </div>
 
       <div class="list">
@@ -177,7 +174,7 @@ const busy = computed(() => cleanup.scanning || cleanup.deleting.size > 0);
           <span class="box" aria-hidden="true" />
           <span class="rname mono">
             {{ o.appId }}
-            <span v-if="o.potentialShortcut" class="sc-warn" title="möglicher Non-Steam-Shortcut — nicht via App-Manifest identifizierbar">?</span>
+            <span v-if="o.potentialShortcut" class="sc-warn" :title="t('cleanup.potentialShortcutTooltip')">?</span>
           </span>
           <span class="rpath mono" :title="o.path">{{ o.path }}</span>
           <span class="rsize mono">{{ o.sizeBytes != null ? formatBytes(o.sizeBytes) : "…" }}</span>
@@ -186,13 +183,13 @@ const busy = computed(() => cleanup.scanning || cleanup.deleting.size > 0);
     </template>
 
     <div v-if="!cleanup.scanning && !cleanup.orphans.length && !cleanup.error" class="empty">
-      keine verwaisten daten gefunden
+      {{ t("cleanup.empty") }}
     </div>
 
     <!-- sticky aktionsleiste: immer erreichbar ohne ans listenende zu scrollen -->
     <div v-if="cleanup.orphans.length" class="actionbar">
       <span class="sel-info mono">
-        {{ selectedAll.length }} ausgewählt · {{ formatBytes(selectedBytes) }}
+        {{ t("cleanup.selectedInfo", { n: selectedAll.length, size: formatBytes(selectedBytes) }) }}
       </span>
       <div class="actionbar-btns">
         <button
@@ -202,7 +199,7 @@ const busy = computed(() => cleanup.scanning || cleanup.deleting.size > 0);
           :disabled="busy"
           @click="startDelete(shadercacheOrphans)"
         >
-          Alle Shader-Caches bereinigen
+          {{ t("cleanup.cleanAllShaders") }}
         </button>
         <button
           class="action danger"
@@ -210,24 +207,23 @@ const busy = computed(() => cleanup.scanning || cleanup.deleting.size > 0);
           :disabled="busy || !selectedAll.length"
           @click="startDelete(selectedAll)"
         >
-          {{ selectedAll.length }} - Ausgewählte löschen
+          {{ t("cleanup.deleteSelected", { n: selectedAll.length }) }}
         </button>
       </div>
     </div>
 
     <ConfirmDialog
       v-if="deleteCandidates.length"
-      :title="`${deleteCandidates.length} verwaiste Einträge löschen?`"
-      confirm-label="löschen"
+      :title="t('cleanup.deleteConfirmTitle', { n: deleteCandidates.length })"
+      :confirm-label="t('cleanup.deleteAction')"
       danger
       @cancel="cancelDelete"
       @confirm="confirmDelete"
     >
       <p v-if="confirmCompat.length" class="saveurge">
-        Wine-Prefixes können lokale Spielstände enthalten, die NICHT in der Steam-Cloud liegen!
-        Gelöschte Prefixes landen in .protium-trash — dort manuell wiederherstellbar.
+        {{ t("cleanup.savegameWarning") }}
       </p>
-      <p>Gesamtgröße: {{ formatBytes(confirmTotalBytes) }}</p>
+      <p>{{ t("cleanup.totalSize", { size: formatBytes(confirmTotalBytes) }) }}</p>
       <ul class="paths">
         <li v-for="p in confirmPaths" :key="p" class="mono">{{ p }}</li>
       </ul>

@@ -2,9 +2,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { defineStore } from "pinia";
 import { tauriPorts } from "../../core/adapters/tauri";
 import { findOrphans } from "../../core/cleanup";
-import { SteamRunningError } from "../../core/configwrite";
 import { readAllShortcutAppIds, SHORTCUT_ID_THRESHOLD } from "../../core/shortcuts";
-import { type OrphanEntry, type SkippedLibrary } from "../../core/types";
+import { type OrphanEntry } from "../../core/types";
+import { t } from "../i18n";
 import { useScanStore } from "./scanStore";
 
 function errMsg(e: unknown): string {
@@ -47,7 +47,9 @@ export const useCleanupStore = defineStore("cleanup", {
         const blocking = skipped.filter((s) => s.reason !== "path-missing");
         if (blocking.length > 0) {
           this.blockedBySkipped = true;
-          this.error = `Scan unvollständig — Libraries übersprungen: ${blocking.map((s) => s.path).join(", ")}`;
+          this.error = t("errors.scanIncomplete", {
+            paths: blocking.map((s) => s.path).join(", "),
+          });
           return;
         }
         this.blockedBySkipped = false;
@@ -61,7 +63,7 @@ export const useCleanupStore = defineStore("cleanup", {
         this.pathMissingDismissed = false;
 
         if (await tauriPorts.system.isProcessRunning("steam")) {
-          this.error = new SteamRunningError().message;
+          this.error = t("errors.steamRunning");
           return;
         }
 
@@ -89,8 +91,8 @@ export const useCleanupStore = defineStore("cleanup", {
           // deshalb blockieren. shadercache ist regenerierbar und darf bereinigt werden.
           this.orphans = this.orphans.filter((o) => o.type === "shadercache");
           this.error = this.shortcutUnreadableDetail
-            ? `userdata nicht lesbar — Wine-Prefix-Bereinigung deaktiviert: ${this.shortcutUnreadableDetail}`
-            : "shortcuts.vdf nicht lesbar — Wine-Prefix-Bereinigung deaktiviert.";
+            ? t("errors.userdataUnreadableWithDetail", { detail: this.shortcutUnreadableDetail })
+            : t("errors.shortcutsUnreadable");
         }
 
         for (const o of this.orphans) {
@@ -120,7 +122,7 @@ export const useCleanupStore = defineStore("cleanup", {
     async deleteOrphans(entries: OrphanEntry[]) {
       if (this.blockedBySkipped) return;
       if (await tauriPorts.system.isProcessRunning("steam")) {
-        this.error = new SteamRunningError().message;
+        this.error = t("errors.steamRunning");
         return;
       }
 
@@ -139,11 +141,13 @@ export const useCleanupStore = defineStore("cleanup", {
       const errors: string[] = [];
       for (const entry of entries) {
         if (shortcutResult?.status === "unreadable" && entry.type === "compatdata") {
-          errors.push(`${entry.type}/${entry.appId}: shortcuts.vdf nicht lesbar — übersprungen`);
+          errors.push(
+            t("errors.errorShortcutUnreadable", { type: entry.type, appId: entry.appId }),
+          );
           continue;
         }
         if (installedAppIds.has(entry.appId)) {
-          errors.push(`${entry.type}/${entry.appId}: inzwischen installiert — übersprungen`);
+          errors.push(t("errors.errorNowInstalled", { type: entry.type, appId: entry.appId }));
           continue;
         }
 

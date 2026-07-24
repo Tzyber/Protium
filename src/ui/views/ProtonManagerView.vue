@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import type { CompatTool } from "../../core/types";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
 import { formatBytes } from "../format";
+import { t } from "../i18n";
 import { useProtonStore } from "../stores/protonStore";
 import { useScanStore } from "../stores/scanStore";
 import { useUiStore } from "../stores/uiStore";
@@ -16,16 +17,20 @@ onMounted(() => proton.init());
 // appId → name, um usedBy in klarnamen aufzulösen
 const nameOf = computed(() => new Map(scan.games.map((g) => [g.appId, g.name])));
 
-function removable(t: CompatTool): boolean {
-  return t.source === "user" && /^GE-Proton/i.test(t.name);
+function removable(tt: CompatTool): boolean {
+  return tt.source === "user" && /^GE-Proton/i.test(tt.name);
 }
 
-const installedInternal = computed(() => new Set(proton.installedTools.map((t) => t.internalName)));
+const installedInternal = computed(
+  () => new Set(proton.installedTools.map((tt) => tt.internalName)),
+);
 
 // remove-confirm-state
 const toRemove = ref<CompatTool | null>(null);
 const removeGames = computed(() =>
-  toRemove.value ? toRemove.value.usedBy.map((id) => nameOf.value.get(id) ?? `app ${id}`) : [],
+  toRemove.value
+    ? toRemove.value.usedBy.map((id) => nameOf.value.get(id) ?? t("proton.appId", { id }))
+    : [],
 );
 function confirmRemove() {
   if (toRemove.value) proton.remove(toRemove.value);
@@ -40,12 +45,12 @@ function pct(tag: string): number | null {
 
 function relTime(ts: number): string {
   const s = Math.round((Date.now() - ts) / 1000);
-  if (s < 60) return "gerade eben";
+  if (s < 60) return t("time.justNow");
   const m = Math.round(s / 60);
-  if (m < 60) return `vor ${m} min`;
+  if (m < 60) return t("time.minutesAgo", { n: m });
   const h = Math.round(m / 60);
-  if (h < 24) return `vor ${h} h`;
-  return `vor ${Math.round(h / 24)} tag(en)`;
+  if (h < 24) return t("time.hoursAgo", { n: h });
+  return t("time.daysAgo", { n: Math.round(h / 24) });
 }
 
 const statusFlash = ref(false);
@@ -64,13 +69,13 @@ const statusLine = computed(() => {
   const n = proton.releases.length;
   switch (proton.lastSource) {
     case "fresh":
-      return { icon: "✓", text: `aktualisiert · ${n} releases · gerade eben`, ok: true };
+      return { icon: "✓", text: t("proton.statusUpdated", { n }), ok: true };
     case "not-modified":
-      return { icon: "✓", text: `aktuell · zuletzt geprüft ${when}`, ok: true };
+      return { icon: "✓", text: t("proton.statusCurrent", { when }), ok: true };
     case "cache":
-      return { icon: "✓", text: `aktuell · zuletzt geprüft ${when}`, ok: true };
+      return { icon: "✓", text: t("proton.statusCurrent", { when }), ok: true };
     case "offline":
-      return { icon: "⚠", text: `offline · letzter stand ${when}`, ok: false };
+      return { icon: "⚠", text: t("proton.statusOffline", { when }), ok: false };
     default:
       return null;
   }
@@ -81,12 +86,12 @@ const statusLine = computed(() => {
   <section class="pm">
     <header class="bar">
       <div class="title">
-        <span class="label">proton</span>
-        <h2>versionen</h2>
+        <span class="label">{{ t("proton.label") }}</span>
+        <h2>{{ t("proton.versions") }}</h2>
       </div>
       <div class="update">
         <button class="rescan" type="button" :disabled="proton.loading" @click="refreshReleases">
-          {{ proton.loading ? "lädt…" : "releases aktualisieren" }}
+          {{ proton.loading ? t("proton.loading") : t("proton.refreshReleases") }}
         </button>
         <div
           v-if="statusLine"
@@ -99,47 +104,47 @@ const statusLine = computed(() => {
     </header>
 
     <!-- installiert -->
-    <h3 class="section">installiert <span class="count">{{ proton.installedTools.length }}</span></h3>
+    <h3 class="section">{{ t("proton.installed") }} <span class="count">{{ proton.installedTools.length }}</span></h3>
     <div class="list">
-      <div v-for="t in proton.installedTools" :key="t.name" class="row">
+      <div v-for="tt in proton.installedTools" :key="tt.name" class="row">
         <div class="rmain">
-          <div class="rname">{{ t.displayName }}</div>
+          <div class="rname">{{ tt.displayName }}</div>
           <div class="rsub mono">
-            {{ t.internalName }} · {{ formatBytes(t.sizeBytes) }}
-            <span v-if="t.source === 'system'" class="tag distro">distro · read-only</span>
+            {{ tt.internalName }} · {{ formatBytes(tt.sizeBytes) }}
+            <span v-if="tt.source === 'system'" class="tag distro">{{ t("proton.distroReadonly") }}</span>
           </div>
         </div>
-        <button v-if="t.usedBy.length" class="used" type="button" @click="ui.showLibraryForTool(t.internalName)">
-          {{ t.usedBy.length }} spiel(e) →
+        <button v-if="tt.usedBy.length" class="used" type="button" @click="ui.showLibraryForTool(tt.internalName)">
+          {{ t("proton.usedBy", { n: tt.usedBy.length }) }}
         </button>
-        <span v-else class="used muted">ungenutzt</span>
+        <span v-else class="used muted">{{ t("proton.unused") }}</span>
         <button
-          v-if="removable(t)"
+          v-if="removable(tt)"
           class="rm"
           type="button"
-          :disabled="proton.busyRemove === t.name"
-          @click="toRemove = t"
+          :disabled="proton.busyRemove === tt.name"
+          @click="toRemove = tt"
         >
-          {{ proton.busyRemove === t.name ? "…" : "löschen" }}
+          {{ proton.busyRemove === tt.name ? "…" : t("common.delete") }}
         </button>
-        <span v-else class="rm-lock" title="nicht über protium verwaltbar">🔒</span>
+        <span v-else class="rm-lock" :title="t('proton.notManageable')">🔒</span>
       </div>
     </div>
 
     <!-- verfügbar -->
-    <h3 class="section">GE-Proton releases</h3>
+    <h3 class="section">{{ t("proton.geReleases") }}</h3>
     <div v-if="proton.loadError" class="hint">{{ proton.loadError }}</div>
     <div class="list">
       <div v-for="r in proton.releases" :key="r.tag" class="row">
         <div class="rmain">
           <div class="rname">
             {{ r.tag }}
-            <span v-if="installedInternal.has(r.tag)" class="tag ok">installiert</span>
+            <span v-if="installedInternal.has(r.tag)" class="tag ok">{{ t("proton.tagInstalled") }}</span>
           </div>
           <div class="rsub mono">{{ formatBytes(r.tarball.size) }}</div>
           <div v-if="proton.jobs[r.tag]" class="progress">
             <div class="track"><div class="fill" :style="{ width: (pct(r.tag) ?? 30) + '%' }" /></div>
-            <span class="phase mono">{{ proton.jobs[r.tag]?.phase }}<span v-if="pct(r.tag) !== null"> · {{ pct(r.tag) }}%</span></span>
+            <span class="phase mono">{{ t("phase." + proton.jobs[r.tag]?.phase) }}<span v-if="pct(r.tag) !== null"> · {{ pct(r.tag) }}%</span></span>
           </div>
         </div>
         <button
@@ -148,16 +153,16 @@ const statusLine = computed(() => {
           type="button"
           @click="proton.queueInstall(r)"
         >
-          installieren
+          {{ t("proton.install") }}
         </button>
         <button
           v-else-if="proton.jobs[r.tag]"
           class="cancel"
           type="button"
-          :title="proton.activeTag === r.tag ? 'download abbrechen' : 'aus warteschlange entfernen'"
+          :title="proton.activeTag === r.tag ? t('proton.cancelDownload') : t('proton.cancelQueue')"
           @click="proton.cancel(r.tag)"
         >
-          ✕ abbrechen
+          ✕ {{ t("proton.cancel") }}
         </button>
         <span v-else class="used muted">✓</span>
       </div>
@@ -165,19 +170,19 @@ const statusLine = computed(() => {
 
     <ConfirmDialog
       v-if="toRemove"
-      :title="`${toRemove.displayName} löschen?`"
-      confirm-label="löschen"
+      :title="t('proton.deleteTitle', { name: toRemove.displayName })"
+      :confirm-label="t('common.delete')"
       danger
       @cancel="toRemove = null"
       @confirm="confirmRemove"
     >
       <template v-if="removeGames.length">
-        <p>diese version wird von {{ removeGames.length }} spiel(en) genutzt — steam fällt danach auf „default" zurück:</p>
+        <p>{{ t("proton.usedByConfirm", { n: removeGames.length }) }}</p>
         <ul class="games">
           <li v-for="g in removeGames" :key="g">{{ g }}</li>
         </ul>
       </template>
-      <p v-else>das verzeichnis wird entfernt. keine spiele nutzen diese version.</p>
+      <p v-else>{{ t("proton.unusedConfirm") }}</p>
     </ConfirmDialog>
   </section>
 </template>

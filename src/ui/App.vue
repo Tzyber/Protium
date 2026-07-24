@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted } from "vue";
 import ProtiumLogo from "./components/ProtiumLogo.vue";
+import { t } from "./i18n";
 import { useScanStore } from "./stores/scanStore";
 import { useUiStore, type ViewId } from "./stores/uiStore";
 import CleanupView from "./views/CleanupView.vue";
@@ -12,10 +13,10 @@ const ui = useUiStore();
 onMounted(() => scan.runScan());
 
 const nav: { id: ViewId | "settings"; label: string; active: boolean }[] = [
-  { id: "library", label: "Library", active: true },
-  { id: "proton", label: "Proton", active: true },
-  { id: "cleanup", label: "Cleanup", active: true },
-  { id: "settings", label: "Settings", active: false },
+  { id: "library", label: t("app.navLibrary"), active: true },
+  { id: "proton", label: t("app.navProton"), active: true },
+  { id: "cleanup", label: t("app.navCleanup"), active: true },
+  { id: "settings", label: t("app.navSettings"), active: false },
 ];
 
 const rootShort = computed(() => {
@@ -31,11 +32,11 @@ const rootShort = computed(() => {
         <div class="logo"><ProtiumLogo :size="28"/></div>
         <div>
           <div class="name">PROTIUM</div>
-          <div class="label">steam · proton</div>
+          <div class="label">{{ t("app.brandTagline") }}</div>
         </div>
       </div>
 
-      <nav aria-label="Hauptnavigation">
+      <nav :aria-label="t('app.navAria')">
         <button
           v-for="item in nav"
           :key="item.id"
@@ -47,15 +48,15 @@ const rootShort = computed(() => {
           @click="item.active && ui.go(item.id as ViewId)"
         >
           {{ item.label }}
-          <span v-if="!item.active" class="soon">phase 5+</span>
+          <span v-if="!item.active" class="soon">{{ t("app.phaseUpcoming") }}</span>
         </button>
       </nav>
 
       <div class="readout">
-        <div class="row"><span class="label">root</span><span class="mono val">{{ rootShort }}</span></div>
-        <div class="row"><span class="label">libs</span><span class="mono val">{{ scan.result?.libraries.length ?? "—" }}</span></div>
-        <div class="row"><span class="label">tools</span><span class="mono val">{{ scan.compatTools.length || "—" }}</span></div>
-        <div class="row" v-if="scan.elapsedMs"><span class="label">scan</span><span class="mono val">{{ scan.elapsedMs }} ms</span></div>
+        <div class="row"><span class="label">{{ t("app.root") }}</span><span class="mono val">{{ rootShort }}</span></div>
+        <div class="row"><span class="label">{{ t("app.libs") }}</span><span class="mono val">{{ scan.result?.libraries.length ?? "—" }}</span></div>
+        <div class="row"><span class="label">{{ t("app.tools") }}</span><span class="mono val">{{ scan.compatTools.length || "—" }}</span></div>
+        <div class="row" v-if="scan.elapsedMs"><span class="label">{{ t("app.scan") }}</span><span class="mono val">{{ scan.elapsedMs }} ms</span></div>
       </div>
     </aside>
 

@@ -9,6 +9,7 @@ import {
   removeTool,
 } from "../../core/geproton";
 import type { CompatTool } from "../../core/types";
+import { t } from "../i18n";
 import { useScanStore } from "./scanStore";
 
 type Phase = "queued" | "downloading" | "verifying" | "extracting";
@@ -87,7 +88,7 @@ export const useProtonStore = defineStore("proton", {
         this.lastFetchedAt = result.fetchedAt;
         this.lastSource = result.source;
         if (!this.releases.length && result.source === "offline") {
-          this.loadError = "keine releases (offline oder rate-limit?)";
+          this.loadError = t("proton.noReleases");
         }
       } catch (e) {
         this.loadError = errMsg(e);
@@ -130,7 +131,7 @@ export const useProtonStore = defineStore("proton", {
       const scan = useScanStore();
       const steamRoot = scan.result?.steamRoot;
       try {
-        if (!steamRoot) throw new Error("kein scan-ergebnis — erst library scannen");
+        if (!steamRoot) throw new Error(t("proton.noScanResult"));
         const cacheDir = `${await appCacheDir()}/downloads`;
         job.phase = "downloading";
         // verify/extract-phasen setzen wir um die core-schritte herum
@@ -140,7 +141,7 @@ export const useProtonStore = defineStore("proton", {
         delete this.jobs[tag];
       } catch (e) {
         const msg = errMsg(e);
-        if (!/cancel/i.test(msg)) this.loadError = `install ${tag} fehlgeschlagen: ${msg}`;
+        if (!/cancel/i.test(msg)) this.loadError = t("proton.installFailed", { tag, msg });
         delete this.jobs[tag];
       } finally {
         this.activeTag = null;
@@ -157,7 +158,7 @@ export const useProtonStore = defineStore("proton", {
         await removeTool(tauriPorts.fs, steamRoot, tool.name);
         await scan.runScan();
       } catch (e) {
-        this.loadError = `löschen fehlgeschlagen: ${errMsg(e)}`;
+        this.loadError = t("proton.removeFailed", { msg: errMsg(e) });
       } finally {
         this.busyRemove = null;
       }

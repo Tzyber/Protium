@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { focusFirstFocusable, restoreFocus, trapFocus } from "../a11y";
+import { t } from "../i18n";
 
 let dialogCount = 0;
 
@@ -55,9 +56,9 @@ onBeforeUnmount(() => {
       <h3 :id="titleId">{{ title }}</h3>
       <div :id="contentId" class="content"><slot /></div>
       <div class="actions">
-        <button class="btn ghost" type="button" @click="emit('cancel')">abbrechen</button>
+        <button class="btn ghost" type="button" @click="emit('cancel')">{{ t("common.cancel") }}</button>
         <button class="btn" :class="{ danger }" type="button" @click="emit('confirm')">
-          {{ confirmLabel ?? "bestätigen" }}
+          {{ confirmLabel ?? t("common.confirm") }}
         </button>
       </div>
     </div>

@@ -3,6 +3,7 @@ import { getHome, tauriPorts } from "../../core/adapters/tauri";
 import { discoverSteamRoot } from "../../core/paths";
 import { scanLibrary } from "../../core/scan";
 import { type ScanResult, SteamNotFoundError } from "../../core/types";
+import { t } from "../i18n";
 
 type Status = "idle" | "scanning" | "done" | "not-found" | "error";
 
@@ -17,7 +18,7 @@ interface State {
 export const useScanStore = defineStore("scan", {
   state: (): State => ({
     status: "idle",
-    statusText: "bereit",
+    statusText: t("status.ready"),
     error: null,
     result: null,
     elapsedMs: 0,
@@ -33,22 +34,22 @@ export const useScanStore = defineStore("scan", {
       this.error = null;
       const t0 = performance.now();
       try {
-        this.statusText = "suche steam-installation…";
+        this.statusText = t("status.findingSteam");
         const home = await getHome();
         const steamRoot = await discoverSteamRoot(tauriPorts.fs, home);
-        this.statusText = "scanne library…";
+        this.statusText = t("status.scanningLibrary");
         this.result = await scanLibrary(tauriPorts, { home, steamRoot, protonDbDelayMs: 0 });
         this.status = "done";
-        this.statusText = "bereit";
+        this.statusText = t("status.ready");
       } catch (e) {
         if (e instanceof SteamNotFoundError) {
           this.status = "not-found";
-          this.statusText = "keine steam-installation";
+          this.statusText = t("status.noSteamInstallation");
         } else {
           this.status = "error";
-          this.statusText = "fehler";
+          this.statusText = t("status.error");
           this.error = (e as Error)?.message ?? String(e);
-          console.error("scan fehlgeschlagen:", e);
+          console.error("scan failed:", e);
         }
       } finally {
         this.elapsedMs = Math.round(performance.now() - t0);

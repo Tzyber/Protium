@@ -3,6 +3,7 @@ import { computed, ref } from "vue";
 import { assetUrl, launchGame } from "../../core/adapters/tauri";
 import type { Game } from "../../core/types";
 import { formatBytes } from "../format";
+import { t } from "../i18n";
 import { useUiStore } from "../stores/uiStore";
 import TierBadge from "./TierBadge.vue";
 
@@ -33,7 +34,7 @@ function launch() {
     class="card"
     role="button"
     tabindex="0"
-    :aria-label="`${game.name} details öffnen`"
+    :aria-label="t('card.openDetails', { name: game.name })"
     @click="ui.openGame(game)"
     @keydown.enter.prevent="ui.openGame(game)"
     @keydown.space.prevent="ui.openGame(game)"
@@ -70,8 +71,8 @@ function launch() {
           <button
             class="play"
             type="button"
-            :title="`${game.name} starten`"
-            :aria-label="`${game.name} starten`"
+            :title="t('card.launch', { name: game.name })"
+            :aria-label="t('card.launch', { name: game.name })"
             @click.stop="launch"
           >
             <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9l7-4.5z" /></svg>

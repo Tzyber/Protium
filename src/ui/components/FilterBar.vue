@@ -2,6 +2,7 @@
 import { computed } from "vue";
 import type { Tier } from "../../core/types";
 import type { SortKey } from "../filter";
+import { t } from "../i18n";
 import { useLibraryStore } from "../stores/libraryStore";
 import { useScanStore } from "../stores/scanStore";
 
@@ -9,11 +10,14 @@ const scan = useScanStore();
 const lib = useLibraryStore();
 
 const TIER_ORDER: Tier[] = ["platinum", "gold", "silver", "bronze", "borked", "unknown"];
-const SORTS: { key: SortKey; label: string }[] = [
-  { key: "name", label: "name" },
-  { key: "size", label: "größe" },
-  { key: "tier", label: "tier" },
-];
+
+// labels via t() — bei locale-wechsel bleibt die sort-auswahl dieselbe
+// (key-basiert), nur das label ändert sich.
+const SORTS = computed(() => [
+  { key: "name" as const, label: t("filter.sortName") },
+  { key: "size" as const, label: t("filter.sortSize") },
+  { key: "tier" as const, label: t("filter.sortTier") },
+]);
 
 // nur tatsächlich vorkommende werte als filteroptionen anbieten
 const tiersPresent = computed(() => {
@@ -33,16 +37,16 @@ function libShort(path: string): string {
 <template>
   <div class="filterbar">
     <div class="search">
-      <label class="sr-only" for="library-search">suche</label>
+      <label class="sr-only" for="library-search">{{ t("filter.search") }}</label>
       <span class="ico">⌕</span>
-      <input id="library-search" v-model="lib.search" type="text" placeholder="suchen…" spellcheck="false" />
-      <button v-if="lib.search" class="clear" type="button" aria-label="suche löschen" @click="lib.search = ''">
+      <input id="library-search" v-model="lib.search" type="text" :placeholder="t('filter.searchPlaceholder')" spellcheck="false" />
+      <button v-if="lib.search" class="clear" type="button" :aria-label="t('filter.searchClear')" @click="lib.search = ''">
         ✕
       </button>
     </div>
 
     <div class="group">
-      <span class="label">sort</span>
+      <span class="label">{{ t("filter.sort") }}</span>
       <button
         v-for="s in SORTS"
         :key="s.key"
@@ -71,7 +75,7 @@ function libShort(path: string): string {
     </div>
 
     <div v-if="compatToolsPresent.length > 1" class="group">
-      <span class="label">proton</span>
+      <span class="label">{{ t("filter.proton") }}</span>
       <button
         v-for="c in compatToolsPresent"
         :key="c"
@@ -87,7 +91,7 @@ function libShort(path: string): string {
     </div>
 
     <div v-if="librariesPresent.length > 1" class="group">
-      <span class="label">disk</span>
+      <span class="label">{{ t("filter.disk") }}</span>
       <button
         v-for="l in librariesPresent"
         :key="l"
@@ -103,7 +107,7 @@ function libShort(path: string): string {
     </div>
 
     <button v-if="lib.activeFilterCount || lib.search" class="reset" type="button" @click="lib.reset()">
-      zurücksetzen
+      {{ t("filter.reset") }}
     </button>
   </div>
 </template>

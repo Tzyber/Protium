@@ -1,6 +1,7 @@
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ScanResult } from "../../src/core/types";
+import { setLocale } from "../../src/ui/i18n";
 
 const { mockFindOrphans, mockReadAllShortcutAppIds, mockInvoke } = vi.hoisted(() => ({
   mockFindOrphans: vi.fn(async () => []),
@@ -65,6 +66,7 @@ function fakeScanWithGames(gameIds: number[]): ScanResult {
 describe("cleanupStore gate logic", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
+    setLocale("de"); // assertions matchen deutsche substrings
     mockFindOrphans.mockReset();
     mockReadAllShortcutAppIds.mockReset();
     mockInvoke.mockReset();
@@ -169,6 +171,7 @@ describe("cleanupStore gate logic", () => {
 describe("cleanupStore — S-05 + shortcuts", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
+    setLocale("de");
     mockFindOrphans.mockReset();
     mockReadAllShortcutAppIds.mockReset();
     mockInvoke.mockReset();
@@ -273,6 +276,7 @@ describe("cleanupStore — S-05 + shortcuts", () => {
 describe("cleanupStore — batch_dir_sizes NotFound-Skip", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
+    setLocale("de");
     mockFindOrphans.mockReset();
     mockReadAllShortcutAppIds.mockReset();
     mockInvoke.mockReset();

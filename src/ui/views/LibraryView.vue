@@ -4,6 +4,7 @@ import FilterBar from "../components/FilterBar.vue";
 import GameCard from "../components/GameCard.vue";
 import GameDetailDrawer from "../components/GameDetailDrawer.vue";
 import { filterAndSortGames } from "../filter";
+import { t } from "../i18n";
 import { useLibraryStore } from "../stores/libraryStore";
 import { useScanStore } from "../stores/scanStore";
 
@@ -29,10 +30,10 @@ const showWarnings = ref(false);
   <section class="library">
     <header class="bar">
       <div class="title">
-        <span class="label">library</span>
+        <span class="label">{{ t("library.label") }}</span>
         <h2>
           {{ visible.length }}
-          <span class="unit">/ {{ scan.games.length }} spiele</span>
+          <span class="unit">{{ t("library.gamesCount", { n: scan.games.length }) }}</span>
         </h2>
       </div>
 
@@ -49,7 +50,7 @@ const showWarnings = ref(false);
         </button>
         <span class="status mono" role="status" aria-live="polite" aria-atomic="true">{{ scan.statusText }}</span>
         <button class="rescan" type="button" :disabled="scan.status === 'scanning'" @click="scan.runScan()">
-          {{ scan.status === "scanning" ? "scannt…" : "neu scannen" }}
+          {{ scan.status === "scanning" ? t("library.scanning") : t("library.rescan") }}
         </button>
       </div>
     </header>
@@ -69,12 +70,12 @@ const showWarnings = ref(false);
     <FilterBar v-if="scan.games.length" />
 
     <div v-if="scan.status === 'not-found'" class="empty">
-      keine steam-installation an den bekannten pfaden gefunden.
+      {{ t("library.noSteamFound") }}
     </div>
-    <div v-else-if="scan.status === 'error'" class="empty err">fehler: {{ scan.error }}</div>
-    <div v-else-if="scan.status === 'scanning' && !scan.games.length" class="empty">scanne…</div>
+    <div v-else-if="scan.status === 'error'" class="empty err">{{ t("library.errorPrefix", { error: scan.error ?? "" }) }}</div>
+    <div v-else-if="scan.status === 'scanning' && !scan.games.length" class="empty">{{ t("library.scanningState") }}</div>
     <div v-else-if="!visible.length" class="empty">
-      nichts gefunden — <button class="linklike" type="button" @click="lib.reset()">filter zurücksetzen</button>
+      {{ t("library.nothingFound") }}<button class="linklike" type="button" @click="lib.reset()">{{ t("library.resetFilter") }}</button>
     </div>
 
     <div v-else class="grid">

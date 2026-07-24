@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { assetUrl, launchGame, openExternal } from "../../core/adapters/tauri";
+import { SteamRunningError } from "../../core/configwrite";
 import { protonDbAppUrl } from "../../core/protondb";
 import type { Tier } from "../../core/types";
 import { focusFirstFocusable, restoreFocus, trapFocus } from "../a11y";
 import { formatBytes } from "../format";
+import { t } from "../i18n";
 import { useConfigStore } from "../stores/configStore";
 import { useScanStore } from "../stores/scanStore";
 import { useUiStore } from "../stores/uiStore";
@@ -15,14 +17,28 @@ const config = useConfigStore();
 const scan = useScanStore();
 const game = computed(() => ui.selectedGame);
 
-const TIER_LABEL: Record<Tier, string> = {
-  platinum: "läuft perfekt, out of the box",
-  gold: "läuft perfekt nach kleinen tweaks",
-  silver: "läuft mit einschränkungen",
-  bronze: "läuft, aber mit problemen",
-  borked: "läuft aktuell nicht",
-  unknown: "keine protondb-daten",
-};
+// tier-labels: t() in einem object, damit wir pro tier den lokalisierten text haben.
+// (reactive weil t() selbst zustandslos ist, aber für saubere template-usage als
+// computed.)
+const TIER_LABEL = computed<Record<Tier, string>>(() => ({
+  platinum: t("tier.platinum"),
+  gold: t("tier.gold"),
+  silver: t("tier.silver"),
+  bronze: t("tier.bronze"),
+  borked: t("tier.borked"),
+  unknown: t("tier.unknown"),
+}));
+
+// fehlertext: SteamRunningError bekommt die übersetzte meldung, andere rohe errors
+// (z. b. schreibrechte) bleiben unverändert, weil sie aus dem system kommen.
+function errorText(e: unknown): string {
+  if (e instanceof SteamRunningError) return t("errors.steamRunning");
+  return errMsg(e);
+}
+
+function errMsg(e: unknown): string {
+  return typeof e === "string" ? e : ((e as Error)?.message ?? String(e));
+}
 
 // cover-kandidaten wie in der karte
 const idx = ref(0);
@@ -108,7 +124,7 @@ async function saveLaunch() {
     await config.saveLaunchOptions(g.appId, launchInput.value.trim());
     launchState.value = "saved";
   } catch (e) {
-    launchState.value = (e as Error).message;
+    launchState.value = errorText(e);
   }
 }
 
@@ -132,7 +148,7 @@ const compatOptions = computed(() => {
 
   const seen = new Set(list.map((o) => o.value));
   if (current && current !== "default" && !seen.has(current)) {
-    list.push({ value: current, label: `${current} (nicht installiert)` });
+    list.push({ value: current, label: t("drawer.notInstalled", { name: current }) });
   }
 
   return list;
@@ -167,7 +183,7 @@ async function saveCompat() {
     await config.saveCompatTool(g.appId, name);
     compatState.value = "saved";
   } catch (e) {
-    compatState.value = (e as Error).message;
+    compatState.value = errorText(e);
   }
 }
 
@@ -203,11 +219,10 @@ watch(errorMessage, (msg) => {
         tabindex="-1"
         @keydown="onKeydown"
       >
-        <button class="close" type="button" aria-label="schließen" @click="ui.closeGame()">✕</button>
+        <button class="close" type="button" :aria-label="t('drawer.close')" @click="ui.closeGame()">✕</button>
 
         <p :id="descriptionId" class="sr-only">
-          details zu {{ game.name }}. größe {{ formatBytes(game.sizeBytes) }}, proton {{ game.compatTool }}, app-id
-          {{ game.appId }}.
+          {{ t("drawer.srDescription", { name: game.name, size: formatBytes(game.sizeBytes), compatTool: game.compatTool, appId: game.appId }) }}
         </p>
 
         <div class="cover">
@@ -229,22 +244,22 @@ watch(errorMessage, (msg) => {
         <button
           class="play"
           type="button"
-          :title="`${game.name} starten`"
-          :aria-label="`${game.name} starten`"
+          :title="t('drawer.launch', { name: game.name })"
+          :aria-label="t('drawer.launch', { name: game.name })"
           @click.stop="launch"
         >
-          spiel starten
+          {{ t("drawer.play") }}
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9l7-4.5z" /></svg>
         </button>
 
         <div class="divider" />
-        <p class="section-label mono">konfiguration</p>
+        <p class="section-label mono">{{ t("drawer.configuration") }}</p>
 
         <div class="field">
-          <label class="k" for="compat-tool">proton / compat-tool</label>
+          <label class="k" for="compat-tool">{{ t("drawer.compatToolLabel") }}</label>
           <div class="field-row">
             <select id="compat-tool" v-model="compatSelected" class="control mono">
-              <option value="__default__">standard (system-default)</option>
+              <option value="__default__">{{ t("drawer.compatDefault") }}</option>
               <option v-for="o in compatOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
             </select>
             <button
@@ -253,20 +268,20 @@ watch(errorMessage, (msg) => {
               :disabled="!compatDirty || compatState === 'saving'"
               @click="saveCompat"
             >
-              {{ compatState === "saving" ? "…" : compatState === "saved" ? "gespeichert ✓" : "speichern" }}
+              {{ compatState === "saving" ? "…" : compatState === "saved" ? t("drawer.saved") : t("drawer.save") }}
             </button>
           </div>
         </div>
 
         <div class="field">
-          <label class="k" for="launch-options">startoptionen</label>
+          <label class="k" for="launch-options">{{ t("drawer.launchOptionsLabel") }}</label>
           <div class="field-row">
             <input
               id="launch-options"
               v-model="launchInput"
               type="text"
               class="control mono"
-              placeholder="z. b. gamemoderun %command% -novid"
+              :placeholder="t('drawer.launchOptionsPlaceholder')"
               spellcheck="false"
               @keydown.enter="saveLaunch"
             />
@@ -276,29 +291,25 @@ watch(errorMessage, (msg) => {
               :disabled="!launchDirty || launchState === 'saving'"
               @click="saveLaunch"
             >
-              {{ launchState === "saving" ? "…" : launchState === "saved" ? "gespeichert ✓" : "speichern" }}
+              {{ launchState === "saving" ? "…" : launchState === "saved" ? t("drawer.saved") : t("drawer.save") }}
             </button>
           </div>
-          <p class="hint">
-            %command% = der eigentliche startbefehl; weglassen hängt die optionen nur an.
-          </p>
+          <p class="hint">{{ t("drawer.launchOptionsHint") }}</p>
         </div>
 
         <div class="divider" />
 
         <a class="pdb-link mono" href="#" @click.prevent="openProtonDb">
-          auf protondb ansehen ↗
+          {{ t("drawer.protondbLink") }}
         </a>
-        <p class="hint">
-          reports mit betriebssystem, proton-version und notizen anderer spieler. daten von protondb (ODbL).
-        </p>
+        <p class="hint">{{ t("drawer.protondbHint") }}</p>
 
         <!-- fehler-toast: oben fixiert im drawer, direkt im blick der eingaben -->
         <transition name="toast">
           <div v-if="errorMessage" class="toast" role="alert">
             <span class="toast-icon" aria-hidden="true">⚠</span>
             <span class="toast-msg">{{ errorMessage }}</span>
-            <button class="toast-close" type="button" aria-label="meldung schließen" @click="dismissError">✕</button>
+            <button class="toast-close" type="button" :aria-label="t('drawer.dismissError')" @click="dismissError">✕</button>
           </div>
         </transition>
       </aside>
