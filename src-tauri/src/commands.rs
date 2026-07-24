@@ -334,6 +334,14 @@ fn remove_orphan_dir_inner(canonical: &Path, library: &Path) -> Result<String, S
     if app_id_str.is_empty() || !app_id_str.chars().all(|c| c.is_ascii_digit()) {
         return Err(format!("non-numeric appId: {app_id_str}"));
     }
+    // defense-in-depth: das JS-seitige findOrphans filtert appId 0 bereits,
+    // aber ein direkter IPC-aufruf (oder zukünftiger code-pfad) darf nicht
+    // stillschweigend zum löschen / trash-renamen eines 0-verzeichnisses
+    // führen. 0 ist in steam reserviert (kein spiel) und darf nie ein
+    // löschkandidat sein.
+    if app_id_str == "0" {
+        return Err("appId 0 rejected".into());
+    }
 
     match typ {
         "shadercache" => {
@@ -934,6 +942,55 @@ mod tests {
         assert!(res.is_err(), "nicht-numerische appid muss abgelehnt werden");
         assert!(res.as_ref().unwrap_err().contains("non-numeric"));
         assert!(bad.exists(), "quelle darf nicht angetastet werden");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // defense-in-depth: JS-seitiges findOrphans filtert appId 0 bereits, aber
+    // ein direkter IPC-aufruf (oder zukünftiger code-pfad) darf nicht zum
+    // löschen / trash-renamen eines 0-verzeichnisses führen. 0 ist in steam
+    // reserviert (kein spiel) und darf nie ein löschkandidat sein.
+    #[test]
+    fn appid_zero_compatdata_wird_abgelehnt() {
+        let root = orphan_fixture("zero-compat");
+        let lib = root.join("lib");
+        let compat = lib.join("steamapps/compatdata/0");
+        touch(&compat);
+
+        let canonical = std::fs::canonicalize(&compat).unwrap();
+        let res = call_inner(&canonical);
+        assert!(res.is_err(), "compatdata/0 muss abgelehnt werden");
+        assert!(
+            res.as_ref().unwrap_err().contains("appId 0"),
+            "fehlermeldung soll appId 0 nennen: {:?}",
+            res
+        );
+        assert!(compat.exists(), "compatdata/0 darf nicht gelöscht werden");
+        let trash = lib.join("steamapps/.protium-trash");
+        assert!(
+            !trash.exists(),
+            ".protium-trash darf für appId 0 NICHT angelegt werden"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn appid_zero_shadercache_wird_abgelehnt() {
+        let root = orphan_fixture("zero-shader");
+        let lib = root.join("lib");
+        let cache = lib.join("steamapps/shadercache/0");
+        touch(&cache);
+
+        let canonical = std::fs::canonicalize(&cache).unwrap();
+        let res = call_inner(&canonical);
+        assert!(res.is_err(), "shadercache/0 muss abgelehnt werden");
+        assert!(
+            res.as_ref().unwrap_err().contains("appId 0"),
+            "fehlermeldung soll appId 0 nennen: {:?}",
+            res
+        );
+        assert!(cache.exists(), "shadercache/0 darf nicht gelöscht werden");
 
         let _ = std::fs::remove_dir_all(&root);
     }
