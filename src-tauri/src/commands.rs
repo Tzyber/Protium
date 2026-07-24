@@ -32,20 +32,24 @@ fn is_safe_path(canonical: &str) -> bool {
     !blocked.iter().any(|b| canonical == *b || canonical.starts_with(&format!("{b}/")))
 }
 
+const ALLOWED_DOWNLOAD_HOSTS: &[&str] = &[
+    "github.com",
+    "objects.githubusercontent.com",
+    "release-assets.githubusercontent.com"
+];
+
 fn validate_download_url(url: &str) -> Result<(), String> {
-    if url.contains('@') {
-        return Err("URL must not contain credentials".into());
-    }
-    let lower = url.to_lowercase();
-    if !lower.starts_with("https://") {
+    let parsed = reqwest::Url::parse(url).map_err(|e| format!("invalid download URL: {e}"))?;
+    if parsed.scheme() != "https" {
         return Err("only HTTPS URLs allowed for downloads".into());
     }
-    let allowed = [
-        "https://objects.githubusercontent.com/",
-        "https://github.com/",
-    ];
-    if !allowed.iter().any(|p| lower.starts_with(p)) {
-        return Err("download URL domain not allowed".into());
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err("URL must not contain credentials".into());
+    }
+    let host = parsed.host_str().ok_or_else(|| "download URL has no host".to_string())?;
+    let host = host.to_ascii_lowercase();
+    if !ALLOWED_DOWNLOAD_HOSTS.iter().any(|h| host == *h) {
+        return Err(format!("download URL host not allowed: {host}"));
     }
     Ok(())
 }
@@ -411,12 +415,25 @@ fn allow_library_scope_inner(app: AppHandle, path: &Path) -> Result<(), String> 
 async fn download_stream(
     url: &str,
     dest: &str,
+    redirect_ok: impl Fn(&str) -> bool + Send + Sync + 'static,
     is_cancelled: impl Fn() -> bool,
     mut on_progress: impl FnMut(u64, Option<u64>),
 ) -> Result<String, String> {
     let result: Result<String, String> = async {
+        const MAX_REDIRECTS: usize = 5;
+
+        let policy = reqwest::redirect::Policy::custom(move |attempt| {
+            if attempt.previous().len() >= MAX_REDIRECTS {
+                return attempt.error("too many redirects");
+            }
+            if redirect_ok(attempt.url().as_str()) {
+                attempt.follow()
+            } else {
+                attempt.error("redirect target not allowed")
+            }
+        });
         let client = reqwest::Client::builder()
-            .redirect(reqwest::redirect::Policy::none())
+            .redirect(policy)
             .build()
             .map_err(|e| e.to_string())?;
         let resp = client.get(url).send().await.map_err(|e| e.to_string())?;
@@ -490,6 +507,7 @@ pub async fn download_file(
     let result = download_stream(
         &url,
         &dest,
+        |u| validate_download_url(u).is_ok(),
         || state.0.lock().map(|s| s.contains(&id)).unwrap_or(false),
         |downloaded, total| {
             let done = total.map(|t| downloaded >= t).unwrap_or(false);
@@ -800,7 +818,23 @@ mod tests {
         assert!(validate_download_url("https://github.com/GloriousEggroll/proton-ge-custom/releases/download/f.tar.gz").is_ok());
     }
 
-    // ---- download-stream (bestehend) ----
+    #[test]
+    fn download_url_allows_release_assets() {
+        assert!(validate_download_url("https://release-assets.githubusercontent.com/github-production-release-asset-2e/f.tar.gz?jwt=abc").is_ok());
+    }
+
+    #[test]
+    fn download_url_allows_at_in_query() {
+        assert!(validate_download_url("https://github.com/x/y?token=abc@def").is_ok());
+        assert!(validate_download_url("https://release-assets.githubusercontent.com/x?jwt=abc@def&response-content-disposition=attachment").is_ok());
+    }
+
+    #[test]
+    fn download_url_rejects_no_host() {
+        assert!(validate_download_url("https:///path").is_err());
+    }
+
+    // ---- download-stream redirect-policy tests ----
 
     /// HTTP-stub: kündigt `announce` bytes an, sendet nur `send`.
     /// send < announce simuliert einen netzabbruch (vorzeitiger EOF).
@@ -828,6 +862,45 @@ mod tests {
         p
     }
 
+    /// HTTP-stub mit redirects: baut eine kette von antworten auf.
+    /// jeder eintrag = (status_code, location, body). der stub akzeptiert
+    /// nacheinander verbindungen und serviert die antworten in der vorgegebenen
+    /// reihenfolge. die URL wird erst beim bind ermittelt und per closure
+    /// an die response-kette übergeben (chicken-egg-problem).
+    fn serve_redirect_chain(f: impl FnOnce(String) -> Vec<(u16, Option<String>, Option<Vec<u8>>)>) -> String {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let base = format!("http://{addr}/");
+        let chain = f(base.clone());
+        std::thread::spawn(move || {
+            for (status, location, body) in chain {
+                if let Ok((mut stream, _)) = listener.accept() {
+                    let mut buf = [0u8; 2048];
+                    let _ = stream.read(&mut buf);
+                    let reason = if status == 302 { "Found" } else { "OK" };
+                    let mut header = format!("HTTP/1.1 {status} {reason}\r\n");
+                    if let Some(ref loc) = location {
+                        header.push_str(&format!("Location: {}\r\n", loc));
+                    }
+                    if status == 302 {
+                        header.push_str("Connection: close\r\n");
+                    }
+                    if let Some(ref b) = body {
+                        header.push_str(&format!("Content-Length: {}\r\n", b.len()));
+                    } else {
+                        header.push_str("Content-Length: 0\r\n");
+                    }
+                    header.push_str("\r\n");
+                    let _ = stream.write_all(header.as_bytes());
+                    if let Some(ref b) = body {
+                        let _ = stream.write_all(b);
+                    }
+                }
+            }
+        });
+        base
+    }
+
     #[tokio::test]
     async fn erfolg_berechnet_hash_und_behaelt_datei() {
         let dest = tmp("ok");
@@ -836,6 +909,7 @@ mod tests {
         let res = download_stream(
             &url,
             dest.to_str().unwrap(),
+            |_| true,
             || cancel.load(Ordering::Relaxed),
             |_, _| {},
         )
@@ -854,6 +928,7 @@ mod tests {
         let res = download_stream(
             &url,
             dest.to_str().unwrap(),
+            |_| true,
             || cancel.load(Ordering::Relaxed),
             |_, _| {},
         )
@@ -871,12 +946,92 @@ mod tests {
         let res = download_stream(
             &url,
             dest.to_str().unwrap(),
+            |_| true,
             || cancel.load(Ordering::Relaxed),
             |_, _| {},
         )
         .await;
         assert_eq!(res.unwrap_err(), "cancelled");
         assert!(!dest.exists(), "abbruch: keine datei zurücklassen");
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn redirect_erlaubt_folgt_302_und_liefert_inhalt() {
+        let dest = tmp("redirect-ok");
+        let body = vec![0xAB; 32];
+        let url = serve_redirect_chain(|base| {
+            vec![
+                (302, Some(base.clone()), None),
+                (200, None, Some(body.clone())),
+            ]
+        });
+        let cancel = AtomicBool::new(false);
+        let res = download_stream(
+            &url,
+            dest.to_str().unwrap(),
+            |u| u.starts_with("http://127.0.0.1:"),
+            || cancel.load(Ordering::Relaxed),
+            |_, _| {},
+        )
+        .await;
+        assert!(res.is_ok(), "redirect zu eigenem stub muss durchlaufen: {res:?}");
+        assert_eq!(res.unwrap().len(), 128);
+        assert!(dest.exists());
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn redirect_auf_evil_host_wird_abgelehnt_und_raeumt_auf() {
+        let dest = tmp("redirect-evil");
+        let url = serve_redirect_chain(|_| {
+            vec![
+                (302, Some("https://evil.example/x".to_string()), None),
+            ]
+        });
+        let cancel = AtomicBool::new(false);
+        let res = download_stream(
+            &url,
+            dest.to_str().unwrap(),
+            |u| u.starts_with("http://127.0.0.1:"),
+            || cancel.load(Ordering::Relaxed),
+            |_, _| {},
+        )
+        .await;
+        assert!(res.is_err(), "redirect zu evil-host muss abgelehnt werden: {res:?}");
+        assert!(res.as_ref().unwrap_err().contains("redirect"));
+        assert!(!dest.exists(), "partielle datei muss nach abbruch weg sein");
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn redirect_schleife_bricht_nach_max_hops_ab() {
+        let dest = tmp("redirect-loop");
+        let url = serve_redirect_chain(|base| {
+            vec![
+                (302, Some(base.clone()), None),
+                (302, Some(base.clone()), None),
+                (302, Some(base.clone()), None),
+                (302, Some(base.clone()), None),
+                (302, Some(base.clone()), None),
+                (302, Some(base), None),
+            ]
+        });
+        let cancel = AtomicBool::new(false);
+        let res = download_stream(
+            &url,
+            dest.to_str().unwrap(),
+            |_| true,
+            || cancel.load(Ordering::Relaxed),
+            |_, _| {},
+        )
+        .await;
+        assert!(res.is_err(), "redirect-schleife muss abgebrochen werden: {res:?}");
+        assert!(
+            res.as_ref().unwrap_err().contains("redirect"),
+            "fehler soll redirect-bezogen sein: {res:?}"
+        );
+        assert!(!dest.exists());
         let _ = std::fs::remove_dir_all(dest.parent().unwrap());
     }
 
