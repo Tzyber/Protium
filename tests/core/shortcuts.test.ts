@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { BinVdfError, parseBinaryShortcutIds, readAllShortcutAppIds } from "../../src/core/shortcuts.js";
+import {
+  BinVdfError,
+  parseBinaryShortcutIds,
+  readAllShortcutAppIds,
+} from "../../src/core/shortcuts.js";
 import { buildFakeSteam, CORRUPT_SHORTCUT_VDF_BINARY, nodeFs } from "../support/fakeSteam";
 
 function fsWithUnreadableUserdata(base: ReturnType<typeof nodeFs>): ReturnType<typeof nodeFs> {

@@ -7,9 +7,9 @@ import { setLocale } from "../../src/ui/i18n";
 
 const { mockFindOrphans, mockReadAllShortcutAppIds, mockInvoke } = vi.hoisted(() => ({
   mockFindOrphans: vi.fn<typeof findOrphans>(async () => []),
-  mockReadAllShortcutAppIds: vi.fn<typeof readAllShortcutAppIds>(
-    async () => ({ status: "none" as const }),
-  ),
+  mockReadAllShortcutAppIds: vi.fn<typeof readAllShortcutAppIds>(async () => ({
+    status: "none" as const,
+  })),
   mockInvoke: vi.fn<(cmd: string, args?: unknown) => Promise<unknown>>(
     async (_cmd: string, _args?: unknown) => "deleted",
   ),

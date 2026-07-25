@@ -3,10 +3,10 @@ import { computed, onMounted, ref } from "vue";
 import type { CompatTool } from "../../core/types";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
 import { formatBytes } from "../format";
-import { t } from "../i18n";
 import type { Key } from "../i18n";
-import { useProtonStore } from "../stores/protonStore";
+import { t } from "../i18n";
 import type { Phase } from "../stores/protonStore";
+import { useProtonStore } from "../stores/protonStore";
 import { useScanStore } from "../stores/scanStore";
 import { useUiStore } from "../stores/uiStore";
 
