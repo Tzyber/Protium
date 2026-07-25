@@ -86,6 +86,14 @@ fn next_existing_ancestor(path: &Path) -> Option<PathBuf> {
 /// kanonisiert den nächsten existierenden vorfahren und prüft nachfahrenschaft
 /// auch auf den kanonischen pfaden. lehnt symlinks auf dem ziel selbst ab.
 fn validate_download_dest(dest: &str, cache_dir: &Path) -> Result<(), String> {
+    // cache-dir SELBST anlegen — kein ancestor-walk auf der allowlist-seite.
+    // sonst degradiert die prüfung auf einen gemeinsamen vorfahren (z.b.
+    // ~/.cache) und fremde apps im selben überbau rutschen durch.
+    fs::create_dir_all(cache_dir)
+        .map_err(|e| format!("cannot create cache dir: {e}"))?;
+    let cache_canon = fs::canonicalize(cache_dir)
+        .map_err(|e| format!("cache dir canonicalize: {e}"))?;
+
     let dest_path = Path::new(dest);
 
     // roh-pfad: muss nachfahre des cache-dir sein (fängt prefix-tricks wie
@@ -94,20 +102,15 @@ fn validate_download_dest(dest: &str, cache_dir: &Path) -> Result<(), String> {
         return Err("download dest outside app cache directory".into());
     }
 
-    // nächsten existierenden vorfahren von dest kanonisieren
+    // nächsten existierenden vorfahren von dest kanonisieren (dest existiert
+    // zwangsläufig noch nicht, deshalb ancestor-walk)
     let dest_ancestor = next_existing_ancestor(dest_path)
         .ok_or_else(|| "no existing ancestor for download dest".to_string())?;
     let dest_ancestor_canon = fs::canonicalize(&dest_ancestor)
         .map_err(|e| format!("dest ancestor: {e}"))?;
 
-    // nächsten existierenden vorfahren von cache_dir kanonisieren
-    let cache_ancestor = next_existing_ancestor(cache_dir)
-        .ok_or_else(|| "no existing ancestor for cache dir".to_string())?;
-    let cache_ancestor_canon = fs::canonicalize(&cache_ancestor)
-        .map_err(|e| format!("cache ancestor: {e}"))?;
-
-    // kanonische nachfahren-prüfung (fängt symlinks in der pfadkette)
-    if !is_descendant_of(&dest_ancestor_canon, &cache_ancestor_canon) {
+    // kanonische nachfahren-prüfung: dest-ancestor muss im kanonischen cache-dir liegen
+    if !is_descendant_of(&dest_ancestor_canon, &cache_canon) {
         return Err("download dest outside app cache directory (canonical)".into());
     }
 
@@ -1122,6 +1125,28 @@ mod tests {
         assert!(res.is_err(), "prefix-trick muss abgelehnt werden: {res:?}");
 
         let _ = std::fs::remove_dir_all(&cache);
+    }
+
+    #[test]
+    fn validate_dest_cache_erbt_nicht_vom_vorfahren() {
+        // cache_dir existiert NICHT, dest liegt in einer fremden app unter
+        // demselben existierenden vorfahren (z.b. beide unter ~/.cache).
+        // ohne create_dir_all(cache_dir) würde der ancestor-walk auf beiden
+        // seiten denselben vorfahren finden und die prüfung degradieren.
+        let tmp = std::env::temp_dir();
+        let cache = tmp.join(format!("protium-desttest-meineapp-{}", std::process::id()));
+        // cache_dir wird NICHT vorab angelegt — validate_download_dest
+        // muss create_dir_all selbst aufrufen
+
+        let fremd = tmp.join(format!("protium-desttest-fremdeapp-{}", std::process::id()));
+        let dest = fremd.join("x");
+        let res = validate_download_dest(dest.to_str().unwrap(), &cache);
+        assert!(res.is_err(), "dest in fremder app muss abgelehnt werden: {res:?}");
+
+        // cache_dir selbst wurde durch create_dir_all angelegt
+        assert!(cache.exists(), "cache_dir muss jetzt existieren");
+        let _ = std::fs::remove_dir_all(&cache);
+        let _ = std::fs::remove_dir_all(&fremd);
     }
 
     // ---- download-stream redirect-policy tests ----
