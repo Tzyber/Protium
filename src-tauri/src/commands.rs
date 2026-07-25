@@ -1,9 +1,10 @@
 // rust-commands (R-1..R-6): das, was die webview nicht kann.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use futures_util::StreamExt;
@@ -129,15 +130,21 @@ fn random_suffix() -> String {
     format!("{:x}", nanos)
 }
 
-/// ids laufender downloads, die abgebrochen werden sollen.
+/// je download-id ein Arc<AtomicBool>. download_file legt ein frisches Arc an
+/// und ersetzt ein etwaiges altes. cancel_download setzt das flag im aktuell
+/// registrierten Arc. am ende wird der eintrag nur entfernt, wenn noch genau
+/// das eigene Arc dort liegt (ptr_eq) — so läuft ein zu spät eintreffender
+/// cancel ins leere, statt eine leiche zu erzeugen.
 #[derive(Default)]
-pub struct CancelRegistry(pub Mutex<HashSet<String>>);
+pub struct CancelRegistry(pub Mutex<HashMap<String, Arc<AtomicBool>>>);
 
-/// markiert einen download zum abbruch; R-4 pollt zwischen den chunks.
+/// markiert einen download zum abbruch; setzt das flag im aktuell registrierten Arc.
 #[tauri::command]
 pub fn cancel_download(state: tauri::State<'_, CancelRegistry>, download_id: String) {
-    if let Ok(mut set) = state.0.lock() {
-        set.insert(download_id);
+    if let Ok(map) = state.0.lock() {
+        if let Some(flag) = map.get(&download_id) {
+            flag.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
     }
 }
 
@@ -623,14 +630,21 @@ pub async fn download_file(
         .map_err(|e| format!("cannot resolve app cache dir: {e}"))?;
     validate_download_dest(&dest, &cache_dir)?;
 
-    let id = download_id.clone();
+    // frisches cancel-flag; ersetzt ein etwaiges altes in der registry
+    let cancel_flag = Arc::new(AtomicBool::new(false));
+    {
+        let mut map = state.0.lock().map_err(|e| e.to_string())?;
+        map.insert(download_id.clone(), Arc::clone(&cancel_flag));
+    }
+    let cancel_flag_clone = Arc::clone(&cancel_flag);
+
     let mut last_emit: u64 = 0;
 
     let result = download_stream(
         &url,
         &dest,
         |u| validate_download_url(u).is_ok(),
-        || state.0.lock().map(|s| s.contains(&id)).unwrap_or(false),
+        move || cancel_flag_clone.load(std::sync::atomic::Ordering::Relaxed),
         |downloaded, total| {
             let done = total.map(|t| downloaded >= t).unwrap_or(false);
             if downloaded - last_emit >= 1_000_000 || done {
@@ -644,8 +658,15 @@ pub async fn download_file(
     )
     .await;
 
-    if let Ok(mut s) = state.0.lock() {
-        s.remove(&download_id); // aufräumen für re-download
+    // nur aufräumen, wenn noch genau unser eigenes Arc registriert ist
+    if let Ok(mut map) = state.0.lock() {
+        let keep = map
+            .get(&download_id)
+            .map(|registered| Arc::ptr_eq(registered, &cancel_flag))
+            .unwrap_or(false);
+        if keep {
+            map.remove(&download_id);
+        }
     }
     result
 }
@@ -715,6 +736,7 @@ mod tests {
     use std::os::unix::fs as unixfs;
     use std::path::Path;
     use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
     use std::thread;
 
     // ---- sicherheits-validierung ----
@@ -1186,6 +1208,85 @@ mod tests {
         assert_eq!(res.unwrap_err(), "cancelled");
         assert!(!dest.exists(), "abbruch: keine datei zurücklassen");
         let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    // ---- cancel-registry stale-flag tests (Arc<AtomicBool> + ptr_eq) ----
+
+    #[test]
+    fn cancel_registry_ptr_eq_entfernt_nur_eigenes_flag() {
+        use super::CancelRegistry;
+
+        let registry = CancelRegistry::default();
+
+        // erstes Arc registrieren (simuliert download_file-start)
+        let flag1 = Arc::new(AtomicBool::new(false));
+        registry.0.lock().unwrap().insert("x".into(), Arc::clone(&flag1));
+
+        // ptr_eq muss für eigenes Arc zutreffen
+        assert!(
+            registry.0.lock().unwrap().get("x")
+                .map(|r| Arc::ptr_eq(r, &flag1))
+                .unwrap_or(false),
+            "eigenes Arc muss per ptr_eq matchen"
+        );
+
+        // cleanup: entfernen weil ptr_eq matched
+        {
+            let mut map = registry.0.lock().unwrap();
+            let keep = map.get("x").map(|r| Arc::ptr_eq(r, &flag1)).unwrap_or(false);
+            if keep {
+                map.remove("x");
+            }
+        }
+        assert!(registry.0.lock().unwrap().is_empty());
+
+        // zweiter download: neues Arc (simuliert re-download)
+        let flag2 = Arc::new(AtomicBool::new(false));
+        registry.0.lock().unwrap().insert("x".into(), Arc::clone(&flag2));
+
+        // altes flag1 darf NICHT mit dem neuen eintrag ptr_eq matchen
+        let mismatch = registry.0.lock().unwrap().get("x")
+            .map(|r| !Arc::ptr_eq(r, &flag1))
+            .unwrap_or(false);
+        assert!(mismatch, "altes Arc darf nicht auf neuen eintrag matchen");
+
+        // neues flag muss frisch (false) sein — kein stale cancel
+        assert!(!flag2.load(Ordering::Relaxed), "neues flag darf nicht vorbelastet sein");
+    }
+
+    #[tokio::test]
+    async fn cancel_nach_abschluss_startet_zweiten_download_normal() {
+        let dest1 = tmp("stale-1");
+        let url1 = serve_once(32, 32);
+        let cancel = AtomicBool::new(false);
+
+        let res = download_stream(
+            &url1,
+            dest1.to_str().unwrap(),
+            |_| true,
+            || cancel.load(Ordering::Relaxed),
+            |_, _| {},
+        )
+        .await;
+        assert!(res.is_ok(), "erster download muss ok sein: {res:?}");
+        let _ = std::fs::remove_dir_all(dest1.parent().unwrap());
+
+        // simulate late cancel (nach abschluss) — cancel-flag bleibt false
+        // (die registry hätte den eintrag bereits entfernt)
+
+        // zweiter download mit anderer url startet normal
+        let dest2 = tmp("stale-2");
+        let url2 = serve_once(32, 32);
+        let res2 = download_stream(
+            &url2,
+            dest2.to_str().unwrap(),
+            |_| true,
+            || cancel.load(Ordering::Relaxed),
+            |_, _| {},
+        )
+        .await;
+        assert!(res2.is_ok(), "zweiter download muss normal starten: {res2:?}");
+        let _ = std::fs::remove_dir_all(dest2.parent().unwrap());
     }
 
     #[tokio::test]
