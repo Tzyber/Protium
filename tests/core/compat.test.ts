@@ -13,38 +13,38 @@ describe("listCompatTools", () => {
 
     const fs: FileSystem = {
       exists: vi.fn(async () => true),
-      readTextFile: vi.fn(async (_path: string) => {
-        // minimales VDF für jeden eintrag
-        return `"compatibilitytools"
-{
-  "compat_tools"
-  {
-    "vdf_version"
-    {
-      "display_name" "Test"
-    }
-  }
-}`;
-      }),
-      readFile: vi.fn(async () => new Uint8Array()),
-      readDir: vi.fn(async () => entries),
-      realpath: vi.fn(async (p: string) => p),
-      remove: vi.fn(async () => {}),
-      writeTextFile: vi.fn(async () => {}),
-      rename: vi.fn(async () => {}),
-      mkdir: vi.fn(async () => {}),
+     readTextFile: vi.fn(async (_path: string) => {
+       // minimales VDF für jeden eintrag
+       return `"compatibilitytools"
+       {
+         "compat_tools"
+         {
+           "vdf_version"
+           {
+             "display_name" "Test"
+           }
+         }
+       }`;
+     }),
+     readFile: vi.fn(async () => new Uint8Array()),
+     readDir: vi.fn(async () => entries),
+     realpath: vi.fn(async (p: string) => p),
+     remove: vi.fn(async () => {}),
+     writeTextFile: vi.fn(async () => {}),
+     rename: vi.fn(async () => {}),
+     mkdir: vi.fn(async () => {}),
     };
 
     const pi: PathIdentity = { realpath: "/compat", dev: "1", ino: "1" };
 
     const system: System = {
       isProcessRunning: vi.fn(async () => false),
-      dirSize: vi.fn(async () => 0),
-      allowLibraryScope: vi.fn(async () => {}),
-      pathIdentity: vi.fn(async () => pi),
-      downloadFile: vi.fn(async () => "hash"),
-      cancelDownload: vi.fn(async () => {}),
-      extractTarball: vi.fn(async () => {}),
+     dirSize: vi.fn(async () => 0),
+     allowLibraryScope: vi.fn(async () => {}),
+     pathIdentity: vi.fn(async () => pi),
+     downloadFile: vi.fn(async () => "hash"),
+     cancelDownload: vi.fn(async () => {}),
+     extractTarball: vi.fn(async () => {}),
     };
 
     const warnings: string[] = [];
@@ -54,5 +54,10 @@ describe("listCompatTools", () => {
     expect(names).toContain("GE-Proton9-27");
     expect(names).not.toContain("evil-link");
     expect(names).not.toContain("not-a-dir");
+
+    // übersprungener symlink muss sichtbar werden, nicht lautlos verschwinden
+    expect(warnings.some((w) => w.includes("evil-link") && w.includes("symlink"))).toBe(true);
+    // eine gewöhnliche nicht-dir-datei ist kein warnungsfall
+    expect(warnings.some((w) => w.includes("not-a-dir"))).toBe(false);
   });
 });

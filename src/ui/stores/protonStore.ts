@@ -24,6 +24,11 @@ interface Job {
   phase: Phase;
   downloaded: number;
   total: number | null;
+  /** vom nutzer angefordert, solange der job noch existiert. lebt bewusst hier
+   *  und nicht in der rust-registry: der store kennt den job-lebenszyklus, das
+   *  backend nur laufende downloads. eine vorgemerkte id im backend würde als
+   *  leiche liegenbleiben und den nächsten versuch derselben version killen. */
+  cancelRequested?: boolean;
 }
 
 interface State {
@@ -113,8 +118,16 @@ export const useProtonStore = defineStore("proton", {
         return;
       }
       if (this.activeTag === tag) {
-        // R-4 pollt die registry, bricht ab und räumt die partielle datei auf.
-        // der laufende installRelease() wirft dann → pump()-catch entfernt den job.
+        // zwei wege, weil sie zwei fenster abdecken:
+        // 1. cancelRequested → greift VOR der registrierung im backend
+        //    (appCacheDir + hash-asset-abruf); ohne das verpufft der klick still
+        //    und der download läuft trotzdem komplett durch.
+        // 2. cancelDownload → R-4 pollt die registry, bricht den laufenden
+        //    download ab und räumt die partielle datei auf.
+        // beide wege enden im wurf von installRelease() → pump()-catch entfernt
+        // den job.
+        const job = this.jobs[tag];
+        if (job) job.cancelRequested = true;
         await tauriPorts.system.cancelDownload(tag).catch(() => {});
       }
     },
@@ -141,6 +154,7 @@ export const useProtonStore = defineStore("proton", {
           onPhase: (p) => {
             job.phase = p;
           },
+          isCancelled: () => this.jobs[tag]?.cancelRequested === true,
         });
         await scan.runScan(); // frische compatToolsInstalled + usedBy
         delete this.jobs[tag];

@@ -57,9 +57,9 @@ export async function listCompatTools(
 ): Promise<CompatTool[]> {
   // nur installierte echte spiele: keine stale einträge, kein appId 0, keine non-steam-shortcuts.
   const usedByOf = (id: string): number[] =>
-    [...mapping.entries()]
-      .filter(([appId, name]) => name === id && installedAppIds.has(appId))
-      .map(([appId]) => appId);
+  [...mapping.entries()]
+  .filter(([appId, name]) => name === id && installedAppIds.has(appId))
+  .map(([appId]) => appId);
 
   const candidateDirs = [paths.compatToolsDir(steamRoot), ...extraDirs];
   const userDir = paths.compatToolsDir(steamRoot);
@@ -93,7 +93,14 @@ export async function listCompatTools(
     }
 
     for (const entry of entries) {
-      if (!entry.isDirectory || entry.isSymlink) continue;
+      if (entry.isSymlink) {
+        // ein symlink in compatibilitytools.d kann nach ausserhalb zeigen und
+        // wird deshalb nicht als tool geführt. INV-2: nicht lautlos schlucken,
+        // sonst verschwindet ein sichtbares verzeichnis ohne erklärung.
+        warnings.push(`"${entry.name}" in ${dir} ist ein symlink → übersprungen`);
+        continue;
+      }
+      if (!entry.isDirectory) continue;
       const name = entry.name;
       try {
         let internalName = name;

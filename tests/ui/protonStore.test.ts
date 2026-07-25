@@ -5,8 +5,8 @@ import { setLocale } from "../../src/ui/i18n";
 
 const { mockAppCacheDir, mockDownloadFile, mockExtractTarball } = vi.hoisted(() => ({
   mockAppCacheDir: vi.fn(async () => "/tmp/cache"),
-  mockDownloadFile: vi.fn(async () => "a".repeat(128)),
-  mockExtractTarball: vi.fn<() => Promise<void>>(),
+                                                                                    mockDownloadFile: vi.fn(async () => "a".repeat(128)),
+                                                                                    mockExtractTarball: vi.fn<() => Promise<void>>(),
 }));
 
 vi.mock("../../src/core/adapters/tauri", async () => {
@@ -14,20 +14,20 @@ vi.mock("../../src/core/adapters/tauri", async () => {
     appCacheDir: mockAppCacheDir,
     tauriPorts: {
       fs: { remove: vi.fn(async () => {}) },
-      http: {
-        get: async () => ({
-          status: 200,
-          ok: true,
-          text: "a".repeat(128) + "  x.tar.gz",
-          headers: {},
-        }),
-      },
-      system: {
-        downloadFile: mockDownloadFile,
-        extractTarball: mockExtractTarball,
-        cancelDownload: vi.fn(async () => {}),
-      },
-      cache: {},
+        http: {
+          get: async () => ({
+            status: 200,
+            ok: true,
+            text: "a".repeat(128) + "  x.tar.gz",
+                            headers: {},
+          }),
+        },
+        system: {
+          downloadFile: mockDownloadFile,
+          extractTarball: mockExtractTarball,
+          cancelDownload: vi.fn(async () => {}),
+        },
+        cache: {},
     },
   };
 });
@@ -52,6 +52,11 @@ describe("protonStore pump-phasen", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     setLocale("de");
+    // aufruf-historie zurücksetzen — der vorherige test lässt einen laufenden
+    // job stehen, sonst zählen dessen aufrufe hier mit
+    mockDownloadFile.mockClear();
+    mockExtractTarball.mockClear();
+    mockAppCacheDir.mockClear();
     mockDownloadFile.mockResolvedValue("a".repeat(128));
     mockExtractTarball.mockImplementation(() => new Promise(() => {})); // blockiert
     mockAppCacheDir.mockResolvedValue("/tmp/cache");
@@ -66,9 +71,9 @@ describe("protonStore pump-phasen", () => {
       compatToolsInstalled: [],
       builtinProtonsInstalled: [],
       defaultCompatTool: null,
-      steamUserId: null,
-      warnings: [],
-      skippedLibraries: [],
+        steamUserId: null,
+        warnings: [],
+        skippedLibraries: [],
     };
 
     const store = useProtonStore();
@@ -81,5 +86,48 @@ describe("protonStore pump-phasen", () => {
       },
       { timeout: 2000 },
     );
+  });
+
+  it("abbruch im fenster vor der backend-registrierung verhindert den download", async () => {
+    const scanStore = useScanStore();
+    scanStore.result = {
+      steamRoot: "/root",
+      libraries: [],
+      games: [],
+      compatToolsInstalled: [],
+      builtinProtonsInstalled: [],
+      defaultCompatTool: null,
+        steamUserId: null,
+        warnings: [],
+        skippedLibraries: [],
+    };
+
+    // appCacheDir hängt → pump steht VOR installRelease, die cancel-registry im
+    // backend kennt die id also noch nicht. cancelDownload allein wäre hier
+    // wirkungslos.
+    let letCacheDirResolve: (v: string) => void = () => {};
+    mockAppCacheDir.mockImplementation(
+      () =>
+      new Promise<string>((resolve) => {
+        letCacheDirResolve = resolve;
+      }),
+    );
+
+    const store = useProtonStore();
+    store.releases = [release];
+    store.queueInstall(release);
+
+    await vi.waitFor(() => {
+      expect(store.activeTag).toBe(release.tag);
+    });
+
+    await store.cancel(release.tag);
+    letCacheDirResolve("/tmp/cache");
+
+    await vi.waitFor(() => {
+      expect(store.jobs[release.tag]).toBeUndefined();
+    });
+    expect(mockDownloadFile).not.toHaveBeenCalled();
+    expect(store.loadError).toBeNull(); // abbruch ist kein fehler
   });
 });

@@ -2,7 +2,7 @@ import { joinPath, paths } from "./paths.js";
 import type { Cache, FileSystem, Http, System } from "./ports.js";
 
 const RELEASES_URL =
-  "https://api.github.com/repos/GloriousEggroll/proton-ge-custom/releases?per_page=15";
+"https://api.github.com/repos/GloriousEggroll/proton-ge-custom/releases?per_page=15";
 const CACHE_KEY = "gh:ge-releases";
 const TTL_MS = 60 * 60 * 1000; // 1h (FR-3.1)
 const MAX_NOTES = 280;
@@ -77,10 +77,10 @@ function parseReleases(json: string): GeRelease[] {
     out.push({
       tag,
       name: str(r.name) || tag,
-      publishedAt: str(r.published_at),
-      notes: body.length > MAX_NOTES ? `${body.slice(0, MAX_NOTES).trimEnd()}…` : body,
-      tarball,
-      sha512Url,
+             publishedAt: str(r.published_at),
+             notes: body.length > MAX_NOTES ? `${body.slice(0, MAX_NOTES).trimEnd()}…` : body,
+             tarball,
+             sha512Url,
     });
   }
   return out;
@@ -91,7 +91,7 @@ export async function fetchReleases(
   http: Http,
   cache: Cache,
   now: () => number = Date.now,
-  force = false,
+                                    force = false,
 ): Promise<FetchResult> {
   let cached: CacheEntry | null = null;
   try {
@@ -163,6 +163,12 @@ interface InstallOpts {
   release: GeRelease;
   downloadId: string; // korreliert die progress-events
   onPhase?: (phase: InstallPhase) => void;
+  /** abbruch-abfrage für das fenster VOR dem rust-download. cancel_download kann
+   *  nur einen laufenden download treffen (die cancel-registry im backend kennt
+   *  eine id erst, wenn download_file sie registriert hat). alles davor — das
+   *  holen des hash-assets über netz — wäre sonst nicht abbrechbar und der
+   *  abbruch-klick des nutzers würde still verpuffen. */
+  isCancelled?: () => boolean;
 }
 
 // download → sha512-prüfung → entpacken. tarball wird immer aufgeräumt; wirft bei mismatch.
@@ -173,33 +179,49 @@ export async function installRelease(
   const { fs, http, system } = ports;
   const dest = joinPath(opts.cacheDir, opts.release.tarball.name);
 
-  // hash-asset optional: fehlt es, wird ohne prüfung installiert
-  let expected: string | null = null;
-  if (opts.release.sha512Url) {
-    try {
-      const res = await http.get(opts.release.sha512Url);
-      if (res.ok) expected = parseSha512Sum(res.text);
-    } catch {
-      expected = null;
-    }
-  }
+  // "cancelled" im text ist teil des kontrakts: der aufrufer unterscheidet
+  // abbruch von fehler an /cancel/i und zeigt dann keine fehlermeldung.
+  const abortIfCancelled = () => {
+    if (opts.isCancelled?.()) throw new Error("cancelled");
+  };
 
-  try {
-    opts.onPhase?.("downloading");
-    const actual = await system.downloadFile(opts.release.tarball.url, dest, opts.downloadId);
-    if (expected) {
-      opts.onPhase?.("verifying");
-      if (actual.toLowerCase() !== expected) {
-        throw new Error(
-          `checksum stimmt nicht (erwartet ${expected.slice(0, 12)}…, war ${actual.slice(0, 12)}…)`,
-        );
+    abortIfCancelled();
+
+    // hash-asset optional: fehlt es, wird ohne prüfung installiert
+    let expected: string | null = null;
+    if (opts.release.sha512Url) {
+      try {
+        const res = await http.get(opts.release.sha512Url);
+        if (res.ok) expected = parseSha512Sum(res.text);
+      } catch {
+        expected = null;
       }
     }
-    opts.onPhase?.("extracting");
-    await system.extractTarball(dest, paths.compatToolsDir(opts.steamRoot));
-  } finally {
-    await fs.remove(dest).catch(() => {}); // tarball immer weg
-  }
+
+    try {
+      abortIfCancelled(); // netz-abruf oben kann lange dauern
+      opts.onPhase?.("downloading");
+      const actual = await system.downloadFile(opts.release.tarball.url, dest, opts.downloadId);
+      if (expected) {
+        opts.onPhase?.("verifying");
+        if (actual.toLowerCase() !== expected) {
+          throw new Error(
+            `checksum stimmt nicht (erwartet ${expected.slice(0, 12)}…, war ${actual.slice(0, 12)}…)`,
+          );
+        }
+      }
+      abortIfCancelled();
+      opts.onPhase?.("extracting");
+      // residuum (bewusst offen): der hash oben wird auf dem download-STREAM
+      // berechnet, entpackt wird danach die DATEI auf der platte. wer zwischen
+      // prüfung und extraktion schreibzugriff auf den app-cache hat, kann den
+      // tarball tauschen — die prüfung deckt das nicht ab. gleiches threat-model
+      // wie der rest der app (lokaler prozess mit unseren rechten); schliessbar
+      // nur durch hashen des geöffneten fd im backend.
+      await system.extractTarball(dest, paths.compatToolsDir(opts.steamRoot));
+    } finally {
+      await fs.remove(dest).catch(() => {}); // tarball immer weg
+    }
 }
 
 // NUR für GE-tools aufrufen (distro-tools gehören dem paketmanager).

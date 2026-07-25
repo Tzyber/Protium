@@ -15,10 +15,10 @@ function ghBody() {
       name: "GE-Proton9-27",
       published_at: "2025-01-01T00:00:00Z",
       body: "x".repeat(400),
-      assets: [
-        { name: "GE-Proton9-27.tar.gz", browser_download_url: "https://dl/ge.tar.gz", size: 400 },
-        { name: "GE-Proton9-27.sha512sum", browser_download_url: "https://dl/ge.sha512sum" },
-      ],
+                        assets: [
+                          { name: "GE-Proton9-27.tar.gz", browser_download_url: "https://dl/ge.tar.gz", size: 400 },
+                          { name: "GE-Proton9-27.sha512sum", browser_download_url: "https://dl/ge.sha512sum" },
+                        ],
     },
     { tag_name: "no-tarball", assets: [] }, // muss rausgefiltert werden
   ]);
@@ -37,7 +37,7 @@ describe("fetchReleases", () => {
   it("parst releases, filtert tarball-lose, kürzt notes", async () => {
     const { releases: rels } = await fetchReleases(
       httpOnce({ text: ghBody(), headers: { etag: '"abc"' } }),
-      memCache(),
+                                                   memCache(),
     );
     expect(rels).toHaveLength(1);
     expect(rels[0]?.tag).toBe("GE-Proton9-27");
@@ -73,7 +73,7 @@ describe("fetchReleases", () => {
       status: 200,
       ok: true,
       text: ghBody(),
-      headers: { etag: '"v1"' },
+     headers: { etag: '"v1"' },
     };
     const r304: HttpResponse = { status: 304, ok: false, text: "", headers: {} };
     const http: Http = {
@@ -192,5 +192,46 @@ describe("installRelease", () => {
     const m = installMocks(goodHash, `${goodHash}  GE-Proton9-27.tar.gz`);
     await installRelease(m, { steamRoot: "/root", cacheDir: "/cache", release, downloadId: "1" });
     expect(m.extracted).toHaveLength(1); // normaler durchlauf
+  });
+
+  it("isCancelled vor dem start → kein download, wirft 'cancelled'", async () => {
+    const m = installMocks(goodHash, `${goodHash}  GE-Proton9-27.tar.gz`);
+    await expect(
+      installRelease(m, {
+        steamRoot: "/root",
+        cacheDir: "/cache",
+        release,
+        downloadId: "1",
+        isCancelled: () => true,
+      }),
+    ).rejects.toThrow(/cancel/i);
+    expect(m.system.downloadFile).not.toHaveBeenCalled();
+    expect(m.extracted).toHaveLength(0);
+  });
+
+  it("abbruch während des hash-abrufs verhindert den download noch", async () => {
+    const m = installMocks(goodHash, `${goodHash}  GE-Proton9-27.tar.gz`);
+    let cancelled = false;
+    // flag kippt erst, während http.get läuft — genau das fenster, in dem die
+    // rust-cancel-registry die id noch nicht kennt
+    const http: Http = {
+      async get() {
+        cancelled = true;
+        return { status: 200, ok: true, text: `${goodHash}  x.tar.gz`, headers: {} };
+      },
+    };
+    await expect(
+      installRelease(
+        { ...m, http },
+        {
+          steamRoot: "/root",
+          cacheDir: "/cache",
+          release,
+          downloadId: "1",
+          isCancelled: () => cancelled,
+        },
+      ),
+    ).rejects.toThrow(/cancel/i);
+    expect(m.system.downloadFile).not.toHaveBeenCalled();
   });
 });
