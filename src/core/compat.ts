@@ -93,7 +93,7 @@ export async function listCompatTools(
     }
 
     for (const entry of entries) {
-      if (!entry.isDirectory) continue;
+      if (!entry.isDirectory || entry.isSymlink) continue;
       const name = entry.name;
       try {
         let internalName = name;
