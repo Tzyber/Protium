@@ -37,6 +37,7 @@ function fakeScanResult(): ScanResult {
     defaultCompatTool: "proton-cachyos-slr", // bewusst != "default" — regressionstest für Befund 1
     steamUserId: "12345",
     warnings: [],
+    skippedLibraries: [],
   };
 }
 
