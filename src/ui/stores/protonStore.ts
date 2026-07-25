@@ -12,7 +12,7 @@ import type { CompatTool } from "../../core/types";
 import { t } from "../i18n";
 import { useScanStore } from "./scanStore";
 
-type Phase = "queued" | "downloading" | "verifying" | "extracting";
+export type Phase = "queued" | "downloading" | "verifying" | "extracting";
 
 /** rust-commands rejecten mit einem rohen string (kein Error-objekt) → sicher auslesen. */
 function errMsg(e: unknown): string {

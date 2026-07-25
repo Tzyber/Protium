@@ -4,7 +4,9 @@ import type { CompatTool } from "../../core/types";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
 import { formatBytes } from "../format";
 import { t } from "../i18n";
+import type { Key } from "../i18n";
 import { useProtonStore } from "../stores/protonStore";
+import type { Phase } from "../stores/protonStore";
 import { useScanStore } from "../stores/scanStore";
 import { useUiStore } from "../stores/uiStore";
 
@@ -41,6 +43,20 @@ function pct(tag: string): number | null {
   const j = proton.jobs[tag];
   if (!j?.total) return null;
   return Math.min(100, Math.round((j.downloaded / j.total) * 100));
+}
+
+// literale keys statt laufzeit-konkatenation: fehlt eine übersetzung, schlägt
+// der typecheck fehl statt erst die UI.
+const PHASE_KEYS = {
+  queued: "phase.queued",
+  downloading: "phase.downloading",
+  verifying: "phase.verifying",
+  extracting: "phase.extracting",
+} as const satisfies Record<Phase, Key>;
+
+function phaseLabel(tag: string): string {
+  const phase = proton.jobs[tag]?.phase;
+  return phase ? t(PHASE_KEYS[phase]) : "";
 }
 
 function relTime(ts: number): string {
@@ -145,9 +161,9 @@ const statusLine = computed(() => {
           <div v-if="proton.jobs[r.tag]" class="progress">
             <template v-if="proton.jobs[r.tag]?.phase === 'downloading'">
               <div class="track"><div class="fill" :style="{ width: (pct(r.tag) ?? 30) + '%' }" /></div>
-              <span class="phase">{{ t("phase." + proton.jobs[r.tag]?.phase) }}<span v-if="pct(r.tag) !== null"> · {{ pct(r.tag) }}%</span></span>
+              <span class="phase">{{ phaseLabel(r.tag) }}<span v-if="pct(r.tag) !== null"> · {{ pct(r.tag) }}%</span></span>
             </template>
-            <span v-else class="phase act">{{ t("phase." + proton.jobs[r.tag]?.phase) }}</span>
+            <span v-else class="phase act">{{ phaseLabel(r.tag) }}</span>
           </div>
         </div>
         <button
