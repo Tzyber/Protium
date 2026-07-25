@@ -20,6 +20,14 @@ class BinVdfError extends Error {
   }
 }
 
+/** liest ein byte an `pos`. wirft, statt `undefined` weiterzugeben —
+ *  der parser bricht bei strukturbruch ab, er rät nicht. */
+function byteAt(buf: Uint8Array, pos: number): number {
+  const b = buf[pos];
+  if (b === undefined) throw new BinVdfError("truncated: read past end of buffer");
+  return b;
+}
+
 function readCString(buf: Uint8Array, pos: number): { str: string; next: number } {
   const end = buf.indexOf(0, pos);
   if (end === -1) throw new BinVdfError("unterminated string");
@@ -47,7 +55,7 @@ function skipBinaryValue(buf: Uint8Array, pos: number, type: number): number {
           continue;
         }
         if (pos >= buf.length) throw new BinVdfError("truncated in nested object");
-        const childType = buf[pos];
+        const childType = byteAt(buf, pos);
         pos++;
         if (childType === 0x08) {
           depth--;
@@ -85,7 +93,7 @@ function skipBinaryValue(buf: Uint8Array, pos: number, type: number): number {
 function parseMapBody(buf: Uint8Array, pos: number, onEntry: (appId: number) => void): number {
   while (pos < buf.length) {
     if (buf[pos] === 0x08) return pos + 1; // MAP ende
-    const childType = buf[pos];
+    const childType = byteAt(buf, pos);
     pos++;
     if (childType === 0x08) return pos;
     const childKey = readCString(buf, pos);
@@ -112,7 +120,7 @@ function parseEntryBody(
 ): { next: number } {
   while (pos < buf.length) {
     if (buf[pos] === 0x08) return { next: pos + 1 };
-    const valType = buf[pos];
+    const valType = byteAt(buf, pos);
     pos++;
     if (valType === 0x08) return { next: pos };
     const key = readCString(buf, pos);
@@ -195,4 +203,4 @@ export async function readAllShortcutAppIds(
   return { status: "ok", ids };
 }
 
-export { parseBinaryShortcutIds };
+export { BinVdfError, parseBinaryShortcutIds };

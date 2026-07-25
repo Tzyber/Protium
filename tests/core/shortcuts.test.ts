@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseBinaryShortcutIds, readAllShortcutAppIds } from "../../src/core/shortcuts.js";
+import { BinVdfError, parseBinaryShortcutIds, readAllShortcutAppIds } from "../../src/core/shortcuts.js";
 import { buildFakeSteam, CORRUPT_SHORTCUT_VDF_BINARY, nodeFs } from "../support/fakeSteam";
 
 function fsWithUnreadableUserdata(base: ReturnType<typeof nodeFs>): ReturnType<typeof nodeFs> {
@@ -100,6 +100,14 @@ describe("parseBinaryShortcutIds", () => {
   it("truncation → wirft", () => {
     const buf = makeBinVdf([{ appId: 1 }]);
     expect(() => parseBinaryShortcutIds(buf.slice(0, 15))).toThrow();
+  });
+
+  it("truncation mitten im entry wirft BinVdfError, reicht kein undefined durch", () => {
+    // schneidet mitten im int32-wert ab — byteAt/readU32 müssen werfen, nicht undefined liefern
+    const buf = makeBinVdf([{ appId: 42 }]);
+    // kürze so, dass der appid-key noch komplett ist, der 4-byte-wert aber fehlt
+    const truncated = buf.slice(0, buf.length - 2);
+    expect(() => parseBinaryShortcutIds(truncated)).toThrow(BinVdfError);
   });
 
   it("key appid mit type 0x01 (string) → ignoriert", () => {
