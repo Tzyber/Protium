@@ -57,9 +57,9 @@ export async function listCompatTools(
 ): Promise<CompatTool[]> {
   // nur installierte echte spiele: keine stale einträge, kein appId 0, keine non-steam-shortcuts.
   const usedByOf = (id: string): number[] =>
-  [...mapping.entries()]
-  .filter(([appId, name]) => name === id && installedAppIds.has(appId))
-  .map(([appId]) => appId);
+    [...mapping.entries()]
+      .filter(([appId, name]) => name === id && installedAppIds.has(appId))
+      .map(([appId]) => appId);
 
   const candidateDirs = [paths.compatToolsDir(steamRoot), ...extraDirs];
   const userDir = paths.compatToolsDir(steamRoot);

@@ -5,8 +5,8 @@ import { setLocale } from "../../src/ui/i18n";
 
 const { mockAppCacheDir, mockDownloadFile, mockExtractTarball } = vi.hoisted(() => ({
   mockAppCacheDir: vi.fn(async () => "/tmp/cache"),
-                                                                                    mockDownloadFile: vi.fn(async () => "a".repeat(128)),
-                                                                                    mockExtractTarball: vi.fn<() => Promise<void>>(),
+  mockDownloadFile: vi.fn(async () => "a".repeat(128)),
+  mockExtractTarball: vi.fn<() => Promise<void>>(),
 }));
 
 vi.mock("../../src/core/adapters/tauri", async () => {
@@ -14,20 +14,20 @@ vi.mock("../../src/core/adapters/tauri", async () => {
     appCacheDir: mockAppCacheDir,
     tauriPorts: {
       fs: { remove: vi.fn(async () => {}) },
-        http: {
-          get: async () => ({
-            status: 200,
-            ok: true,
-            text: "a".repeat(128) + "  x.tar.gz",
-                            headers: {},
-          }),
-        },
-        system: {
-          downloadFile: mockDownloadFile,
-          extractTarball: mockExtractTarball,
-          cancelDownload: vi.fn(async () => {}),
-        },
-        cache: {},
+      http: {
+        get: async () => ({
+          status: 200,
+          ok: true,
+          text: "a".repeat(128) + "  x.tar.gz",
+          headers: {},
+        }),
+      },
+      system: {
+        downloadFile: mockDownloadFile,
+        extractTarball: mockExtractTarball,
+        cancelDownload: vi.fn(async () => {}),
+      },
+      cache: {},
     },
   };
 });
@@ -71,9 +71,9 @@ describe("protonStore pump-phasen", () => {
       compatToolsInstalled: [],
       builtinProtonsInstalled: [],
       defaultCompatTool: null,
-        steamUserId: null,
-        warnings: [],
-        skippedLibraries: [],
+      steamUserId: null,
+      warnings: [],
+      skippedLibraries: [],
     };
 
     const store = useProtonStore();
@@ -97,9 +97,9 @@ describe("protonStore pump-phasen", () => {
       compatToolsInstalled: [],
       builtinProtonsInstalled: [],
       defaultCompatTool: null,
-        steamUserId: null,
-        warnings: [],
-        skippedLibraries: [],
+      steamUserId: null,
+      warnings: [],
+      skippedLibraries: [],
     };
 
     // appCacheDir hängt → pump steht VOR installRelease, die cancel-registry im
@@ -108,9 +108,9 @@ describe("protonStore pump-phasen", () => {
     let letCacheDirResolve: (v: string) => void = () => {};
     mockAppCacheDir.mockImplementation(
       () =>
-      new Promise<string>((resolve) => {
-        letCacheDirResolve = resolve;
-      }),
+        new Promise<string>((resolve) => {
+          letCacheDirResolve = resolve;
+        }),
     );
 
     const store = useProtonStore();

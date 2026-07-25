@@ -8,7 +8,7 @@ import "./ui/tokens.css";
 createApp(App).use(createPinia()).mount("#app");
 
 requestAnimationFrame(() => {
-    void getCurrentWindow()
+  void getCurrentWindow()
     .show()
     .catch(() => {});
 });

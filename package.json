@@ -9,7 +9,7 @@
   "scripts": {
     "test": "vitest run",
     "dev": "vitest",
-    "check": "biome check src tests",
+    "check": "biome check src tests && vue-tsc --noEmit",
     "vite:dev": "vite",
     "vite:build": "vue-tsc --noEmit && vite build",
     "tauri": "tauri"

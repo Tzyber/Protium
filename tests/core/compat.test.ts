@@ -13,9 +13,9 @@ describe("listCompatTools", () => {
 
     const fs: FileSystem = {
       exists: vi.fn(async () => true),
-     readTextFile: vi.fn(async (_path: string) => {
-       // minimales VDF für jeden eintrag
-       return `"compatibilitytools"
+      readTextFile: vi.fn(async (_path: string) => {
+        // minimales VDF für jeden eintrag
+        return `"compatibilitytools"
        {
          "compat_tools"
          {
@@ -25,26 +25,26 @@ describe("listCompatTools", () => {
            }
          }
        }`;
-     }),
-     readFile: vi.fn(async () => new Uint8Array()),
-     readDir: vi.fn(async () => entries),
-     realpath: vi.fn(async (p: string) => p),
-     remove: vi.fn(async () => {}),
-     writeTextFile: vi.fn(async () => {}),
-     rename: vi.fn(async () => {}),
-     mkdir: vi.fn(async () => {}),
+      }),
+      readFile: vi.fn(async () => new Uint8Array()),
+      readDir: vi.fn(async () => entries),
+      realpath: vi.fn(async (p: string) => p),
+      remove: vi.fn(async () => {}),
+      writeTextFile: vi.fn(async () => {}),
+      rename: vi.fn(async () => {}),
+      mkdir: vi.fn(async () => {}),
     };
 
     const pi: PathIdentity = { realpath: "/compat", dev: "1", ino: "1" };
 
     const system: System = {
       isProcessRunning: vi.fn(async () => false),
-     dirSize: vi.fn(async () => 0),
-     allowLibraryScope: vi.fn(async () => {}),
-     pathIdentity: vi.fn(async () => pi),
-     downloadFile: vi.fn(async () => "hash"),
-     cancelDownload: vi.fn(async () => {}),
-     extractTarball: vi.fn(async () => {}),
+      dirSize: vi.fn(async () => 0),
+      allowLibraryScope: vi.fn(async () => {}),
+      pathIdentity: vi.fn(async () => pi),
+      downloadFile: vi.fn(async () => "hash"),
+      cancelDownload: vi.fn(async () => {}),
+      extractTarball: vi.fn(async () => {}),
     };
 
     const warnings: string[] = [];
