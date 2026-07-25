@@ -4,6 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>protium</title>
+    <!-- erster paint soll dunkel sein, nicht der weisse webview-default.
+         inline, damit es nicht auf das gebundelte CSS wartet. wert = --bg-0. -->
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #0a0b11;
+      }
+    </style>
   </head>
   <body>
     <div id="app"></div>

@@ -10,7 +10,14 @@
     "beforeBuildCommand": "npm run vite:build"
   },
   "app": {
-    "windows": [{ "title": "protium", "width": 1280, "height": 800 }],
+    "windows": [
+      {
+        "title": "protium",
+        "width": 1280,
+        "height": 800,
+        "backgroundColor": "#0a0b11"
+      }
+    ],
     "security": {
       "csp": {
         "default-src": "'self'",
