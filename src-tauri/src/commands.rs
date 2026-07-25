@@ -2,7 +2,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -10,7 +10,7 @@ use futures_util::StreamExt;
 use serde::Serialize;
 use sha2::{Digest, Sha512};
 use sysinfo::System;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_fs::FsExt;
 use tokio::io::AsyncWriteExt;
 
@@ -51,6 +51,73 @@ fn validate_download_url(url: &str) -> Result<(), String> {
     if !ALLOWED_DOWNLOAD_HOSTS.iter().any(|h| host == *h) {
         return Err(format!("download URL host not allowed: {host}"));
     }
+    Ok(())
+}
+
+/// komponentenbasierter nachfahren-check: jedes component des ancestor muss
+/// am anfang von child exakt matchen. `Path::starts_with` tut das ebenfalls,
+/// hier explizit per komponenten-iteration zur dokumentation der absicht.
+fn is_descendant_of(child: &Path, ancestor: &Path) -> bool {
+    let mut anc = ancestor.components().peekable();
+    let mut ch = child.components().peekable();
+    loop {
+        match (anc.next(), ch.next()) {
+            (None, _) => return true,
+            (Some(a), Some(c)) if a == c => continue,
+            _ => return false,
+        }
+    }
+}
+
+/// nächsten existierenden vorfahren eines pfads ermitteln.
+fn next_existing_ancestor(path: &Path) -> Option<PathBuf> {
+    let mut current = if path.is_dir() { path.to_path_buf() } else { path.parent()?.to_path_buf() };
+    loop {
+        if current.exists() {
+            return Some(current);
+        }
+        current = current.parent()?.to_path_buf();
+    }
+}
+
+/// validiert, dass ein download-ziel innerhalb des app-cache-verzeichnisses liegt
+/// (allowlist-statt-blocklist). prüft roh-pfad-nachfahrenschaft (komponentenbasiert),
+/// kanonisiert den nächsten existierenden vorfahren und prüft nachfahrenschaft
+/// auch auf den kanonischen pfaden. lehnt symlinks auf dem ziel selbst ab.
+fn validate_download_dest(dest: &str, cache_dir: &Path) -> Result<(), String> {
+    let dest_path = Path::new(dest);
+
+    // roh-pfad: muss nachfahre des cache-dir sein (fängt prefix-tricks wie
+    // "/pfad/cache-evil/x" gegen "/pfad/cache" ab)
+    if !is_descendant_of(dest_path, cache_dir) {
+        return Err("download dest outside app cache directory".into());
+    }
+
+    // nächsten existierenden vorfahren von dest kanonisieren
+    let dest_ancestor = next_existing_ancestor(dest_path)
+        .ok_or_else(|| "no existing ancestor for download dest".to_string())?;
+    let dest_ancestor_canon = fs::canonicalize(&dest_ancestor)
+        .map_err(|e| format!("dest ancestor: {e}"))?;
+
+    // nächsten existierenden vorfahren von cache_dir kanonisieren
+    let cache_ancestor = next_existing_ancestor(cache_dir)
+        .ok_or_else(|| "no existing ancestor for cache dir".to_string())?;
+    let cache_ancestor_canon = fs::canonicalize(&cache_ancestor)
+        .map_err(|e| format!("cache ancestor: {e}"))?;
+
+    // kanonische nachfahren-prüfung (fängt symlinks in der pfadkette)
+    if !is_descendant_of(&dest_ancestor_canon, &cache_ancestor_canon) {
+        return Err("download dest outside app cache directory (canonical)".into());
+    }
+
+    // symlink-check auf dem ziel selbst, falls es bereits existiert
+    if dest_path.exists() {
+        let meta = fs::symlink_metadata(dest_path).map_err(|e| e.to_string())?;
+        if meta.file_type().is_symlink() {
+            return Err("download dest is a symlink".into());
+        }
+    }
+
     Ok(())
 }
 
@@ -537,6 +604,7 @@ async fn download_stream(
 
 /// R-4: tauri-wrapper um download_stream — cancel-registry + fortschritt (throttled ~1 MB).
 /// validiert URL (domain + https) und dest-pfad vor dem start.
+/// dest-validierung per allowlist: nur ziele innerhalb des app-cache-verzeichnisses.
 #[tauri::command]
 pub async fn download_file(
     app: AppHandle,
@@ -546,21 +614,14 @@ pub async fn download_file(
     download_id: String,
 ) -> Result<String, String> {
     validate_download_url(&url)?;
-    // dest: nur absolute pfade, kein .., elternverzeichnis nicht in blocked locations
     sanitize_path(&dest, "download dest")?;
-    if let Some(parent) = Path::new(&dest).parent() {
-        if parent.as_os_str().is_empty() {
-            return Err("invalid download dest".into());
-        }
-        // falls das elternverzeichnis bereits existiert: canonicalisieren und prüfen
-        if parent.exists() {
-            let canon =
-                fs::canonicalize(parent).map_err(|e| format!("download dest parent: {e}"))?;
-            if !is_safe_path(&canon.to_string_lossy()) {
-                return Err("download dest in blocked location".into());
-            }
-        }
-    }
+
+    // allowlist: cache-dir selbst über den tauri path-resolver ermitteln
+    let cache_dir = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| format!("cannot resolve app cache dir: {e}"))?;
+    validate_download_dest(&dest, &cache_dir)?;
 
     let id = download_id.clone();
     let mut last_emit: u64 = 0;
@@ -647,10 +708,12 @@ pub fn path_identity(path: String) -> Result<PathIdentity, String> {
 #[cfg(test)]
 mod tests {
     use super::download_stream;
-    use super::{canonicalize_path, dir_size, is_safe_path, path_identity, sanitize_path,
-    validate_download_url};
+    use super::{canonicalize_path, dir_size, is_descendant_of, is_safe_path, path_identity,
+    sanitize_path, validate_download_dest, validate_download_url};
     use std::io::{Read, Write};
     use std::net::TcpListener;
+    use std::os::unix::fs as unixfs;
+    use std::path::Path;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::thread;
 
@@ -789,8 +852,6 @@ mod tests {
     // fixture liegt komplett unter /tmp, kein bezug auf /mnt oder systempfade.
     #[test]
     fn dir_size_skipped_symlinks() {
-        use std::os::unix::fs as unixfs;
-
         let mut root = std::env::temp_dir();
         root.push(format!("protium-dirsymlink-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
@@ -893,6 +954,116 @@ mod tests {
     #[test]
     fn download_url_rejects_no_host() {
         assert!(validate_download_url("https:///path").is_err());
+    }
+
+    // ---- download-dest-validierung (allowlist: nur app-cache) ----
+
+    #[test]
+    fn is_descendant_of_echter_nachfahre() {
+        assert!(is_descendant_of(
+            Path::new("/a/b/c/d"),
+            Path::new("/a/b")
+        ));
+    }
+
+    #[test]
+    fn is_descendant_of_gleicher_pfad() {
+        assert!(is_descendant_of(
+            Path::new("/a/b"),
+            Path::new("/a/b")
+        ));
+    }
+
+    #[test]
+    fn is_descendant_of_prefix_trick_abgelehnt() {
+        // "/pfad/cache-evil" ist KEIN nachfahre von "/pfad/cache"
+        assert!(!is_descendant_of(
+            Path::new("/pfad/cache-evil/x"),
+            Path::new("/pfad/cache")
+        ));
+    }
+
+    #[test]
+    fn is_descendant_of_anderer_zweig() {
+        assert!(!is_descendant_of(
+            Path::new("/a/b/c"),
+            Path::new("/a/x")
+        ));
+    }
+
+    #[test]
+    fn validate_dest_im_cache_dir_ok() {
+        let tmp = std::env::temp_dir();
+        let cache = tmp.join(format!("protium-desttest-cache-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&cache);
+        std::fs::create_dir_all(cache.join("downloads")).unwrap();
+
+        let dest = cache.join("downloads/file.tar.gz");
+        let res = validate_download_dest(dest.to_str().unwrap(), &cache);
+        assert!(res.is_ok(), "dest im cache-dir muss ok sein: {res:?}");
+
+        let _ = std::fs::remove_dir_all(&cache);
+    }
+
+    #[test]
+    fn validate_dest_etc_passwd_abgelehnt() {
+        let tmp = std::env::temp_dir();
+        let cache = tmp.join(format!("protium-desttest-etc-{}", std::process::id()));
+        std::fs::create_dir_all(&cache).unwrap();
+
+        let res = validate_download_dest("/etc/passwd", &cache);
+        assert!(res.is_err(), "/etc/passwd muss abgelehnt werden: {res:?}");
+
+        let _ = std::fs::remove_dir_all(&cache);
+    }
+
+    #[test]
+    fn validate_dest_nichtexistenter_parent_ausserhalb_abgelehnt() {
+        let tmp = std::env::temp_dir();
+        let cache = tmp.join(format!("protium-desttest-parent-{}", std::process::id()));
+        // cache existiert, aber dest liegt woanders mit nicht-existierendem parent
+        std::fs::create_dir_all(&cache).unwrap();
+
+        let outside = tmp.join(format!("protium-desttest-other-{}", std::process::id()));
+        let dest = outside.join("subdir/file.tar.gz"); // parent existiert nicht
+        let res = validate_download_dest(dest.to_str().unwrap(), &cache);
+        assert!(res.is_err(), "dest ausserhalb cache muss abgelehnt werden (parent existiert nicht): {res:?}");
+
+        let _ = std::fs::remove_dir_all(&cache);
+    }
+
+    #[test]
+    fn validate_dest_symlink_abgelehnt() {
+        let tmp = std::env::temp_dir();
+        let cache = tmp.join(format!("protium-desttest-sym-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&cache);
+        std::fs::create_dir_all(cache.join("downloads")).unwrap();
+
+        let real = cache.join("downloads/real.tar.gz");
+        std::fs::write(&real, b"x").unwrap();
+        let link = cache.join("downloads/link.tar.gz");
+        unixfs::symlink(&real, &link).unwrap();
+
+        let res = validate_download_dest(link.to_str().unwrap(), &cache);
+        assert!(res.is_err(), "symlink-dest muss abgelehnt werden: {res:?}");
+        assert!(res.as_ref().unwrap_err().contains("symlink"));
+
+        let _ = std::fs::remove_dir_all(&cache);
+    }
+
+    #[test]
+    fn validate_dest_prefix_trick_abgelehnt() {
+        // dest = "<cache-dir>-evil/x" — komponenten-vergleich fängt das ab
+        let tmp = std::env::temp_dir();
+        let cache = tmp.join(format!("protium-desttest-cache-{}", std::process::id()));
+        std::fs::create_dir_all(&cache).unwrap();
+
+        let evil = tmp.join(format!("protium-desttest-cache-{}-evil", std::process::id()));
+        let dest = evil.join("x");
+        let res = validate_download_dest(dest.to_str().unwrap(), &cache);
+        assert!(res.is_err(), "prefix-trick muss abgelehnt werden: {res:?}");
+
+        let _ = std::fs::remove_dir_all(&cache);
     }
 
     // ---- download-stream redirect-policy tests ----
@@ -1102,7 +1273,6 @@ mod tests {
     // tests nutzen temp-fixtures unter /tmp; keine berührung von /mnt o. ä.
 
     use super::{library_of, remove_orphan_dir_inner, validate_and_prepare};
-    use std::os::unix::fs as unixfs;
 
     fn orphan_fixture(tag: &str) -> std::path::PathBuf {
         let mut p = std::env::temp_dir();
