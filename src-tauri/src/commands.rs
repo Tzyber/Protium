@@ -198,6 +198,7 @@ fn link_target_stays_inside(base_dir: &Path, target: &Path) -> bool {
 
 fn extract_blocking(src: &str, dest_dir: &str) -> Result<(), String> {
     use flate2::read::GzDecoder;
+    use std::io::Seek;
     use tar::Archive;
 
     let dest = Path::new(dest_dir);
@@ -247,8 +248,10 @@ fn extract_blocking(src: &str, dest_dir: &str) -> Result<(), String> {
         // post-unpack-filter bleibt als defense-in-depth, ist aber nicht
         // mehr die primäre schutzlinie (filter iteriert nur top-level, ein
         // subdir mit bad entry würde ungeprüft durchkommen).
+        // datei EINMAL auf dem kanonischen pfad öffnen — kein TOCTOU
+        let f = fs::File::open(&src_canon).map_err(|e| e.to_string())?;
+        let mut f2 = f.try_clone().map_err(|e| e.to_string())?;
         {
-            let f = fs::File::open(src).map_err(|e| e.to_string())?;
             let mut ar = Archive::new(GzDecoder::new(f));
             for entry in ar.entries().map_err(|e| e.to_string())? {
                 let entry = entry.map_err(|e| e.to_string())?;
@@ -319,8 +322,10 @@ fn extract_blocking(src: &str, dest_dir: &str) -> Result<(), String> {
                 }
             }
         }
-        let f = fs::File::open(src).map_err(|e| e.to_string())?;
-        let mut ar = Archive::new(GzDecoder::new(f));
+        // try_clone teilt den file-offset mit dem original — vor dem zweiten
+        // durchlauf explizit zurücksetzen
+        f2.seek(std::io::SeekFrom::Start(0)).map_err(|e| e.to_string())?;
+        let mut ar = Archive::new(GzDecoder::new(f2));
         ar.unpack(&tmp).map_err(|e| e.to_string())?;
         for entry in fs::read_dir(&tmp).map_err(|e| e.to_string())? {
             let entry = entry.map_err(|e| e.to_string())?;
