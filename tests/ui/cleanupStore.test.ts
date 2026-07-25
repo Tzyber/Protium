@@ -1,12 +1,18 @@
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { findOrphans } from "../../src/core/cleanup";
+import type { readAllShortcutAppIds } from "../../src/core/shortcuts";
 import type { ScanResult } from "../../src/core/types";
 import { setLocale } from "../../src/ui/i18n";
 
 const { mockFindOrphans, mockReadAllShortcutAppIds, mockInvoke } = vi.hoisted(() => ({
-  mockFindOrphans: vi.fn(async () => []),
-  mockReadAllShortcutAppIds: vi.fn(async () => ({ status: "none" as const })),
-  mockInvoke: vi.fn(async (_cmd: string, _args?: unknown) => "deleted"),
+  mockFindOrphans: vi.fn<typeof findOrphans>(async () => []),
+  mockReadAllShortcutAppIds: vi.fn<typeof readAllShortcutAppIds>(
+    async () => ({ status: "none" as const }),
+  ),
+  mockInvoke: vi.fn<(cmd: string, args?: unknown) => Promise<unknown>>(
+    async (_cmd: string, _args?: unknown) => "deleted",
+  ),
 }));
 
 vi.mock("../../src/core/cleanup", () => ({
