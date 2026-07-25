@@ -545,14 +545,19 @@ fn allow_library_scope_inner(app: AppHandle, path: &Path) -> Result<(), String> 
     Ok(())
 }
 
+/// maximale download-grösse (GE-tarballs ~1 GB, 8 GiB ist reichlich luft).
+const MAX_DOWNLOAD_BYTES: u64 = 8 * 1024 * 1024 * 1024;
+
 /// download-kern ohne tauri-typen (cargo-testbar). crash-fest: jeder fehlerausgang
 /// (cancel, netzabbruch, schreibfehler) löscht die partielle datei vor return.
+/// `max_bytes` steuert das grössenlimit (produktion: MAX_DOWNLOAD_BYTES, tests: kleiner).
 async fn download_stream(
     url: &str,
     dest: &str,
     redirect_ok: impl Fn(&str) -> bool + Send + Sync + 'static,
     is_cancelled: impl Fn() -> bool,
     mut on_progress: impl FnMut(u64, Option<u64>),
+    max_bytes: u64,
 ) -> Result<String, String> {
     let result: Result<String, String> = async {
         const MAX_REDIRECTS: usize = 5;
@@ -569,13 +574,21 @@ async fn download_stream(
         });
         let client = reqwest::Client::builder()
             .redirect(policy)
+            .connect_timeout(std::time::Duration::from_secs(30))
             .build()
             .map_err(|e| e.to_string())?;
         let resp = client.get(url).send().await.map_err(|e| e.to_string())?;
         if !resp.status().is_success() {
             return Err(format!("HTTP {}", resp.status()));
         }
-        let total = resp.content_length();
+
+        // content-length-prüfung (server kann lügen, also zählt der streaming-loop
+        // zusätzlich die tatsächlich geschriebenen bytes mit)
+        if let Some(len) = resp.content_length() {
+            if len > max_bytes {
+                return Err("content-length exceeds download size limit".into());
+            }
+        }
 
         if let Some(parent) = Path::new(dest).parent() {
             let _ = tokio::fs::create_dir_all(parent).await;
@@ -584,18 +597,35 @@ async fn download_stream(
             .await
             .map_err(|e| e.to_string())?;
         let mut hasher = Sha512::new();
+        let content_length = resp.content_length();
         let mut downloaded: u64 = 0;
         let mut stream = resp.bytes_stream();
 
-        while let Some(chunk) = stream.next().await {
-            if is_cancelled() {
-                return Err("cancelled".into());
+        // stall-erkennung: jede next()-poll darf max. 120 s brauchen
+        const STALL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
+
+        loop {
+            let chunk = tokio::time::timeout(STALL_TIMEOUT, stream.next())
+                .await
+                .map_err(|_| "download stalled".to_string())?;
+            match chunk {
+                None => break,
+                Some(chunk) => {
+                    if is_cancelled() {
+                        return Err("cancelled".into());
+                    }
+                    let chunk = chunk.map_err(|e| e.to_string())?;
+
+                    downloaded += chunk.len() as u64;
+                    if downloaded > max_bytes {
+                        return Err("download size limit exceeded".into());
+                    }
+
+                    hasher.update(&chunk);
+                    file.write_all(&chunk).await.map_err(|e| e.to_string())?;
+                    on_progress(downloaded, content_length);
+                }
             }
-            let chunk = chunk.map_err(|e| e.to_string())?; // netzwerkabbruch landet hier
-            hasher.update(&chunk);
-            file.write_all(&chunk).await.map_err(|e| e.to_string())?; // schreibfehler hier
-            downloaded += chunk.len() as u64;
-            on_progress(downloaded, total);
         }
         file.flush().await.map_err(|e| e.to_string())?;
         Ok(format!("{:x}", hasher.finalize()))
@@ -655,6 +685,7 @@ pub async fn download_file(
                 );
             }
         },
+        MAX_DOWNLOAD_BYTES,
     )
     .await;
 
@@ -730,7 +761,7 @@ pub fn path_identity(path: String) -> Result<PathIdentity, String> {
 mod tests {
     use super::download_stream;
     use super::{canonicalize_path, dir_size, is_descendant_of, is_safe_path, path_identity,
-    sanitize_path, validate_download_dest, validate_download_url};
+    sanitize_path, validate_download_dest, validate_download_url, MAX_DOWNLOAD_BYTES};
     use std::io::{Read, Write};
     use std::net::TcpListener;
     use std::os::unix::fs as unixfs;
@@ -1166,6 +1197,7 @@ mod tests {
             |_| true,
             || cancel.load(Ordering::Relaxed),
             |_, _| {},
+            MAX_DOWNLOAD_BYTES,
         )
         .await;
         assert!(res.is_ok(), "sollte erfolgreich sein: {res:?}");
@@ -1185,6 +1217,7 @@ mod tests {
             |_| true,
             || cancel.load(Ordering::Relaxed),
             |_, _| {},
+            MAX_DOWNLOAD_BYTES,
         )
         .await;
         assert!(res.is_err(), "vorzeitiger EOF muss fehler sein");
@@ -1203,6 +1236,7 @@ mod tests {
             |_| true,
             || cancel.load(Ordering::Relaxed),
             |_, _| {},
+            MAX_DOWNLOAD_BYTES,
         )
         .await;
         assert_eq!(res.unwrap_err(), "cancelled");
@@ -1266,6 +1300,7 @@ mod tests {
             |_| true,
             || cancel.load(Ordering::Relaxed),
             |_, _| {},
+            MAX_DOWNLOAD_BYTES,
         )
         .await;
         assert!(res.is_ok(), "erster download muss ok sein: {res:?}");
@@ -1283,10 +1318,62 @@ mod tests {
             |_| true,
             || cancel.load(Ordering::Relaxed),
             |_, _| {},
+            MAX_DOWNLOAD_BYTES,
         )
         .await;
         assert!(res2.is_ok(), "zweiter download muss normal starten: {res2:?}");
         let _ = std::fs::remove_dir_all(dest2.parent().unwrap());
+    }
+
+    // ---- download size-cap und stall-timeout ----
+
+    #[tokio::test]
+    async fn content_length_ueber_limit_wird_abgelehnt() {
+        let dest = tmp("sizecap-cl");
+        // stub kündigt 9999 bytes an → über dem test-limit von 100
+        let url = serve_once(9999, 0);
+        let cancel = AtomicBool::new(false);
+        let res = download_stream(
+            &url,
+            dest.to_str().unwrap(),
+            |_| true,
+            || cancel.load(Ordering::Relaxed),
+            |_, _| {},
+            100, // kleines test-limit
+        )
+        .await;
+        assert!(res.is_err(), "content-length über limit muss Err liefern: {res:?}");
+        assert!(
+            res.as_ref().unwrap_err().contains("content-length"),
+            "fehler soll content-length nennen: {res:?}"
+        );
+        assert!(!dest.exists(), "keine datei bei content-length-überschreitung");
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn bytes_ueber_limit_raeumt_partielle_datei_auf() {
+        let dest = tmp("sizecap-bytes");
+        // stub kündigt 16 bytes an, sendet 32 — ohne content-length-check
+        // greift der byte-counter im streaming-loop (limit = 8)
+        let url = serve_once(16, 32);
+        let cancel = AtomicBool::new(false);
+        let res = download_stream(
+            &url,
+            dest.to_str().unwrap(),
+            |_| true,
+            || cancel.load(Ordering::Relaxed),
+            |_, _| {},
+            8, // kleines test-limit
+        )
+        .await;
+        assert!(res.is_err(), "bytes über limit muss Err liefern: {res:?}");
+        assert!(
+            res.as_ref().unwrap_err().contains("size limit"),
+            "fehler soll size-limit nennen: {res:?}"
+        );
+        assert!(!dest.exists(), "partielle datei muss weg sein");
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
     }
 
     #[tokio::test]
@@ -1306,6 +1393,7 @@ mod tests {
             |u| u.starts_with("http://127.0.0.1:"),
             || cancel.load(Ordering::Relaxed),
             |_, _| {},
+            MAX_DOWNLOAD_BYTES,
         )
         .await;
         assert!(res.is_ok(), "redirect zu eigenem stub muss durchlaufen: {res:?}");
@@ -1329,6 +1417,7 @@ mod tests {
             |u| u.starts_with("http://127.0.0.1:"),
             || cancel.load(Ordering::Relaxed),
             |_, _| {},
+            MAX_DOWNLOAD_BYTES,
         )
         .await;
         assert!(res.is_err(), "redirect zu evil-host muss abgelehnt werden: {res:?}");
@@ -1357,6 +1446,7 @@ mod tests {
             |_| true,
             || cancel.load(Ordering::Relaxed),
             |_, _| {},
+            MAX_DOWNLOAD_BYTES,
         )
         .await;
         assert!(res.is_err(), "redirect-schleife muss abgebrochen werden: {res:?}");
