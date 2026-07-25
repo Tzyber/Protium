@@ -19,13 +19,13 @@ describe("findOrphans", () => {
     const shadercacheOrphans = orphans.filter((o) => o.type === "shadercache");
 
     expect(compatdataOrphans).toHaveLength(1);
-    expect(compatdataOrphans[0].appId).toBe(999999);
-    expect(compatdataOrphans[0].path).toContain("/compatdata/999999");
+    expect(compatdataOrphans[0]?.appId).toBe(999999);
+    expect(compatdataOrphans[0]?.path).toContain("/compatdata/999999");
 
     expect(shadercacheOrphans).toHaveLength(1);
-    expect(shadercacheOrphans[0].appId).toBe(888888);
-    expect(shadercacheOrphans[0].path).toContain("/shadercache/888888");
-    expect(shadercacheOrphans[0].type).toBe("shadercache");
+    expect(shadercacheOrphans[0]?.appId).toBe(888888);
+    expect(shadercacheOrphans[0]?.path).toContain("/shadercache/888888");
+    expect(shadercacheOrphans[0]?.type).toBe("shadercache");
   });
 
   it("nicht-numerisch, 0, datei statt ordner werden ignoriert", async () => {
