@@ -38,7 +38,7 @@ export const useScanStore = defineStore("scan", {
         const home = await getHome();
         const steamRoot = await discoverSteamRoot(tauriPorts.fs, home);
         this.statusText = t("status.scanningLibrary");
-        this.result = await scanLibrary(tauriPorts, { home, steamRoot, protonDbDelayMs: 0 });
+        this.result = await scanLibrary(tauriPorts, { steamRoot, protonDbDelayMs: 0 });
         this.status = "done";
         this.statusText = t("status.ready");
       } catch (e) {
