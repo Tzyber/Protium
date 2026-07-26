@@ -18,6 +18,8 @@ pub fn run() {
             commands::download_file,
             commands::cancel_download,
             commands::remove_orphan_dir,
+            commands::remove_trash_entry,
+            commands::list_trash_entries,
         ])
         .run(tauri::generate_context!())
         .expect("error while running protium");

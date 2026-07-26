@@ -2,18 +2,27 @@ import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { findOrphans } from "../../src/core/cleanup";
 import type { readAllShortcutAppIds } from "../../src/core/shortcuts";
+import type { findTrashEntries, TrashEntry } from "../../src/core/trash";
 import type { ScanResult } from "../../src/core/types";
 import { setLocale } from "../../src/ui/i18n";
 
-const { mockFindOrphans, mockReadAllShortcutAppIds, mockInvoke } = vi.hoisted(() => ({
-  mockFindOrphans: vi.fn<typeof findOrphans>(async () => []),
-  mockReadAllShortcutAppIds: vi.fn<typeof readAllShortcutAppIds>(async () => ({
-    status: "none" as const,
-  })),
-  mockInvoke: vi.fn<(cmd: string, args?: unknown) => Promise<unknown>>(
-    async (_cmd: string, _args?: unknown) => "deleted",
-  ),
-}));
+const { mockFindOrphans, mockReadAllShortcutAppIds, mockFindTrashEntries, mockInvoke } = vi.hoisted(
+  () => ({
+    mockFindOrphans: vi.fn<typeof findOrphans>(async () => []),
+    mockReadAllShortcutAppIds: vi.fn<typeof readAllShortcutAppIds>(async () => ({
+      status: "none" as const,
+    })),
+    mockFindTrashEntries: vi.fn<typeof findTrashEntries>(async () => ({
+      entries: [],
+      unknown: [],
+      unreadable: [],
+      libraries: [],
+    })),
+    mockInvoke: vi.fn<(cmd: string, args?: unknown) => Promise<unknown>>(
+      async (_cmd: string, _args?: unknown) => "deleted",
+    ),
+  }),
+);
 
 vi.mock("../../src/core/cleanup", () => ({
   findOrphans: mockFindOrphans,
@@ -21,6 +30,9 @@ vi.mock("../../src/core/cleanup", () => ({
 vi.mock("../../src/core/shortcuts", () => ({
   readAllShortcutAppIds: mockReadAllShortcutAppIds,
   SHORTCUT_ID_THRESHOLD: 2_147_483_648,
+}));
+vi.mock("../../src/core/trash", () => ({
+  findTrashEntries: mockFindTrashEntries,
 }));
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: mockInvoke,
@@ -75,9 +87,16 @@ describe("cleanupStore gate logic", () => {
     setLocale("de"); // assertions matchen deutsche substrings
     mockFindOrphans.mockReset();
     mockReadAllShortcutAppIds.mockReset();
+    mockFindTrashEntries.mockReset();
     mockInvoke.mockReset();
     mockInvoke.mockResolvedValue("deleted");
     mockReadAllShortcutAppIds.mockResolvedValue({ status: "none" });
+    mockFindTrashEntries.mockResolvedValue({
+      entries: [],
+      unknown: [],
+      unreadable: [],
+      libraries: [],
+    });
   });
 
   it("blockiert wenn scope-failed library vorhanden", async () => {
@@ -338,5 +357,250 @@ describe("cleanupStore — batch_dir_sizes NotFound-Skip", () => {
     expect(renderSize(undefined)).toBe("…");
     expect(renderSize(0)).toBe("—"); // echtes leeres verzeichnis
     expect(renderSize(8192)).toBe("8192 B");
+  });
+});
+
+function fakeTrashEntry(overrides?: Partial<TrashEntry>): TrashEntry {
+  return {
+    path: "/lib/steamapps/.protium-trash/compatdata_1091500_1753372800123",
+    library: "/lib",
+    name: "compatdata_1091500_1753372800123",
+    type: "compatdata",
+    appId: 1091500,
+    trashedAt: 1753372800123,
+    ...overrides,
+  };
+}
+
+describe("cleanupStore — trash", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    setLocale("de");
+    mockFindTrashEntries.mockReset();
+    mockInvoke.mockReset();
+    mockInvoke.mockResolvedValue("deleted");
+    mockFindTrashEntries.mockResolvedValue({
+      entries: [],
+      unknown: [],
+      unreadable: [],
+      libraries: [],
+    });
+  });
+
+  it("scanTrash ohne scan-ergebnis → error gesetzt", async () => {
+    const scanStore = useScanStore();
+    scanStore.result = null;
+    const store = useCleanupStore();
+
+    await store.scanTrash();
+
+    expect(store.error).toContain("scan-ergebnis");
+    expect(mockInvoke).not.toHaveBeenCalled();
+  });
+
+  it("scanTrash füllt trash und trashSizes", async () => {
+    const entry = fakeTrashEntry();
+    mockFindTrashEntries.mockResolvedValue({
+      entries: [entry],
+      unknown: [],
+      unreadable: [],
+      libraries: [],
+    });
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === "batch_dir_sizes") return { [entry.path]: 8192 };
+      return "deleted";
+    });
+
+    const scanStore = useScanStore();
+    scanStore.result = fakeScan([]);
+    const store = useCleanupStore();
+
+    await store.scanTrash();
+
+    expect(store.trash).toHaveLength(1);
+    expect(store.trash[0]?.appId).toBe(1091500);
+    expect(store.trash[0]?.sizeBytes).toBe(8192);
+    expect(store.trashSizes).toEqual({ [entry.path]: 8192 });
+    expect(store.trashUnknown).toEqual([]);
+  });
+
+  it("scanTrash meldet unlesbaren papierkorb statt ihn als leer auszugeben", async () => {
+    mockFindTrashEntries.mockResolvedValue({
+      entries: [],
+      unknown: [],
+      unreadable: ["/lib"],
+      libraries: [
+        {
+          library: "/lib",
+          dir: "/lib/steamapps/.protium-trash",
+          present: true,
+          count: 0,
+          error: "EACCES: permission denied",
+        },
+      ],
+    });
+
+    const scanStore = useScanStore();
+    scanStore.result = fakeScan([]);
+    const store = useCleanupStore();
+
+    await store.scanTrash();
+
+    expect(store.trashUnreadable).toEqual(["/lib"]);
+    // darf NICHT als "papierkorb ist leer" durchgehen
+    expect(store.error).toBeTruthy();
+    expect(store.trashLibraries[0]?.error).toContain("EACCES");
+  });
+
+  it("emptyTrash löscht alle einträge", async () => {
+    const e1 = fakeTrashEntry();
+    const e2 = fakeTrashEntry({
+      path: "/lib/steamapps/.protium-trash/compatdata_570_100",
+      name: "compatdata_570_100",
+      appId: 570,
+    });
+    // direkt setzen statt über scanTrash
+    const scanStore = useScanStore();
+    scanStore.result = fakeScan([]);
+    const store = useCleanupStore();
+    store.trash = [e1, e2];
+
+    await store.emptyTrash();
+
+    expect(store.trash).toHaveLength(0);
+    expect(mockInvoke).toHaveBeenCalledTimes(2);
+    expect(mockInvoke).toHaveBeenCalledWith("remove_trash_entry", { path: e1.path });
+    expect(mockInvoke).toHaveBeenCalledWith("remove_trash_entry", { path: e2.path });
+  });
+
+  it("emptyTrash mit fehlschlag in der mitte — rest wird trotzdem gelöscht", async () => {
+    const e1 = fakeTrashEntry();
+    const e2 = fakeTrashEntry({
+      path: "/lib/steamapps/.protium-trash/compatdata_570_100",
+      name: "compatdata_570_100",
+      appId: 570,
+    });
+    const e3 = fakeTrashEntry({
+      path: "/lib/steamapps/.protium-trash/shadercache_730_200",
+      name: "shadercache_730_200",
+      type: "shadercache",
+      appId: 730,
+    });
+
+    let callCount = 0;
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === "remove_trash_entry") {
+        callCount++;
+        if (callCount === 2) throw new Error("permission denied");
+        return "deleted";
+      }
+      return "deleted";
+    });
+
+    const scanStore = useScanStore();
+    scanStore.result = fakeScan([]);
+    const store = useCleanupStore();
+    store.trash = [e1, e2, e3];
+
+    await store.emptyTrash();
+
+    expect(store.trash).toHaveLength(1);
+    expect(store.trash[0]?.appId).toBe(570); // der fehlgeschlagene bleibt
+    expect(store.error).toContain("compatdata_570_100");
+    expect(store.error).toContain("permission denied");
+  });
+
+  it("deleteTrashEntry entfernt genau einen eintrag", async () => {
+    const e1 = fakeTrashEntry();
+    const e2 = fakeTrashEntry({
+      path: "/lib/steamapps/.protium-trash/compatdata_570_100",
+      name: "compatdata_570_100",
+      appId: 570,
+    });
+
+    const scanStore = useScanStore();
+    scanStore.result = fakeScan([]);
+    const store = useCleanupStore();
+    store.trash = [e1, e2];
+
+    await store.deleteTrashEntry(e1);
+
+    expect(store.trash).toHaveLength(1);
+    expect(store.trash[0]?.appId).toBe(570);
+    expect(mockInvoke).toHaveBeenCalledTimes(1);
+    expect(mockInvoke).toHaveBeenCalledWith("remove_trash_entry", { path: e1.path });
+  });
+});
+
+describe("cleanupStore — papierkorb-refresh nach dem löschen", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    setLocale("de");
+    mockFindOrphans.mockReset();
+    mockReadAllShortcutAppIds.mockReset();
+    mockFindTrashEntries.mockReset();
+    mockInvoke.mockReset();
+    mockFindOrphans.mockResolvedValue([]);
+    mockReadAllShortcutAppIds.mockResolvedValue({ status: "none" });
+    mockFindTrashEntries.mockResolvedValue({
+      entries: [],
+      unknown: [],
+      unreadable: [],
+      libraries: [],
+    });
+    mockInvoke.mockResolvedValue("deleted");
+  });
+
+  it("compatdata löschen lädt den papierkorb neu", async () => {
+    const scanStore = useScanStore();
+    scanStore.result = fakeScan([]);
+    const store = useCleanupStore();
+
+    await store.deleteOrphans([
+      {
+        appId: 999999,
+        type: "compatdata",
+        path: "/lib/steamapps/compatdata/999999",
+        library: "/lib",
+      },
+    ]);
+
+    // ohne diesen refresh bleibt die papierkorb-sektion leer, obwohl gerade
+    // ein prefix hineinverschoben wurde
+    expect(mockFindTrashEntries).toHaveBeenCalled();
+  });
+
+  it("shadercache löschen lädt den papierkorb NICHT neu (hard delete)", async () => {
+    const scanStore = useScanStore();
+    scanStore.result = fakeScan([]);
+    const store = useCleanupStore();
+
+    await store.deleteOrphans([
+      {
+        appId: 888888,
+        type: "shadercache",
+        path: "/lib/steamapps/shadercache/888888",
+        library: "/lib",
+      },
+    ]);
+
+    expect(mockFindTrashEntries).not.toHaveBeenCalled();
+  });
+
+  it("löschfehler bleibt erhalten, obwohl scanTrash den fehler zurücksetzt", async () => {
+    const scanStore = useScanStore();
+    scanStore.result = fakeScanWithGames([999999]); // appId inzwischen installiert
+    const store = useCleanupStore();
+
+    await store.deleteOrphans([
+      {
+        appId: 999999,
+        type: "compatdata",
+        path: "/lib/steamapps/compatdata/999999",
+        library: "/lib",
+      },
+    ]);
+
+    expect(store.error).toContain("inzwischen installiert");
   });
 });

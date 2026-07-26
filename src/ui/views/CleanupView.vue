@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
+import type { TrashEntry } from "../../core/trash";
 import type { OrphanEntry } from "../../core/types";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
 import { formatBytes } from "../format";
@@ -8,7 +9,12 @@ import { useCleanupStore } from "../stores/cleanupStore";
 
 const cleanup = useCleanupStore();
 
-onMounted(() => cleanup.scanOrphans());
+onMounted(async () => {
+  await cleanup.scanOrphans();
+  // papierkorb gleich mitladen — nur lesend, und ohne das sieht der nutzer
+  // eine leere sektion und hält sie für den echten stand
+  await cleanup.scanTrash();
+});
 
 const bySize = (a: OrphanEntry, b: OrphanEntry) => (b.sizeBytes ?? 0) - (a.sizeBytes ?? 0);
 const shadercacheOrphans = computed(() => [...cleanup.shadercacheOrphans].sort(bySize));
@@ -83,6 +89,76 @@ const confirmTotalBytes = computed(() =>
 const confirmPaths = computed(() => deleteCandidates.value.map((o) => o.path));
 
 const busy = computed(() => cleanup.scanning || cleanup.deleting.size > 0);
+
+// ---- papierkorb ----
+
+const trashBySize = computed(() =>
+  [...cleanup.trash].sort((a, b) => (b.sizeBytes ?? 0) - (a.sizeBytes ?? 0)),
+);
+
+const trashSelected = reactive(new Set<string>());
+
+function toggleTrash(path: string) {
+  if (trashSelected.has(path)) trashSelected.delete(path);
+  else trashSelected.add(path);
+}
+
+const trashTotalBytes = computed(() =>
+  cleanup.trash.reduce((sum, e) => sum + (e.sizeBytes ?? 0), 0),
+);
+
+const trashSelectedAll = computed(() => cleanup.trash.filter((e) => trashSelected.has(e.path)));
+const trashSelectedBytes = computed(() =>
+  trashSelectedAll.value.reduce((sum, e) => sum + (e.sizeBytes ?? 0), 0),
+);
+
+const trashDeleteCandidates = ref<TrashEntry[]>([]);
+const trashDeleting = ref(false);
+
+function startTrashDelete(candidates: TrashEntry[]) {
+  if (candidates.length) trashDeleteCandidates.value = candidates;
+}
+
+async function confirmTrashDelete() {
+  trashDeleting.value = true;
+  const isAll = trashDeleteCandidates.value.length === cleanup.trash.length;
+  if (isAll) {
+    await cleanup.emptyTrash();
+  } else {
+    for (const e of trashDeleteCandidates.value) {
+      await cleanup.deleteTrashEntry(e);
+    }
+  }
+  trashDeleteCandidates.value = [];
+  trashSelected.clear();
+  trashDeleting.value = false;
+}
+
+function cancelTrashDelete() {
+  trashDeleteCandidates.value = [];
+}
+
+const trashConfirmCount = computed(() => trashDeleteCandidates.value.length);
+const trashConfirmBytes = computed(() =>
+  trashDeleteCandidates.value.reduce((sum, e) => sum + (e.sizeBytes ?? 0), 0),
+);
+const trashConfirmPaths = computed(() => trashDeleteCandidates.value.map((e) => e.path));
+
+function trashDate(ms: number): string {
+  return new Date(ms).toLocaleDateString("de-DE", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function selectAllTrash() {
+  const all = trashBySize.value.every((e) => trashSelected.has(e.path));
+  for (const e of trashBySize.value) {
+    if (all) trashSelected.delete(e.path);
+    else trashSelected.add(e.path);
+  }
+}
 </script>
 
 <template>
@@ -161,6 +237,8 @@ const busy = computed(() => cleanup.scanning || cleanup.deleting.size > 0);
         <button class="sel-all warn" type="button" @click="selectAllCompat()">{{ t("cleanup.selectAll") }}</button>
       </div>
 
+      <p class="moved-note">{{ t("cleanup.winePrefixMovedNote") }}</p>
+
       <div class="list">
         <button
           v-for="o in compatdataOrphans"
@@ -185,6 +263,110 @@ const busy = computed(() => cleanup.scanning || cleanup.deleting.size > 0);
     <div v-if="!cleanup.scanning && !cleanup.orphans.length && !cleanup.error" class="empty">
       {{ t("cleanup.empty") }}
     </div>
+
+    <!-- ---- papierkorb ---- -->
+
+    <div v-if="cleanup.trashUnreadable.length" class="blocked" style="margin-top: 24px;">
+      {{ t("cleanup.trashUnreadable", { paths: cleanup.trashUnreadable.join(", ") }) }}
+    </div>
+
+    <div v-if="cleanup.trashUnknown.length" class="blocked" style="margin-top: 24px;">
+      {{ t("cleanup.trashUnknownHint", { n: cleanup.trashUnknown.length }) }}
+      <ul class="pm-list"><li v-for="p in cleanup.trashUnknown" :key="p" class="mono">{{ p }}</li></ul>
+    </div>
+
+    <div class="section-bar" style="margin-top: 24px;">
+      <h3 class="section">{{ t("cleanup.trash") }} <span class="count">{{ cleanup.trash.length }}</span></h3>
+      <h3 class="section"><span class="count">{{ t("cleanup.total", { size: formatBytes(trashTotalBytes) }) }}</span></h3>
+    </div>
+
+    <button
+      class="scan-btn"
+      type="button"
+      :disabled="cleanup.trashScanning"
+      @click="cleanup.scanTrash()"
+      style="margin-bottom: 12px;"
+    >
+      {{ cleanup.trashScanning ? t("cleanup.trashSearching") : t("cleanup.trashSearchButton") }}
+    </button>
+
+    <div v-if="cleanup.trashLibraries.length" class="summary">
+      <div v-for="l in cleanup.trashLibraries" :key="l.library" class="mono">
+        {{ l.error
+          ? t("cleanup.trashLibError", { dir: l.dir || l.library, msg: l.error })
+          : !l.present
+            ? t("cleanup.trashLibNone", { dir: l.dir || l.library })
+            : t("cleanup.trashLibCount", { dir: l.dir, n: l.count }) }}
+      </div>
+    </div>
+
+    <div v-if="cleanup.trash.length" class="summary">
+      {{ t("cleanup.trashSummary", { n: cleanup.trash.length, size: formatBytes(trashTotalBytes) }) }}
+    </div>
+
+    <div v-if="trashBySize.length" class="list">
+      <button
+        v-for="e in trashBySize"
+        :key="e.path"
+        type="button"
+        class="row"
+        :class="{ on: trashSelected.has(e.path) }"
+        :aria-pressed="trashSelected.has(e.path)"
+        @click="toggleTrash(e.path)"
+      >
+        <span class="box" aria-hidden="true" />
+        <span class="rname mono">{{ e.appId }}</span>
+        <span class="rpath mono" :title="e.path">{{ e.path }}</span>
+        <span class="rsize mono">{{ e.sizeBytes != null ? formatBytes(e.sizeBytes) : "…" }}</span>
+        <span class="rdate mono">{{ t("cleanup.trashTrashedAt", { date: trashDate(e.trashedAt) }) }}</span>
+      </button>
+    </div>
+
+    <div v-if="!cleanup.trashScanning && !cleanup.trash.length" class="empty">
+      {{ t("cleanup.trashEmptyState") }}
+    </div>
+
+    <!-- sticky aktionsleiste für papierkorb -->
+    <div v-if="cleanup.trash.length" class="actionbar">
+      <span class="sel-info">
+        {{ t("cleanup.trashSelectedInfo", { n: trashSelectedAll.length, size: formatBytes(trashSelectedBytes) }) }}
+      </span>
+      <div class="actionbar-btns">
+        <button
+          class="action"
+          type="button"
+          :disabled="!trashSelectedAll.length"
+          @click="startTrashDelete(trashSelectedAll)"
+        >
+          {{ t("cleanup.trashDeleteEntry") }}
+        </button>
+        <button
+          class="action danger"
+          type="button"
+          :disabled="!cleanup.trash.length"
+          @click="startTrashDelete(cleanup.trash)"
+        >
+          {{ t("cleanup.trashEmpty") }}
+        </button>
+      </div>
+    </div>
+
+    <ConfirmDialog
+      v-if="trashDeleteCandidates.length"
+      :title="trashConfirmCount === cleanup.trash.length ? t('cleanup.trashDeleteConfirmTitle') : t('cleanup.trashDeleteConfirmSingle')"
+      :confirm-label="t('cleanup.trashDeleteAction')"
+      danger
+      @cancel="cancelTrashDelete"
+      @confirm="confirmTrashDelete"
+    >
+      <p class="saveurge">
+        {{ t("cleanup.trashPermanentWarning") }}
+      </p>
+      <p>{{ t("cleanup.totalSize", { size: formatBytes(trashConfirmBytes) }) }}</p>
+      <ul class="paths">
+        <li v-for="p in trashConfirmPaths" :key="p" class="mono">{{ p }}</li>
+      </ul>
+    </ConfirmDialog>
 
     <!-- sticky aktionsleiste: immer erreichbar ohne ans listenende zu scrollen -->
     <div v-if="cleanup.orphans.length" class="actionbar">
@@ -339,6 +521,12 @@ const busy = computed(() => cleanup.scanning || cleanup.deleting.size > 0);
   color: var(--fg-2); font-size: 12px;
 }
 .rsize { color: var(--fg-1); font-size: 14px; white-space: nowrap; flex-shrink: 0; }
+.rdate { color: var(--fg-2); font-size: 12px; white-space: nowrap; flex-shrink: 0; min-width: 120px; text-align: right; }
+
+.moved-note {
+  color: var(--fg-2); font-size: 13px; font-family: var(--font-body);
+  margin: 0 0 10px; font-style: italic;
+}
 
 /* sticky aktionsleiste unten */
 .actionbar {

@@ -6,6 +6,20 @@ export interface DirEntry {
   isSymlink: boolean;
 }
 
+export interface TrashDirEntry {
+  name: string;
+  isDir: boolean;
+  isSymlink: boolean;
+}
+
+export interface TrashListing {
+  /** kanonischer papierkorb-pfad, den das backend gelesen hat */
+  dir: string;
+  /** false = kein papierkorb vorhanden (normalfall, kein fehler) */
+  present: boolean;
+  entries: TrashDirEntry[];
+}
+
 export interface FileSystem {
   exists(path: string): Promise<boolean>;
   readTextFile(path: string): Promise<string>;
@@ -51,6 +65,9 @@ export interface System {
   cancelDownload(downloadId: string): Promise<void>;
   /** R-1 .tar.gz nach dest entpacken (temp im ziel-fs, EXDEV-safe). */
   extractTarball(src: string, dest: string): Promise<void>;
+  /** listet <library>/steamapps/.protium-trash. in rust, weil der webview-fs-scope
+   *  verzeichnisse mit führendem punkt nicht zuverlässig erfasst. */
+  listTrashEntries(library: string): Promise<TrashListing>;
 }
 
 /** persistenter key/value-cache (protondb TTL, github etag). */

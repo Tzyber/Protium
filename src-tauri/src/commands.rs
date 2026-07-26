@@ -522,6 +522,84 @@ fn remove_orphan_dir_inner(canonical: &Path, library: &Path) -> Result<String, S
     }
 }
 
+/// löscht einen eintrag aus .protium-trash endgültig (kein zweiter papierkorb).
+/// muster: `.protium-trash/(compatdata|shadercache)_<appId>_<ms>`.
+/// keinerlei gates (kein steam-läuft, kein scope-check): der papierkorb ist
+/// keine steam-datei, löschen kann nichts korrumpieren.
+#[tauri::command]
+pub fn remove_trash_entry(path: String) -> Result<String, String> {
+    sanitize_path(&path, "remove_trash_entry")?;
+
+    // symlink-guard auf roh-input VOR canonicalize — canonicalize folgt symlinks,
+    // sonst wäre der check tot (gleiche begründung wie validate_and_prepare)
+    let raw_meta = fs::symlink_metadata(&path).map_err(|e| e.to_string())?;
+    if raw_meta.file_type().is_symlink() {
+        return Err("symlink rejected — will not recurse".into());
+    }
+
+    // canonicalize VOR allen weiteren prüfungen (sonst umgeht .. die musterprüfung)
+    let canonical = fs::canonicalize(&path).map_err(|e| e.to_string())?;
+
+    let meta = fs::symlink_metadata(&canonical).map_err(|e| e.to_string())?;
+    // defense-in-depth: der roh-input-check oben hat symlinks bereits abgewiesen
+    if meta.file_type().is_symlink() {
+        return Err("symlink rejected — will not recurse".into());
+    }
+    if !meta.is_dir() {
+        return Err("not a directory".into());
+    }
+
+    let canon_str = canonical.to_string_lossy();
+    if !is_safe_path(&canon_str) {
+        return Err("blocked path".into());
+    }
+
+    let suffix = suffix_after_steamapps(&canon_str)?;
+
+    // suffix muss exakt .protium-trash/<name> sein
+    let (trash_marker, name) = suffix
+        .split_once('/')
+        .ok_or_else(|| "invalid suffix structure".to_string())?;
+
+    if trash_marker != ".protium-trash" {
+        return Err(format!(
+            "expected .protium-trash, got: {trash_marker}"
+        ));
+    }
+
+    if name.contains('/') {
+        return Err("name must not contain '/'".into());
+    }
+
+    // name parsen: (compatdata|shadercache)_<appId>_<ms>
+    let (rest, ms_str) = name
+        .rsplit_once('_')
+        .ok_or_else(|| "missing timestamp suffix".to_string())?;
+
+    if ms_str.is_empty() || !ms_str.chars().all(|c| c.is_ascii_digit()) {
+        return Err(format!("non-numeric timestamp: {ms_str}"));
+    }
+
+    let (typ, app_id_str) = rest
+        .split_once('_')
+        .ok_or_else(|| "missing type/appId separator".to_string())?;
+
+    if typ != "compatdata" && typ != "shadercache" {
+        return Err(format!("unexpected type: {typ}"));
+    }
+
+    if app_id_str.is_empty() || !app_id_str.chars().all(|c| c.is_ascii_digit()) {
+        return Err(format!("non-numeric appId: {app_id_str}"));
+    }
+
+    if app_id_str == "0" {
+        return Err("appId 0 rejected".into());
+    }
+
+    fs::remove_dir_all(&canonical).map_err(|e| e.to_string())?;
+    Ok("deleted".into())
+}
+
 /// extrahiert das library-verzeichnis (alles vor dem letzten "/steamapps/").
 /// `rfind` ist sicher, weil das folgende muster-check die echte anwendung garantiert.
 fn library_of(canon_str: &str) -> Result<&str, String> {
@@ -738,6 +816,77 @@ pub fn canonicalize_path(path: String) -> Result<String, String> {
         return Err("path resolution in blocked filesystem".into());
     }
     Ok(s.into_owned())
+}
+
+/// ein verzeichniseintrag im papierkorb. is_symlink kommt aus file_type() des
+/// read_dir-eintrags, folgt also KEINEM symlink.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrashDirEntry {
+    pub name: String,
+    pub is_dir: bool,
+    pub is_symlink: bool,
+}
+
+/// ergebnis von list_trash_entries. `present` unterscheidet "kein papierkorb
+/// vorhanden" (normalfall, kein fehler) von einem lesefehler (Err).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrashListing {
+    /// kanonischer pfad des papierkorbs, den wir wirklich gelesen haben.
+    /// das frontend baut eintragspfade daraus, statt selbst zu joinen —
+    /// sonst driftet die anzeige bei symlinks vom echten ort ab.
+    pub dir: String,
+    pub present: bool,
+    pub entries: Vec<TrashDirEntry>,
+}
+
+/// listet `<library>/steamapps/.protium-trash`.
+///
+/// WARUM in rust und nicht per plugin-fs readDir im frontend: der fs-scope des
+/// webviews wird über globs vergeben (`<library>/**`). ein verzeichnis mit
+/// führendem punkt wird davon nicht zuverlässig erfasst, und das lesen des
+/// papierkorbs schlug in externen libraries still fehl — die app zeigte einen
+/// leeren papierkorb, obwohl vier prefixes darin lagen. rust hat keinen
+/// webview-scope; dieselbe begründung wie bei dir_size und remove_trash_entry.
+#[tauri::command]
+pub fn list_trash_entries(library: String) -> Result<TrashListing, String> {
+    sanitize_path(&library, "list_trash_entries")?;
+    let real = fs::canonicalize(&library).map_err(|e| e.to_string())?;
+    if !is_safe_path(&real.to_string_lossy()) {
+        return Err("blocked path".into());
+    }
+
+    let trash_dir = real.join("steamapps").join(".protium-trash");
+    let dir = trash_dir.to_string_lossy().into_owned();
+
+    // symlink_metadata: ein symlink an dieser stelle wird nicht verfolgt
+    let md = match fs::symlink_metadata(&trash_dir) {
+        Ok(md) => md,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(TrashListing { dir, present: false, entries: Vec::new() });
+        }
+        Err(e) => return Err(e.to_string()),
+    };
+    if md.file_type().is_symlink() {
+        return Err("trash dir is a symlink — refusing to read".into());
+    }
+    if !md.is_dir() {
+        return Err("trash path is not a directory".into());
+    }
+
+    let mut entries = Vec::new();
+    for e in fs::read_dir(&trash_dir).map_err(|e| e.to_string())? {
+        let e = e.map_err(|e| e.to_string())?;
+        let ft = e.file_type().map_err(|e| e.to_string())?;
+        entries.push(TrashDirEntry {
+            name: e.file_name().to_string_lossy().into_owned(),
+            is_dir: ft.is_dir(),
+            is_symlink: ft.is_symlink(),
+        });
+    }
+
+    Ok(TrashListing { dir, present: true, entries })
 }
 
 /// R-6: realpath + (dev,ino) zur library-dedup.
@@ -1736,6 +1885,154 @@ mod tests {
         assert!(res.as_ref().unwrap_err().contains("symlink"));
         assert!(link.exists(), "symlink selbst darf nicht angetastet werden");
         assert!(target.exists(), "ziel darf nicht angetastet werden");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // ---- remove_trash_entry ----
+    // selbes tempdir-muster wie remove_orphan_dir.
+    // tests prüfen die gesamte command-funktion (nicht nur einen inner-helper),
+    // weil remove_trash_entry keinen AppHandle braucht und direkt aufrufbar ist.
+
+    use super::remove_trash_entry;
+
+    fn trash_fixture(tag: &str) -> std::path::PathBuf {
+        let mut p = std::env::temp_dir();
+        p.push(format!("protium-trash-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&p);
+        std::fs::create_dir_all(&p).unwrap();
+        p
+    }
+
+    #[test]
+    fn gueltiger_eintrag_wird_geloescht() {
+        let root = trash_fixture("valid");
+        let lib = root.join("lib");
+        let trash = lib.join("steamapps/.protium-trash");
+        let entry = trash.join("compatdata_1091500_1753372800123");
+        std::fs::create_dir_all(&entry).unwrap();
+        std::fs::write(entry.join("marker"), b"x").unwrap();
+
+        let res = remove_trash_entry(entry.to_string_lossy().to_string());
+        assert_eq!(res.as_deref(), Ok("deleted"));
+        assert!(!entry.exists(), "eintrag muss gelöscht sein");
+        // trash-verzeichnis selbst darf stehen bleiben (enthält evtl. andere einträge)
+        assert!(trash.exists());
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn pfad_mit_dotdot_wird_abgelehnt() {
+        let root = trash_fixture("dotdot");
+        let lib = root.join("lib");
+        let trash = lib.join("steamapps/.protium-trash");
+        let entry = trash.join("compatdata_1_2");
+        std::fs::create_dir_all(&entry).unwrap();
+
+        // konstruiere einen pfad mit .., der auf den eintrag zeigt
+        let tricky = trash.join("../.protium-trash/compatdata_1_2");
+        let res = remove_trash_entry(tricky.to_string_lossy().to_string());
+        assert!(res.is_err(), ".. muss abgelehnt werden");
+        assert!(entry.exists(), "ziel darf nicht gelöscht worden sein");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn symlink_statt_verzeichnis_wird_abgelehnt() {
+        let root = trash_fixture("symlink");
+        let lib = root.join("lib");
+        let trash = lib.join("steamapps/.protium-trash");
+        std::fs::create_dir_all(&trash).unwrap();
+        let target = lib.join("steamapps/compatdata");
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::create_dir_all(target.join("42")).unwrap();
+        let link = trash.join("compatdata_42_100");
+        unixfs::symlink(&target.join("42"), &link).unwrap();
+
+        let res = remove_trash_entry(link.to_string_lossy().to_string());
+        assert!(res.is_err(), "symlink muss abgelehnt werden");
+        assert!(res.as_ref().unwrap_err().contains("symlink"));
+        assert!(link.exists(), "symlink selbst darf nicht angetastet werden");
+        assert!(target.join("42").exists(), "ziel darf nicht angetastet werden");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn eintrag_ausserhalb_protium_trash_wird_abgelehnt() {
+        let root = trash_fixture("outside");
+        let lib = root.join("lib");
+        let dir = lib.join("steamapps/compatdata/42");
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let res = remove_trash_entry(dir.to_string_lossy().to_string());
+        assert!(res.is_err(), "pfad nicht in .protium-trash muss abgelehnt werden");
+        assert!(res.as_ref().unwrap_err().contains(".protium-trash"));
+        assert!(dir.exists());
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn name_ohne_timestamp_wird_abgelehnt() {
+        let root = trash_fixture("no-ts");
+        let lib = root.join("lib");
+        let trash = lib.join("steamapps/.protium-trash");
+        let entry = trash.join("compatdata_1091500");
+        std::fs::create_dir_all(&entry).unwrap();
+
+        let res = remove_trash_entry(entry.to_string_lossy().to_string());
+        assert!(res.is_err(), "ohne timestamp muss abgelehnt werden");
+        assert!(entry.exists());
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn appid_zero_wird_abgelehnt() {
+        let root = trash_fixture("zero");
+        let lib = root.join("lib");
+        let trash = lib.join("steamapps/.protium-trash");
+        let entry = trash.join("compatdata_0_123");
+        std::fs::create_dir_all(&entry).unwrap();
+
+        let res = remove_trash_entry(entry.to_string_lossy().to_string());
+        assert!(res.is_err(), "appId 0 muss abgelehnt werden");
+        assert!(res.as_ref().unwrap_err().contains("appId 0"));
+        assert!(entry.exists());
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn tiefer_pfad_mit_zweitem_slash_wird_abgelehnt() {
+        let root = trash_fixture("deep");
+        let lib = root.join("lib");
+        let trash = lib.join("steamapps/.protium-trash");
+        let deep = trash.join("compatdata_1_2/pfx");
+        std::fs::create_dir_all(&deep).unwrap();
+
+        let res = remove_trash_entry(deep.to_string_lossy().to_string());
+        assert!(res.is_err(), "tiefer pfad mit / muss abgelehnt werden");
+        assert!(deep.exists());
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn steamapps_im_library_namen_rfind_nimmt_letztes_vorkommen() {
+        let root = trash_fixture("rfind");
+        // /tmp/.../lib/steamapps-alt/steamapps/.protium-trash/compatdata_1_2
+        let lib = root.join("lib");
+        let nested = lib.join("steamapps-alt/steamapps/.protium-trash");
+        let entry = nested.join("compatdata_1_2");
+        std::fs::create_dir_all(&entry).unwrap();
+
+        let res = remove_trash_entry(entry.to_string_lossy().to_string());
+        assert!(res.is_ok(), "rfind muss das letzte /steamapps/ nehmen: {res:?}");
+        assert!(!entry.exists(), "eintrag muss gelöscht sein");
 
         let _ = std::fs::remove_dir_all(&root);
     }

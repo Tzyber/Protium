@@ -85,6 +85,28 @@ export const en = {
     savegameWarning:
       "Wine-Prefixes may contain local savegames that are NOT synced to Steam Cloud! deleted prefixes land in .protium-trash — manually recoverable from there.",
     totalSize: "total size: {size}",
+    winePrefixMovedNote:
+      "Wine-Prefixes are moved to trash — disk space is only freed when the trash is emptied.",
+    trash: "trash",
+    trashUnreadable:
+      "trash could not be read (permissions or fs scope): {paths} — the listing is therefore incomplete.",
+    trashLibNone: "{dir} — no trash",
+    trashLibCount: "{dir} — {n} entries",
+    trashLibError: "{dir} — unreadable: {msg}",
+    trashSearching: "searching…",
+    trashSearchButton: "scan trash",
+    trashSummary: "{n} entries · {size}",
+    trashEmptyState: "trash is empty",
+    trashUnknownHint: "{n} directories in trash were not recognized and are not offered (INV-2):",
+    trashSelectedInfo: "{n} selected · {size}",
+    trashEmpty: "empty trash",
+    trashDeleteEntry: "delete entry",
+    trashDeleteAction: "permanently delete",
+    trashDeleteConfirmTitle: "empty trash?",
+    trashDeleteConfirmSingle: "permanently delete entry?",
+    trashPermanentWarning:
+      "permanently deleted, cannot be recovered. Wine-Prefixes may contain local savegames not in Steam Cloud.",
+    trashTrashedAt: "trashed {date}",
   },
   proton: {
     label: "proton",

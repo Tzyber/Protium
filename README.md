@@ -18,7 +18,11 @@ entstanden, weil es genau dieses tool nicht gab. protonup-qt managt nur versione
 
 **ehrliche fehlerbehandlung.** nicht gemountete platten, kaputte manifeste, protondb offline: alles degradiert sauber zu warnings statt zu crashes. die app lügt dich nicht an und tut nichts, was sie nicht rückgängig machen kann.
 
-geplant (siehe roadmap): compat-tool und launch-options direkt setzen, cleanup verwaister prefixes, spiele starten.
+**compat-tool + launch-options.** proton-version und startoptionen pro spiel direkt setzen — write-gate, backups, vdf-string-patch statt voll-serialisierung.
+
+**cleanup.** verwaiste wine-prefixes und shader-caches finden und bereinigen. prefixes landen im papierkorb (gleiches dateisystem → rename, kein datenverlust), shader-caches werden hart gelöscht. papierkorb kann aus der app geleert werden.
+
+**spiele starten.** via `steam://rungameid/<appId>` — kein eigener launcher, keine prozess-überwachung.
 
 ## warum kein bestehendes tool
 
@@ -43,13 +47,15 @@ dann:
 
 ```sh
 npm install
-npm test              # vitest — core headless gegen fixtures (37 tests)
-npm run check         # biome (lint + format)
-(cd src-tauri && cargo test)   # rust-tests: R-4 download-pfade (3 tests)
+npm test              # vitest — core headless gegen fixtures (165 tests)
+npm run check         # biome (lint + format) + vue-tsc --noEmit
+(cd src-tauri && cargo test)   # rust-tests: download-pfade, pfad-validierung, tarball-extraktion, cleanup/papierkorb (77 tests)
 npm run tauri dev     # app starten (erster build kompiliert rust, dauert etwas)
 ```
 
 cache liegt unter `~/.cache/com.protium.desktop/`.
+
+vor commits an `src-tauri/src/commands.rs`: `docs/SMOKE.md` abarbeiten — die unit-tests decken nicht alles ab.
 
 ## struktur
 
@@ -69,9 +75,10 @@ grundregeln, die überall gelten: schreibende zugriffe auf steam-dateien laufen 
 - [x] phase 2: library-UI (cover-grid, tiers, warnings, such/filter/sort)
 - [x] phase 3: GE-proton-manager (install/remove, queue, distro-tool-erkennung, downloads abbrechen inkl. aufräumen)
 - [x] game-detail-drawer mit protondb-link (reports anderer nutzer)
-- [ ] phase 4: compat-tool und launch-options setzen (write-gate, backups, restore)
-- [ ] phase 5: cleanup verwaister prefixes und shader-caches, AUR-paket
-- [x] phase 6: spiele starten (via steam-protokoll, kein eigener launcher)
+- [x] phase 4: compat-tool und launch-options setzen (write-gate, backups, vdf-string-patch)
+- [x] phase 5: cleanup verwaister prefixes und shader-caches + papierkorb
+- [x] spiele starten (via steam-protokoll, kein eigener launcher)
+- [ ] phase 6: release (CI-build via ubuntu-22.04-runner, AppImage, AUR-paket)
 
 ## status
 

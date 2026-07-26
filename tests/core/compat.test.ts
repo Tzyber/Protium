@@ -38,6 +38,11 @@ describe("listCompatTools", () => {
     const pi: PathIdentity = { realpath: "/compat", dev: "1", ino: "1" };
 
     const system: System = {
+      listTrashEntries: vi.fn(async (library: string) => ({
+        dir: `${library}/steamapps/.protium-trash`,
+        present: false,
+        entries: [],
+      })),
       isProcessRunning: vi.fn(async () => false),
       dirSize: vi.fn(async () => 0),
       allowLibraryScope: vi.fn(async () => {}),

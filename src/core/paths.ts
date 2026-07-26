@@ -57,6 +57,9 @@ export const paths = {
     join(libraryPath, "steamapps", "compatdata", String(appId)),
   shadercachePath: (libraryPath: string, appId: number | string) =>
     join(libraryPath, "steamapps", "shadercache", String(appId)),
+  trashDir: (libraryPath: string) => join(libraryPath, "steamapps", ".protium-trash"),
+  trashPath: (libraryPath: string, name: string) =>
+    join(libraryPath, "steamapps", ".protium-trash", name),
   headerImageUrl: (appId: number) =>
     `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/header.jpg`,
   // hash-unterordner, zentral in der root (nicht pro library)

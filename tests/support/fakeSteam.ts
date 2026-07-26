@@ -295,6 +295,10 @@ export function fakeSystem(opts?: { failScope?: Set<string> }): System & { scope
   const scopedPaths: string[] = [];
   return {
     scopedPaths,
+    async listTrashEntries(library: string) {
+      // fixture-fakes kennen keinen papierkorb; findTrashEntries wird separat getestet
+      return { dir: `${library}/steamapps/.protium-trash`, present: false, entries: [] };
+    },
     async isProcessRunning() {
       return false;
     },

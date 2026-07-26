@@ -55,6 +55,7 @@ const system: System = {
   isProcessRunning: (name) => invoke<boolean>("is_process_running", { name }),
   dirSize: (path) => invoke<number>("dir_size", { path }),
   allowLibraryScope: (path) => invoke<void>("allow_library_scope", { path }),
+  listTrashEntries: (library) => invoke("list_trash_entries", { library }),
   pathIdentity: (path) =>
     invoke<{ realpath: string; dev: string; ino: string }>("path_identity", { path }).catch(
       () => null,

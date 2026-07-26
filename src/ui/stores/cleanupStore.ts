@@ -3,6 +3,7 @@ import { defineStore } from "pinia";
 import { tauriPorts } from "../../core/adapters/tauri";
 import { findOrphans } from "../../core/cleanup";
 import { readAllShortcutAppIds, SHORTCUT_ID_THRESHOLD } from "../../core/shortcuts";
+import { findTrashEntries, type TrashEntry, type TrashLibraryStatus } from "../../core/trash";
 import { type OrphanEntry } from "../../core/types";
 import { errMsg } from "../format";
 import { t } from "../i18n";
@@ -20,6 +21,13 @@ export const useCleanupStore = defineStore("cleanup", {
     shortcutUnreadable: false,
     shortcutUnreadablePaths: [] as string[],
     shortcutUnreadableDetail: null as string | null,
+    trash: [] as TrashEntry[],
+    trashUnknown: [] as string[],
+    trashUnreadable: [] as string[],
+    trashLibraries: [] as TrashLibraryStatus[],
+    trashSizes: {} as Record<string, number>,
+    trashScanning: false,
+    trashDeleting: null as string | null,
   }),
   getters: {
     compatdataOrphans: (s) => s.orphans.filter((o) => o.type === "compatdata"),
@@ -139,6 +147,11 @@ export const useCleanupStore = defineStore("cleanup", {
       }
 
       const errors: string[] = [];
+      // compatdata wird nicht gelöscht, sondern in den papierkorb VERSCHOBEN.
+      // ohne refresh danach bliebe die papierkorb-sektion auf dem stand vom
+      // öffnen der ansicht — der nutzer sieht "leer" und glaubt, die daten seien
+      // weg, obwohl sie noch platz belegen.
+      let trashedCompatdata = false;
       for (const entry of entries) {
         if (shortcutResult.status === "unreadable" && entry.type === "compatdata") {
           errors.push(
@@ -156,18 +169,95 @@ export const useCleanupStore = defineStore("cleanup", {
         try {
           await invoke<string>("remove_orphan_dir", { path: entry.path });
           this.orphans = this.orphans.filter((o) => this.key(o) !== k);
+          // shadercache wird hart gelöscht und landet nie im papierkorb
+          if (entry.type === "compatdata") trashedCompatdata = true;
         } catch (e) {
           errors.push(`${entry.type}/${entry.appId}: ${errMsg(e)}`);
         } finally {
           this.deleting.delete(k);
         }
       }
-      if (errors.length) this.error = errors.join("; ");
+      // reihenfolge: erst refresh, dann fehler setzen. scanTrash() setzt
+      // this.error zurück (es ist auch eine nutzer-aktion) und würde die
+      // löschfehler sonst verschlucken.
+      if (trashedCompatdata) await this.scanTrash();
+      if (errors.length) {
+        this.error = [this.error, errors.join("; ")].filter(Boolean).join(" | ");
+      }
     },
 
     dismissPathMissing() {
       this.pathMissingDismissed = true;
       this.scanOrphans();
+    },
+
+    async scanTrash() {
+      const scan = useScanStore();
+      const result = scan.result;
+      if (!result) {
+        this.error = t("errors.noScanResult");
+        return;
+      }
+
+      this.trashScanning = true;
+      this.error = null;
+
+      try {
+        const { entries, unknown, unreadable, libraries } = await findTrashEntries(
+          result.libraries,
+          tauriPorts.system,
+        );
+        this.trash = entries;
+        this.trashUnknown = unknown;
+        this.trashUnreadable = unreadable;
+        this.trashLibraries = libraries;
+
+        // ein nicht lesbarer papierkorb darf nicht als "leer" durchgehen
+        if (unreadable.length) {
+          this.error = t("cleanup.trashUnreadable", { paths: unreadable.join(", ") });
+        }
+
+        if (entries.length === 0) return;
+
+        const paths = entries.map((e) => e.path);
+        const sizes = await invoke<Record<string, number>>("batch_dir_sizes", { paths });
+        this.trashSizes = sizes;
+        for (const e of this.trash) {
+          e.sizeBytes = sizes[e.path];
+        }
+      } catch (e) {
+        this.error = errMsg(e);
+      } finally {
+        this.trashScanning = false;
+      }
+    },
+
+    async deleteTrashEntry(entry: TrashEntry) {
+      this.trashDeleting = entry.path;
+      try {
+        await invoke<string>("remove_trash_entry", { path: entry.path });
+        this.trash = this.trash.filter((e) => e.path !== entry.path);
+      } catch (e) {
+        this.error = `${entry.name}: ${errMsg(e)}`;
+      } finally {
+        this.trashDeleting = null;
+      }
+    },
+
+    async emptyTrash() {
+      const errors: string[] = [];
+      for (const entry of [...this.trash]) {
+        this.trashDeleting = entry.path;
+        try {
+          await invoke<string>("remove_trash_entry", { path: entry.path });
+          this.trash = this.trash.filter((e) => e.path !== entry.path);
+        } catch (e) {
+          errors.push(`${entry.name}: ${errMsg(e)}`);
+        } finally {
+          this.trashDeleting = null;
+        }
+      }
+      if (errors.length) this.error = errors.join("; ");
     },
   },
 });
