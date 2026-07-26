@@ -83,7 +83,7 @@ export const en = {
     deleteConfirmTitle: "delete {n} orphaned entries?",
     deleteAction: "delete",
     savegameWarning:
-      "Wine-Prefixes may contain local savegames that are NOT synced to Steam Cloud! deleted prefixes land in .protium-trash — manually recoverable from there.",
+      "Wine-Prefixes may contain local savegames that are NOT synced to Steam Cloud! prefixes are not deleted but moved to the trash — protium does not restore them itself, only manual recovery via file manager (see README).",
     totalSize: "total size: {size}",
     winePrefixMovedNote:
       "Wine-Prefixes are moved to trash — disk space is only freed when the trash is emptied.",
@@ -93,6 +93,7 @@ export const en = {
     trashLibNone: "{dir} — no trash",
     trashLibCount: "{dir} — {n} entries",
     trashLibError: "{dir} — unreadable: {msg}",
+    tabsLabel: "cleanup sections",
     trashSearching: "searching…",
     trashSearchButton: "scan trash",
     trashSummary: "{n} entries · {size}",

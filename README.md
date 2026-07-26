@@ -20,7 +20,21 @@ entstanden, weil es genau dieses tool nicht gab. protonup-qt managt nur versione
 
 **compat-tool + launch-options.** proton-version und startoptionen pro spiel direkt setzen — write-gate, backups, vdf-string-patch statt voll-serialisierung.
 
-**cleanup.** verwaiste wine-prefixes und shader-caches finden und bereinigen. prefixes landen im papierkorb (gleiches dateisystem → rename, kein datenverlust), shader-caches werden hart gelöscht. papierkorb kann aus der app geleert werden.
+**cleanup.** verwaiste wine-prefixes und shader-caches finden und bereinigen. prefixes landen im papierkorb (gleiches dateisystem → rename, kein datenverlust), shader-caches werden hart gelöscht. der papierkorb kann aus der app geleert werden — erst dann wird der platz frei.
+
+### prefix aus dem papierkorb zurückholen
+
+protium hat bewusst **keine** wiederherstellungs-funktion: sobald ein spiel neu installiert ist, existiert `compatdata/<appId>` wieder, und ein automatisches zurückschieben müsste entscheiden, welcher stand gilt. das ist eine entscheidung für den menschen, nicht für ein tool.
+
+von hand ist es ein `mv`. der papierkorb liegt in derselben library, der eintrag heisst `compatdata_<appId>_<zeitstempel>`:
+
+```sh
+cd /pfad/zur/SteamLibrary/steamapps
+ls .protium-trash                       # eintrag finden
+mv .protium-trash/compatdata_1477940_1785071505657 compatdata/1477940
+```
+
+wichtig: das ziel `compatdata/<appId>` darf nicht schon existieren. tut es das, hast du zwei stände — dann erst den vorhandenen wegsichern und danach entscheiden. steam legt einen fehlenden prefix beim nächsten spielstart selbst neu an (dann ohne die alten spielstände).
 
 **spiele starten.** via `steam://rungameid/<appId>` — kein eigener launcher, keine prozess-überwachung.
 

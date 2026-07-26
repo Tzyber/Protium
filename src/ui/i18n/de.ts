@@ -79,7 +79,7 @@ export const de = {
     deleteConfirmTitle: "{n} verwaiste Einträge löschen?",
     deleteAction: "löschen",
     savegameWarning:
-      "Wine-Prefixes können lokale Spielstände enthalten, die NICHT in der Steam-Cloud liegen! Gelöschte Prefixes landen in .protium-trash — dort manuell wiederherstellbar.",
+      "Wine-Prefixes können lokale Spielstände enthalten, die NICHT in der Steam-Cloud liegen! Prefixes werden nicht gelöscht, sondern in den papierkorb verschoben — protium holt sie nicht selbst zurück, das geht nur von hand im dateimanager (anleitung im README).",
     totalSize: "Gesamtgröße: {size}",
     winePrefixMovedNote:
       "Wine-Prefixes werden in den papierkorb verschoben — speicherplatz wird erst beim leeren des papierkorbs frei.",
@@ -89,6 +89,7 @@ export const de = {
     trashLibNone: "{dir} — kein papierkorb",
     trashLibCount: "{dir} — {n} einträge",
     trashLibError: "{dir} — nicht lesbar: {msg}",
+    tabsLabel: "bereiche der bereinigung",
     trashSearching: "suche läuft…",
     trashSearchButton: "papierkorb durchsuchen",
     trashSummary: "{n} einträge · {size}",

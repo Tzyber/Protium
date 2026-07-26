@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, nextTick, onMounted, reactive, ref } from "vue";
 import type { TrashEntry } from "../../core/trash";
 import type { OrphanEntry } from "../../core/types";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
@@ -9,12 +9,57 @@ import { useCleanupStore } from "../stores/cleanupStore";
 
 const cleanup = useCleanupStore();
 
+// ---- tabs ----
+// drei listen auf einer seite waren nicht mehr bedienbar: bei 19 prefixes musste
+// man an der papierkorb-sektion vorbeiscrollen, und zwei sticky-aktionsleisten
+// (orphans + papierkorb) lagen übereinander. pro tab genau eine liste und genau
+// eine leiste, die sich auf DIESE liste bezieht.
+type Tab = "shaders" | "prefixes" | "trash";
+const TABS: Tab[] = ["shaders", "prefixes", "trash"];
+const tab = ref<Tab>("shaders");
+const tabEls = ref<(HTMLButtonElement | null)[]>([]);
+
+function setTabRef(el: unknown, i: number) {
+  tabEls.value[i] = el instanceof HTMLButtonElement ? el : null;
+}
+
+/** pfeiltasten-navigation nach WAI-ARIA tabs-pattern */
+function onTabKeydown(e: KeyboardEvent, i: number) {
+  let next: number;
+  if (e.key === "ArrowRight") next = (i + 1) % TABS.length;
+  else if (e.key === "ArrowLeft") next = (i - 1 + TABS.length) % TABS.length;
+  else if (e.key === "Home") next = 0;
+  else if (e.key === "End") next = TABS.length - 1;
+  else return;
+  e.preventDefault();
+  const target = TABS[next];
+  if (!target) return;
+  tab.value = target;
+  nextTick(() => tabEls.value[next]?.focus());
+}
+
 onMounted(async () => {
   await cleanup.scanOrphans();
-  // papierkorb gleich mitladen — nur lesend, und ohne das sieht der nutzer
-  // eine leere sektion und hält sie für den echten stand
+  // papierkorb gleich mitladen — nur lesend, und ohne das sieht der nutzer eine
+  // leere sektion und hält sie für den echten stand
   await cleanup.scanTrash();
+  // nicht auf einem leeren tab landen
+  if (!shadercacheOrphans.value.length) {
+    if (compatdataOrphans.value.length) tab.value = "prefixes";
+    else if (cleanup.trash.length) tab.value = "trash";
+  }
 });
+
+// ---- verwaiste daten ----
+
+/** kürzt die mitte: erstes segment + die letzten zwei. der lange
+ *  library-prefix wiederholt sich in jeder zeile und trägt keine information,
+ *  aber /mnt vs /home muss unterscheidbar bleiben. voller pfad im title. */
+function shortPath(p: string): string {
+  const parts = p.split("/").filter(Boolean);
+  if (parts.length <= 3) return p;
+  return `/${parts[0]}/…/${parts.slice(-2).join("/")}`;
+}
 
 const bySize = (a: OrphanEntry, b: OrphanEntry) => (b.sizeBytes ?? 0) - (a.sizeBytes ?? 0);
 const shadercacheOrphans = computed(() => [...cleanup.shadercacheOrphans].sort(bySize));
@@ -57,16 +102,21 @@ const selectedShader = computed(() =>
 const selectedCompat = computed(() =>
   compatdataOrphans.value.filter((o) => selected.has(cleanup.key(o))),
 );
-const selectedAll = computed(() => [...selectedShader.value, ...selectedCompat.value]);
-const selectedBytes = computed(() =>
-  selectedAll.value.reduce((sum, o) => sum + (o.sizeBytes ?? 0), 0),
+
+/** auswahl des SICHTBAREN tabs — sonst stünde "0 ausgewählt", während in einer
+ *  anderen liste 19 einträge markiert sind. */
+const selectedHere = computed(() =>
+  tab.value === "shaders" ? selectedShader.value : selectedCompat.value,
+);
+const selectedHereBytes = computed(() =>
+  selectedHere.value.reduce((sum, o) => sum + (o.sizeBytes ?? 0), 0),
 );
 
 const deleteCandidates = ref<OrphanEntry[]>([]);
 const deleting = ref(false);
 
 function startDelete(candidates: OrphanEntry[]) {
-  if (candidates.length) deleteCandidates.value = candidates;
+  if (candidates.length) deleteCandidates.value = [...candidates];
 }
 
 async function confirmDelete() {
@@ -116,7 +166,7 @@ const trashDeleteCandidates = ref<TrashEntry[]>([]);
 const trashDeleting = ref(false);
 
 function startTrashDelete(candidates: TrashEntry[]) {
-  if (candidates.length) trashDeleteCandidates.value = candidates;
+  if (candidates.length) trashDeleteCandidates.value = [...candidates];
 }
 
 async function confirmTrashDelete() {
@@ -144,11 +194,13 @@ const trashConfirmBytes = computed(() =>
 );
 const trashConfirmPaths = computed(() => trashDeleteCandidates.value.map((e) => e.path));
 
+/** kurzform für die spalte — der volle satz steht im title-attribut. eine
+ *  datumsspalte in flexibler breite hat die zeile über den viewport geschoben. */
 function trashDate(ms: number): string {
   return new Date(ms).toLocaleDateString("de-DE", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
+    year: "2-digit",
+    month: "2-digit",
+    day: "2-digit",
   });
 }
 
@@ -159,6 +211,20 @@ function selectAllTrash() {
     else trashSelected.add(e.path);
   }
 }
+
+const tabCount = (id: Tab) =>
+  id === "shaders"
+    ? shadercacheOrphans.value.length
+    : id === "prefixes"
+      ? compatdataOrphans.value.length
+      : cleanup.trash.length;
+
+const tabLabel = (id: Tab) =>
+  id === "shaders"
+    ? t("cleanup.shaderCaches")
+    : id === "prefixes"
+      ? t("cleanup.winePrefixes")
+      : t("cleanup.trash");
 </script>
 
 <template>
@@ -174,208 +240,239 @@ function selectAllTrash() {
       {{ cleanup.scanning ? t("cleanup.searching") : t("cleanup.searchButton") }}
     </button>
 
-    <div v-if="cleanup.blockedBySkipped" class="blocked">
-      {{ t("cleanup.scanBlocked") }}
-    </div>
+    <div v-if="cleanup.error" class="hint" role="status">{{ cleanup.error }}</div>
 
-    <div v-if="cleanup.pathMissingLibs.length" class="pathmissing">
-      <p class="pm-title">{{ t("cleanup.pathMissingTitle") }}</p>
-      <ul class="pm-list">
-        <li v-for="p in cleanup.pathMissingLibs" :key="p">{{ p }}</li>
-      </ul>
-      <p class="pm-note">{{ t("cleanup.pathMissingNote") }}</p>
-      <button class="pm-btn" type="button" @click="cleanup.dismissPathMissing()">
-        {{ t("cleanup.pathMissingDismiss") }}
-      </button>
-    </div>
-
-    <div v-if="cleanup.shortcutUnreadable" class="blocked">
-      {{ t("cleanup.shortcutUnreadableMessage") }}
-      <ul class="pm-list"><li v-for="p in cleanup.shortcutUnreadablePaths" :key="p" class="mono">{{ p }}</li></ul>
-    </div>
-
-    <div v-if="cleanup.error" class="hint">{{ cleanup.error }}</div>
-
-    <div v-if="cleanup.orphans.length" class="summary">
-      {{ t("cleanup.summary", { n: cleanup.orphans.length, size: formatBytes(cleanup.totalOrphanBytes) }) }}
-    </div>
-
-    <template v-if="shadercacheOrphans.length">
-      <div class="section-bar">
-        <h3 class="section">{{ t("cleanup.shaderCaches") }} <span class="count">{{ shadercacheOrphans.length }} </span></h3>
-        <h3 class="section"> <span class="count">{{ t("cleanup.total", { size: formatBytes(shadercacheTotalBytes) }) }} </span></h3>
-        <button class="sel-all" type="button" @click="selectAllShader()">{{ t("cleanup.selectAll") }}</button>
-      </div>
-
-      <div class="list">
-        <button
-          v-for="o in shadercacheOrphans"
-          :key="cleanup.key(o)"
-          type="button"
-          class="row"
-          :class="{ on: selected.has(cleanup.key(o)) }"
-          :aria-pressed="selected.has(cleanup.key(o))"
-          @click="toggle(cleanup.key(o))"
-        >
-          <span class="box" aria-hidden="true" />
-          <span class="rname mono">{{ o.appId }}</span>
-          <span class="rpath mono" :title="o.path">{{ o.path }}</span>
-          <span class="rsize mono">{{ o.sizeBytes != null ? formatBytes(o.sizeBytes) : "…" }}</span>
-        </button>
-      </div>
-    </template>
-
-    <template v-if="compatdataOrphans.length">
-      <div class="section-bar">
-        <h3 class="section">
-          {{ t("cleanup.winePrefixes") }}
-          <span class="warn-label">{{ t("cleanup.winePrefixWarn") }}</span>
-          <span class="count">{{ compatdataOrphans.length }}</span>
-
-        </h3>
-        <span class="section"> <span class="count">{{ t("cleanup.total", { size: formatBytes(compatdataTotalBytes) }) }} </span></span>
-        <button class="sel-all warn" type="button" @click="selectAllCompat()">{{ t("cleanup.selectAll") }}</button>
-      </div>
-
-      <p class="moved-note">{{ t("cleanup.winePrefixMovedNote") }}</p>
-
-      <div class="list">
-        <button
-          v-for="o in compatdataOrphans"
-          :key="cleanup.key(o)"
-          type="button"
-          class="row"
-          :class="{ on: selected.has(cleanup.key(o)) }"
-          :aria-pressed="selected.has(cleanup.key(o))"
-          @click="toggle(cleanup.key(o))"
-        >
-          <span class="box" aria-hidden="true" />
-          <span class="rname mono">
-            {{ o.appId }}
-            <span v-if="o.potentialShortcut" class="sc-warn" :title="t('cleanup.potentialShortcutTooltip')">?</span>
-          </span>
-          <span class="rpath mono" :title="o.path">{{ o.path }}</span>
-          <span class="rsize mono">{{ o.sizeBytes != null ? formatBytes(o.sizeBytes) : "…" }}</span>
-        </button>
-      </div>
-    </template>
-
-    <div v-if="!cleanup.scanning && !cleanup.orphans.length && !cleanup.error" class="empty">
-      {{ t("cleanup.empty") }}
-    </div>
-
-    <!-- ---- papierkorb ---- -->
-
-    <div v-if="cleanup.trashUnreadable.length" class="blocked" style="margin-top: 24px;">
-      {{ t("cleanup.trashUnreadable", { paths: cleanup.trashUnreadable.join(", ") }) }}
-    </div>
-
-    <div v-if="cleanup.trashUnknown.length" class="blocked" style="margin-top: 24px;">
-      {{ t("cleanup.trashUnknownHint", { n: cleanup.trashUnknown.length }) }}
-      <ul class="pm-list"><li v-for="p in cleanup.trashUnknown" :key="p" class="mono">{{ p }}</li></ul>
-    </div>
-
-    <div class="section-bar" style="margin-top: 24px;">
-      <h3 class="section">{{ t("cleanup.trash") }} <span class="count">{{ cleanup.trash.length }}</span></h3>
-      <h3 class="section"><span class="count">{{ t("cleanup.total", { size: formatBytes(trashTotalBytes) }) }}</span></h3>
-    </div>
-
-    <button
-      class="scan-btn"
-      type="button"
-      :disabled="cleanup.trashScanning"
-      @click="cleanup.scanTrash()"
-      style="margin-bottom: 12px;"
-    >
-      {{ cleanup.trashScanning ? t("cleanup.trashSearching") : t("cleanup.trashSearchButton") }}
-    </button>
-
-    <div v-if="cleanup.trashLibraries.length" class="summary">
-      <div v-for="l in cleanup.trashLibraries" :key="l.library" class="mono">
-        {{ l.error
-          ? t("cleanup.trashLibError", { dir: l.dir || l.library, msg: l.error })
-          : !l.present
-            ? t("cleanup.trashLibNone", { dir: l.dir || l.library })
-            : t("cleanup.trashLibCount", { dir: l.dir, n: l.count }) }}
-      </div>
-    </div>
-
-    <div v-if="cleanup.trash.length" class="summary">
-      {{ t("cleanup.trashSummary", { n: cleanup.trash.length, size: formatBytes(trashTotalBytes) }) }}
-    </div>
-
-    <div v-if="trashBySize.length" class="list">
+    <!-- tabs: eine liste sichtbar, eine aktionsleiste, kein endloses scrollen -->
+    <div class="tabs" role="tablist" :aria-label="t('cleanup.tabsLabel')">
       <button
-        v-for="e in trashBySize"
-        :key="e.path"
+        v-for="(id, i) in TABS"
+        :key="id"
+        :ref="(el) => setTabRef(el, i)"
         type="button"
-        class="row"
-        :class="{ on: trashSelected.has(e.path) }"
-        :aria-pressed="trashSelected.has(e.path)"
-        @click="toggleTrash(e.path)"
+        class="tab"
+        :class="{ on: tab === id }"
+        role="tab"
+        :id="`cv-tab-${id}`"
+        :aria-selected="tab === id"
+        :aria-controls="`cv-panel-${id}`"
+        :tabindex="tab === id ? 0 : -1"
+        @click="tab = id"
+        @keydown="onTabKeydown($event, i)"
       >
-        <span class="box" aria-hidden="true" />
-        <span class="rname mono">{{ e.appId }}</span>
-        <span class="rpath mono" :title="e.path">{{ e.path }}</span>
-        <span class="rsize mono">{{ e.sizeBytes != null ? formatBytes(e.sizeBytes) : "…" }}</span>
-        <span class="rdate mono">{{ t("cleanup.trashTrashedAt", { date: trashDate(e.trashedAt) }) }}</span>
+        {{ tabLabel(id) }}
+        <span class="tab-count">{{ tabCount(id) }}</span>
       </button>
     </div>
 
-    <div v-if="!cleanup.trashScanning && !cleanup.trash.length" class="empty">
-      {{ t("cleanup.trashEmptyState") }}
-    </div>
+    <!-- alles zwischen kopf und aktionsleiste scrollt; leiste und tabs nicht -->
+    <div class="scroller">
+        <div v-if="cleanup.blockedBySkipped" class="blocked">
+        {{ t("cleanup.scanBlocked") }}
+      </div>
 
-    <!-- sticky aktionsleiste für papierkorb -->
-    <div v-if="cleanup.trash.length" class="actionbar">
-      <span class="sel-info">
-        {{ t("cleanup.trashSelectedInfo", { n: trashSelectedAll.length, size: formatBytes(trashSelectedBytes) }) }}
-      </span>
-      <div class="actionbar-btns">
-        <button
-          class="action"
-          type="button"
-          :disabled="!trashSelectedAll.length"
-          @click="startTrashDelete(trashSelectedAll)"
-        >
-          {{ t("cleanup.trashDeleteEntry") }}
-        </button>
-        <button
-          class="action danger"
-          type="button"
-          :disabled="!cleanup.trash.length"
-          @click="startTrashDelete(cleanup.trash)"
-        >
-          {{ t("cleanup.trashEmpty") }}
+      <div v-if="cleanup.pathMissingLibs.length" class="pathmissing">
+        <p class="pm-title">{{ t("cleanup.pathMissingTitle") }}</p>
+        <ul class="pm-list">
+          <li v-for="p in cleanup.pathMissingLibs" :key="p">{{ p }}</li>
+        </ul>
+        <p class="pm-note">{{ t("cleanup.pathMissingNote") }}</p>
+        <button class="pm-btn" type="button" @click="cleanup.dismissPathMissing()">
+          {{ t("cleanup.pathMissingDismiss") }}
         </button>
       </div>
+
+      <div v-if="cleanup.shortcutUnreadable" class="blocked">
+        {{ t("cleanup.shortcutUnreadableMessage") }}
+        <ul class="pm-list">
+          <li v-for="p in cleanup.shortcutUnreadablePaths" :key="p" class="mono">{{ p }}</li>
+        </ul>
+      </div>
+
+      <div v-if="cleanup.orphans.length" class="summary">
+        {{ t("cleanup.summary", { n: cleanup.orphans.length, size: formatBytes(cleanup.totalOrphanBytes) }) }}
+      </div>
+
+
+      <!-- ---- shader-caches ---- -->
+      <div
+        v-show="tab === 'shaders'"
+        id="cv-panel-shaders"
+        class="panel"
+        role="tabpanel"
+        aria-labelledby="cv-tab-shaders"
+        tabindex="0"
+      >
+        <div class="section-bar">
+          <span class="section">
+            <span class="count">{{ t("cleanup.total", { size: formatBytes(shadercacheTotalBytes) }) }}</span>
+          </span>
+          <button
+            v-if="shadercacheOrphans.length"
+            class="sel-all"
+            type="button"
+            @click="selectAllShader()"
+          >
+            {{ t("cleanup.selectAll") }}
+          </button>
+        </div>
+
+        <div v-if="shadercacheOrphans.length" class="list">
+          <button
+            v-for="o in shadercacheOrphans"
+            :key="cleanup.key(o)"
+            type="button"
+            class="row"
+            :class="{ on: selected.has(cleanup.key(o)) }"
+            :aria-pressed="selected.has(cleanup.key(o))"
+            @click="toggle(cleanup.key(o))"
+          >
+            <span class="box" aria-hidden="true" />
+            <span class="rname mono">{{ o.appId }}</span>
+            <span class="rpath mono" :title="o.path">{{ shortPath(o.path) }}</span>
+            <span class="rsize mono">{{ o.sizeBytes != null ? formatBytes(o.sizeBytes) : "…" }}</span>
+          </button>
+        </div>
+        <div v-else class="empty">{{ t("cleanup.empty") }}</div>
+      </div>
+
+      <!-- ---- wine-prefixes ---- -->
+      <div
+        v-show="tab === 'prefixes'"
+        id="cv-panel-prefixes"
+        class="panel"
+        role="tabpanel"
+        aria-labelledby="cv-tab-prefixes"
+        tabindex="0"
+      >
+        <div class="section-bar">
+          <span class="section">
+            <span class="warn-label">{{ t("cleanup.winePrefixWarn") }}</span>
+            <span class="count">{{ t("cleanup.total", { size: formatBytes(compatdataTotalBytes) }) }}</span>
+          </span>
+          <button
+            v-if="compatdataOrphans.length"
+            class="sel-all warn"
+            type="button"
+            @click="selectAllCompat()"
+          >
+            {{ t("cleanup.selectAll") }}
+          </button>
+        </div>
+
+        <p class="moved-note">{{ t("cleanup.winePrefixMovedNote") }}</p>
+
+        <div v-if="compatdataOrphans.length" class="list">
+          <button
+            v-for="o in compatdataOrphans"
+            :key="cleanup.key(o)"
+            type="button"
+            class="row"
+            :class="{ on: selected.has(cleanup.key(o)) }"
+            :aria-pressed="selected.has(cleanup.key(o))"
+            @click="toggle(cleanup.key(o))"
+          >
+            <span class="box" aria-hidden="true" />
+            <span class="rname mono">
+              {{ o.appId }}
+              <span
+                v-if="o.potentialShortcut"
+                class="sc-warn"
+                :title="t('cleanup.potentialShortcutTooltip')"
+              >?</span>
+            </span>
+            <span class="rpath mono" :title="o.path">{{ shortPath(o.path) }}</span>
+            <span class="rsize mono">{{ o.sizeBytes != null ? formatBytes(o.sizeBytes) : "…" }}</span>
+          </button>
+        </div>
+        <div v-else class="empty">{{ t("cleanup.empty") }}</div>
+      </div>
+
+      <!-- ---- papierkorb ---- -->
+      <div
+        v-show="tab === 'trash'"
+        id="cv-panel-trash"
+        class="panel"
+        role="tabpanel"
+        aria-labelledby="cv-tab-trash"
+        tabindex="0"
+      >
+        <div class="section-bar">
+          <span class="section">
+            <span class="count">{{ t("cleanup.total", { size: formatBytes(trashTotalBytes) }) }}</span>
+          </span>
+          <div class="section-actions">
+            <button
+              v-if="trashBySize.length"
+              class="sel-all"
+              type="button"
+              @click="selectAllTrash()"
+            >
+              {{ t("cleanup.selectAll") }}
+            </button>
+            <button
+              class="sel-all"
+              type="button"
+              :disabled="cleanup.trashScanning"
+              @click="cleanup.scanTrash()"
+            >
+              {{ cleanup.trashScanning ? t("cleanup.trashSearching") : t("cleanup.trashSearchButton") }}
+            </button>
+          </div>
+        </div>
+
+        <div v-if="cleanup.trashLibraries.length" class="libstatus">
+          <div v-for="l in cleanup.trashLibraries" :key="l.library" class="mono">
+            {{ l.error
+              ? t("cleanup.trashLibError", { dir: l.dir || l.library, msg: l.error })
+              : !l.present
+                ? t("cleanup.trashLibNone", { dir: l.dir || l.library })
+                : t("cleanup.trashLibCount", { dir: l.dir, n: l.count }) }}
+          </div>
+        </div>
+
+        <div v-if="cleanup.trashUnknown.length" class="blocked">
+          {{ t("cleanup.trashUnknownHint", { n: cleanup.trashUnknown.length }) }}
+          <ul class="pm-list">
+            <li v-for="p in cleanup.trashUnknown" :key="p" class="mono">{{ p }}</li>
+          </ul>
+        </div>
+
+        <div v-if="trashBySize.length" class="list">
+          <button
+            v-for="e in trashBySize"
+            :key="e.path"
+            type="button"
+            class="row with-date"
+            :class="{ on: trashSelected.has(e.path) }"
+            :aria-pressed="trashSelected.has(e.path)"
+            @click="toggleTrash(e.path)"
+          >
+            <span class="box" aria-hidden="true" />
+            <span class="rname mono">{{ e.appId }}</span>
+            <span class="rpath mono" :title="e.path">{{ shortPath(e.path) }}</span>
+            <span
+              class="rdate mono"
+              :title="t('cleanup.trashTrashedAt', { date: trashDate(e.trashedAt) })"
+            >{{ trashDate(e.trashedAt) }}</span>
+            <span class="rsize mono">{{ e.sizeBytes != null ? formatBytes(e.sizeBytes) : "…" }}</span>
+          </button>
+        </div>
+        <div v-else-if="!cleanup.trashScanning" class="empty">
+          {{ t("cleanup.trashEmptyState") }}
+        </div>
+      </div>
+
     </div>
 
-    <ConfirmDialog
-      v-if="trashDeleteCandidates.length"
-      :title="trashConfirmCount === cleanup.trash.length ? t('cleanup.trashDeleteConfirmTitle') : t('cleanup.trashDeleteConfirmSingle')"
-      :confirm-label="t('cleanup.trashDeleteAction')"
-      danger
-      @cancel="cancelTrashDelete"
-      @confirm="confirmTrashDelete"
-    >
-      <p class="saveurge">
-        {{ t("cleanup.trashPermanentWarning") }}
-      </p>
-      <p>{{ t("cleanup.totalSize", { size: formatBytes(trashConfirmBytes) }) }}</p>
-      <ul class="paths">
-        <li v-for="p in trashConfirmPaths" :key="p" class="mono">{{ p }}</li>
-      </ul>
-    </ConfirmDialog>
-
-    <!-- sticky aktionsleiste: immer erreichbar ohne ans listenende zu scrollen -->
-    <div v-if="cleanup.orphans.length" class="actionbar">
+    <!-- footer: außerhalb der scroll-fläche, deshalb immer am unteren rand und
+         nie über einer listenzeile. bezieht sich nur auf den sichtbaren tab. -->
+    <div v-if="tab !== 'trash' && selectedHere.length + tabCount(tab) > 0" class="actionbar">
       <span class="sel-info">
-        {{ t("cleanup.selectedInfo", { n: selectedAll.length, size: formatBytes(selectedBytes) }) }}
+        {{ t("cleanup.selectedInfo", { n: selectedHere.length, size: formatBytes(selectedHereBytes) }) }}
       </span>
       <div class="actionbar-btns">
         <button
-          v-if="shadercacheOrphans.length"
+          v-if="tab === 'shaders' && shadercacheOrphans.length"
           class="action"
           type="button"
           :disabled="busy"
@@ -386,10 +483,34 @@ function selectAllTrash() {
         <button
           class="action danger"
           type="button"
-          :disabled="busy || !selectedAll.length"
-          @click="startDelete(selectedAll)"
+          :disabled="busy || !selectedHere.length"
+          @click="startDelete(selectedHere)"
         >
-          {{ t("cleanup.deleteSelected", { n: selectedAll.length }) }}
+          {{ t("cleanup.deleteSelected", { n: selectedHere.length }) }}
+        </button>
+      </div>
+    </div>
+
+    <div v-if="tab === 'trash' && cleanup.trash.length" class="actionbar">
+      <span class="sel-info">
+        {{ t("cleanup.trashSelectedInfo", { n: trashSelectedAll.length, size: formatBytes(trashSelectedBytes) }) }}
+      </span>
+      <div class="actionbar-btns">
+        <button
+          class="action"
+          type="button"
+          :disabled="!trashSelectedAll.length || trashDeleting"
+          @click="startTrashDelete(trashSelectedAll)"
+        >
+          {{ t("cleanup.trashDeleteEntry") }}
+        </button>
+        <button
+          class="action danger"
+          type="button"
+          :disabled="!cleanup.trash.length || trashDeleting"
+          @click="startTrashDelete(cleanup.trash)"
+        >
+          {{ t("cleanup.trashEmpty") }}
         </button>
       </div>
     </div>
@@ -410,11 +531,41 @@ function selectAllTrash() {
         <li v-for="p in confirmPaths" :key="p" class="mono">{{ p }}</li>
       </ul>
     </ConfirmDialog>
+
+    <ConfirmDialog
+      v-if="trashDeleteCandidates.length"
+      :title="trashConfirmCount === cleanup.trash.length ? t('cleanup.trashDeleteConfirmTitle') : t('cleanup.trashDeleteConfirmSingle')"
+      :confirm-label="t('cleanup.trashDeleteAction')"
+      danger
+      @cancel="cancelTrashDelete"
+      @confirm="confirmTrashDelete"
+    >
+      <p class="saveurge">
+        {{ t("cleanup.trashPermanentWarning") }}
+      </p>
+      <p>{{ t("cleanup.totalSize", { size: formatBytes(trashConfirmBytes) }) }}</p>
+      <ul class="paths">
+        <li v-for="p in trashConfirmPaths" :key="p" class="mono">{{ p }}</li>
+      </ul>
+    </ConfirmDialog>
   </section>
 </template>
 
 <style scoped>
-.cv { padding: 20px 24px 96px; }
+/* die view füllt die höhe von .content (grid-item mit definierter höhe) und
+   scrollt INTERN. dadurch ist die aktionsleiste ein echter footer statt
+   position:sticky — sie sitzt immer am unteren rand, unabhängig davon wie kurz
+   oder lang die liste ist, und kann keine zeile verdecken. */
+.cv {
+  display: flex; flex-direction: column;
+  height: 100%; min-height: 0;
+  padding: 20px 24px 0; min-width: 0; overflow-x: hidden;
+}
+.scroller {
+  flex: 1; min-height: 0;
+  overflow-y: auto; overflow-x: hidden;
+  padding-bottom: 8px;
+}
 .bar { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 16px; }
 .title h2 { margin: 2px 0 0; font-family: var(--font-display); font-size: 26px; font-weight: 600; letter-spacing: -0.02em; }
 .title .label { font-family: var(--font-body); font-size: 11px; letter-spacing: 0.14em; color: var(--fg-2); text-transform: uppercase; }
@@ -427,6 +578,7 @@ function selectAllTrash() {
 }
 .scan-btn:hover:not(:disabled) { color: var(--fg-0); border-color: var(--signal-dim); }
 .scan-btn:disabled { opacity: 0.55; cursor: default; }
+.scan-btn:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 
 .blocked {
   background: color-mix(in srgb, var(--tier-borked) 12%, transparent);
@@ -457,14 +609,44 @@ function selectAllTrash() {
   font-family: var(--font-display); font-weight: 600; font-size: 14px; cursor: pointer;
 }
 .pm-btn:hover { background: var(--signal-bright); }
+.pm-btn:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 
 .summary {
   font-family: var(--font-body); font-size: 14px; color: var(--fg-1);
   background: var(--bg-2); border: 1px solid var(--line);
-  border-radius: var(--r-sm); padding: 12px 16px; margin-bottom: 20px;
+  border-radius: var(--r-sm); padding: 12px 16px; margin-bottom: 16px;
 }
 
-.section-bar { display: flex; align-items: center; justify-content: space-between; margin: 24px 0 10px; }
+/* ---- tabs ---- */
+.tabs {
+  display: flex; gap: 6px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 4px;
+}
+.tab {
+  display: flex; align-items: center; gap: 8px;
+  background: none; border: none; border-bottom: 2px solid transparent;
+  color: var(--fg-2); cursor: pointer;
+  /* großzügige trefferfläche statt kompakter reiter (a11y) */
+  padding: 12px 18px;
+  font-family: var(--font-display); font-size: 15px; font-weight: 600;
+  margin-bottom: -1px;
+}
+.tab:hover { color: var(--fg-1); }
+.tab:focus-visible { outline: 2px solid var(--signal); outline-offset: -2px; border-radius: var(--r-sm); }
+.tab.on { color: var(--fg-0); border-bottom-color: var(--signal); }
+.tab-count {
+  font-family: var(--font-mono); font-size: 12px; font-weight: 400;
+  color: var(--fg-2); background: var(--bg-2);
+  border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px;
+}
+.tab.on .tab-count { color: var(--fg-1); border-color: var(--signal-dim); }
+
+.panel { padding-top: 14px; }
+.tabs { flex: 0 0 auto; }
+.panel:focus-visible { outline: 2px solid var(--signal); outline-offset: 4px; border-radius: var(--r-sm); }
+
+.section-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 10px; min-height: 34px; }
 .section {
   font-family: var(--font-display); font-size: 16px; font-weight: 600; color: var(--fg-1);
   display: flex; align-items: center; gap: 10px;
@@ -475,31 +657,51 @@ function selectAllTrash() {
   border: 1px solid color-mix(in srgb, var(--tier-gold) 45%, transparent);
   border-radius: 999px; padding: 2px 9px;
 }
+.section-actions { display: flex; gap: 8px; }
 
 .sel-all {
   background: none; border: 1px solid var(--line); color: var(--fg-1);
-  border-radius: var(--r-sm); padding: 6px 12px;
-  font-family: var(--font-body); font-size: 12px; cursor: pointer;
+  border-radius: var(--r-sm); padding: 8px 14px;
+  font-family: var(--font-body); font-size: 13px; cursor: pointer;
 }
-.sel-all:hover { color: var(--fg-0); border-color: var(--signal-dim); }
-.sel-all.warn:hover { border-color: var(--tier-gold); color: var(--tier-gold); }
+.sel-all:hover:not(:disabled) { color: var(--fg-0); border-color: var(--signal-dim); }
+.sel-all:disabled { opacity: 0.55; cursor: default; }
+.sel-all:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+.sel-all.warn:hover:not(:disabled) { border-color: var(--tier-gold); color: var(--tier-gold); }
 
-.list { display: grid; gap: 6px; margin-bottom: 12px; }
+.libstatus {
+  font-family: var(--font-mono); font-size: 13px; color: var(--fg-1); line-height: 1.7;
+  background: var(--bg-2); border: 1px solid var(--line);
+  border-radius: var(--r-sm); padding: 12px 16px; margin-bottom: 14px;
+  overflow-wrap: anywhere;
+}
 
-/* ganze zeile ist die klickfläche (a11y: große trefferfläche statt mini-checkbox) */
+.list { display: grid; gap: 6px; }
+
+/* ganze zeile ist die klickfläche (a11y: große trefferfläche statt mini-checkbox).
+   grid statt flex: die pfad-spalte ist minmax(0, 1fr) und kann damit NICHT über
+   den container hinauswachsen. vorher schob die zusätzliche datumsspalte im
+   papierkorb die zeile aus dem viewport. beide listen nutzen dieselben
+   spaltenbreiten, damit sie identisch aussehen. */
 .row {
-  display: flex; align-items: center; gap: 12px;
+  display: grid;
+  grid-template-columns: 20px 90px minmax(0, 1fr) 90px;
+  align-items: center; gap: 14px;
   width: 100%; text-align: left;
   background: var(--bg-2); border: 1px solid var(--line);
   border-radius: var(--r-sm); padding: 12px 14px; cursor: pointer;
   transition: border-color 0.12s, background 0.12s;
+  /* damit tastatur-fokus nicht unter der sticky leiste landet */
+  scroll-margin-bottom: 80px;
 }
+/* papierkorb: datumsspalte zwischen pfad und größe, feste breite */
+.row.with-date { grid-template-columns: 20px 90px minmax(0, 1fr) 74px 90px; }
 .row:hover { border-color: var(--signal-dim); background: var(--bg-3); }
 .row:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 .row.on { border-color: var(--signal); background: color-mix(in srgb, var(--signal) 10%, var(--bg-2)); }
 
 .box {
-  flex-shrink: 0; width: 18px; height: 18px; border-radius: 5px;
+  flex-shrink: 0; width: 20px; height: 20px; border-radius: 5px;
   border: 2px solid var(--fg-2); background: transparent;
   display: grid; place-items: center; transition: all 0.12s;
 }
@@ -509,7 +711,7 @@ function selectAllTrash() {
   border: solid var(--bg-0); border-width: 0 2px 2px 0; transform: rotate(45deg);
 }
 
-.rname { font-size: 15px; color: var(--fg-0); flex-shrink: 0; min-width: 90px; }
+.rname { font-size: 15px; color: var(--fg-0); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sc-warn {
   display: inline-block; width: 16px; height: 16px; line-height: 16px; text-align: center;
   border-radius: 50%; font-size: 11px; font-weight: 700; margin-left: 4px;
@@ -517,27 +719,29 @@ function selectAllTrash() {
   color: var(--tier-gold); border: 1px solid color-mix(in srgb, var(--tier-gold) 40%, transparent);
 }
 .rpath {
-  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  color: var(--fg-2); font-size: 12px;
+  min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  color: var(--fg-2); font-size: 13px;
 }
-.rsize { color: var(--fg-1); font-size: 14px; white-space: nowrap; flex-shrink: 0; }
-.rdate { color: var(--fg-2); font-size: 12px; white-space: nowrap; flex-shrink: 0; min-width: 120px; text-align: right; }
+.rsize { color: var(--fg-1); font-size: 14px; white-space: nowrap; text-align: right; }
+.rdate { color: var(--fg-2); font-size: 13px; white-space: nowrap; text-align: right; }
 
 .moved-note {
   color: var(--fg-2); font-size: 13px; font-family: var(--font-body);
   margin: 0 0 10px; font-style: italic;
 }
 
-/* sticky aktionsleiste unten */
+/* footer der view: liegt außerhalb der scroll-fläche, also immer unten und
+   niemals über einer listenzeile. vorher war das position:sticky mit negativem
+   margin — dadurch verdeckte die leiste die letzte zeile, die dann nicht mehr
+   abwählbar war. */
 .actionbar {
-  position: sticky; bottom: 0; z-index: 5;
+  flex: 0 0 auto;
   display: flex; align-items: center; justify-content: space-between; gap: 14px;
-  margin: 16px -24px -96px; padding: 14px 24px;
-  background: color-mix(in srgb, var(--bg-1) 92%, transparent);
-  backdrop-filter: blur(8px);
+  margin: 0 -24px; padding: 14px 24px;
+  background: var(--bg-1);
   border-top: 1px solid var(--line);
 }
-.sel-info { font-size: 13px; color: var(--fg-1); }
+.sel-info { font-size: 14px; color: var(--fg-1); }
 .actionbar-btns { display: flex; gap: 10px; }
 
 .action {
@@ -547,6 +751,7 @@ function selectAllTrash() {
 }
 .action:hover:not(:disabled) { background: var(--signal-bright); }
 .action:disabled { opacity: 0.4; cursor: default; }
+.action:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 .action.danger {
   background: color-mix(in srgb, var(--tier-borked) 18%, transparent);
   color: var(--tier-borked);
@@ -564,5 +769,9 @@ function selectAllTrash() {
   border: 1px solid color-mix(in srgb, var(--tier-borked) 35%, transparent);
   color: var(--tier-borked); border-radius: var(--r-sm);
   padding: 10px 14px; font-family: var(--font-display); font-size: 13px; font-weight: 600; margin-bottom: 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row, .box { transition: none; }
 }
 </style>
