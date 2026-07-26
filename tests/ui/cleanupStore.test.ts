@@ -38,11 +38,18 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: mockInvoke,
 }));
 vi.mock("../../src/core/adapters/tauri", async () => {
+  // in-memory cache statt {} — der store persistiert die ignorier-entscheidung
+  const cacheStore = new Map<string, string>();
   const tauriPorts = {
     fs: {},
     http: {},
     system: { isProcessRunning: async () => false },
-    cache: {},
+    cache: {
+      get: async (k: string) => cacheStore.get(k) ?? null,
+      set: async (k: string, v: string) => {
+        cacheStore.set(k, v);
+      },
+    },
   };
   return { tauriPorts };
 });
@@ -148,8 +155,60 @@ describe("cleanupStore gate logic", () => {
 
     expect(store.blockedBySkipped).toBe(false);
     expect(store.pathMissingLibs).toEqual(["/gone/lib"]);
-    expect(store.pathMissingDismissed).toBe(false);
     expect(store.error).toBeNull();
+  });
+
+  it("die ignorier-entscheidung überlebt einen erneuten scan (kein wiederkehrender dialog)", async () => {
+    const scanStore = useScanStore();
+    scanStore.result = fakeScan([{ path: "/gone/lib", reason: "path-missing" }]);
+    const store = useCleanupStore();
+
+    await store.scanOrphans();
+    expect(store.pathMissingLibs).toEqual(["/gone/lib"]);
+
+    await store.dismissPathMissing();
+    expect(store.pathMissingLibs).toEqual([]);
+
+    // ansichtswechsel: neuer store, gleicher cache
+    setActivePinia(createPinia());
+    const scanStore2 = useScanStore();
+    scanStore2.result = fakeScan([{ path: "/gone/lib", reason: "path-missing" }]);
+    const store2 = useCleanupStore();
+    await store2.scanOrphans();
+
+    expect(store2.pathMissingLibs).toEqual([]);
+    expect(store2.ignoredMissingLibs).toEqual(["/gone/lib"]);
+  });
+
+  it("ein NEUER toter pfad fragt erneut, obwohl ein anderer ignoriert ist", async () => {
+    const scanStore = useScanStore();
+    scanStore.result = fakeScan([{ path: "/gone/lib", reason: "path-missing" }]);
+    const store = useCleanupStore();
+    await store.scanOrphans();
+    await store.dismissPathMissing();
+
+    scanStore.result = fakeScan([
+      { path: "/gone/lib", reason: "path-missing" },
+      { path: "/neu/weg", reason: "path-missing" },
+    ]);
+    await store.scanOrphans();
+
+    // nur der unbeantwortete pfad, nicht der bereits ignorierte
+    expect(store.pathMissingLibs).toEqual(["/neu/weg"]);
+  });
+
+  it("unignoreMissingLibs bringt die abfrage zurück", async () => {
+    const scanStore = useScanStore();
+    scanStore.result = fakeScan([{ path: "/gone/lib", reason: "path-missing" }]);
+    const store = useCleanupStore();
+    await store.scanOrphans();
+    await store.dismissPathMissing();
+    expect(store.pathMissingLibs).toEqual([]);
+
+    await store.unignoreMissingLibs();
+
+    expect(store.ignoredMissingLibs).toEqual([]);
+    expect(store.pathMissingLibs).toEqual(["/gone/lib"]);
   });
 
   it("nach dismissPathMissing lauft scanOrphans durch und cleared pathMissingLibs", async () => {
@@ -163,7 +222,6 @@ describe("cleanupStore gate logic", () => {
     store.dismissPathMissing();
     await new Promise((r) => setTimeout(r, 0));
 
-    expect(store.pathMissingDismissed).toBe(false);
     expect(store.pathMissingLibs).toEqual([]);
     expect(store.scanning).toBe(false);
   });

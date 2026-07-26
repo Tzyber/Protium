@@ -9,6 +9,9 @@ import { errMsg } from "../format";
 import { t } from "../i18n";
 import { useScanStore } from "./scanStore";
 
+/** cache-key für die dauerhaft ignorierten toten library-pfade */
+const IGNORED_MISSING_KEY = "cleanup:ignored-missing-libs";
+
 export const useCleanupStore = defineStore("cleanup", {
   state: () => ({
     orphans: [] as OrphanEntry[],
@@ -17,7 +20,12 @@ export const useCleanupStore = defineStore("cleanup", {
     error: null as string | null,
     blockedBySkipped: false,
     pathMissingLibs: [] as string[],
-    pathMissingDismissed: false,
+    /** vom nutzer dauerhaft ignorierte, nicht existierende library-pfade.
+     *  liegt im cache, damit die rückfrage nicht bei jedem ansichtswechsel
+     *  wiederkommt. bewusst als LISTE und nicht als bool: taucht später ein
+     *  NEUER toter pfad auf, wird wieder gefragt statt still zu ignorieren. */
+    ignoredMissingLibs: [] as string[],
+    ignoredLoaded: false,
     shortcutUnreadable: false,
     shortcutUnreadablePaths: [] as string[],
     shortcutUnreadableDetail: null as string | null,
@@ -59,13 +67,14 @@ export const useCleanupStore = defineStore("cleanup", {
         }
         this.blockedBySkipped = false;
 
-        const missing = skipped.filter((s) => s.reason === "path-missing");
-        if (missing.length > 0 && !this.pathMissingDismissed) {
-          this.pathMissingLibs = missing.map((s) => s.path);
+        await this.loadIgnoredMissing();
+        const missing = skipped.filter((s) => s.reason === "path-missing").map((s) => s.path);
+        const unanswered = missing.filter((p) => !this.ignoredMissingLibs.includes(p));
+        if (unanswered.length > 0) {
+          this.pathMissingLibs = unanswered;
           return;
         }
         this.pathMissingLibs = [];
-        this.pathMissingDismissed = false;
 
         if (await tauriPorts.system.isProcessRunning("steam")) {
           this.error = t("errors.steamRunning");
@@ -186,9 +195,42 @@ export const useCleanupStore = defineStore("cleanup", {
       }
     },
 
-    dismissPathMissing() {
-      this.pathMissingDismissed = true;
-      this.scanOrphans();
+    async loadIgnoredMissing() {
+      if (this.ignoredLoaded) return;
+      this.ignoredLoaded = true;
+      try {
+        const raw = await tauriPorts.cache.get(IGNORED_MISSING_KEY);
+        if (!raw) return;
+        const parsed: unknown = JSON.parse(raw);
+        // defensiv: fremder/alter cache-inhalt darf den cleanup nicht kippen
+        if (Array.isArray(parsed)) {
+          this.ignoredMissingLibs = parsed.filter((p): p is string => typeof p === "string");
+        }
+      } catch {
+        // kein cache, kaputtes json → einfach nichts ignorieren (INV-3)
+      }
+    },
+
+    async persistIgnoredMissing() {
+      try {
+        await tauriPorts.cache.set(IGNORED_MISSING_KEY, JSON.stringify(this.ignoredMissingLibs));
+      } catch {
+        // schreibfehler nie fatal: die entscheidung gilt dann nur für diese sitzung
+      }
+    },
+
+    async dismissPathMissing() {
+      this.ignoredLoaded = true;
+      this.ignoredMissingLibs = [...new Set([...this.ignoredMissingLibs, ...this.pathMissingLibs])];
+      await this.persistIgnoredMissing();
+      await this.scanOrphans();
+    },
+
+    /** ignorierte pfade wieder berücksichtigen — die rückfrage kommt dann erneut. */
+    async unignoreMissingLibs() {
+      this.ignoredMissingLibs = [];
+      await this.persistIgnoredMissing();
+      await this.scanOrphans();
     },
 
     async scanTrash() {

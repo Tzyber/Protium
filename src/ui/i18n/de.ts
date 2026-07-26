@@ -90,6 +90,8 @@ export const de = {
     trashLibCount: "{dir} — {n} einträge",
     trashLibError: "{dir} — nicht lesbar: {msg}",
     tabsLabel: "bereiche der bereinigung",
+    ignoredMissingNote: "{n} nicht existierende library-pfade werden ignoriert",
+    ignoredMissingUndo: "wieder berücksichtigen",
     trashSearching: "suche läuft…",
     trashSearchButton: "papierkorb durchsuchen",
     trashSummary: "{n} einträge · {size}",

@@ -270,6 +270,18 @@ const tabLabel = (id: Tab) =>
         {{ t("cleanup.scanBlocked") }}
       </div>
 
+      <div
+        v-if="cleanup.ignoredMissingLibs.length && !cleanup.pathMissingLibs.length"
+        class="ignored"
+      >
+        <span :title="cleanup.ignoredMissingLibs.join('\n')">
+          {{ t("cleanup.ignoredMissingNote", { n: cleanup.ignoredMissingLibs.length }) }}
+        </span>
+        <button class="sel-all" type="button" @click="cleanup.unignoreMissingLibs()">
+          {{ t("cleanup.ignoredMissingUndo") }}
+        </button>
+      </div>
+
       <div v-if="cleanup.pathMissingLibs.length" class="pathmissing">
         <p class="pm-title">{{ t("cleanup.pathMissingTitle") }}</p>
         <ul class="pm-list">
@@ -668,6 +680,14 @@ const tabLabel = (id: Tab) =>
 .sel-all:disabled { opacity: 0.55; cursor: default; }
 .sel-all:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 .sel-all.warn:hover:not(:disabled) { border-color: var(--tier-gold); color: var(--tier-gold); }
+
+.ignored {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  background: var(--bg-2); border: 1px solid var(--line);
+  border-left: 3px solid var(--fg-2);
+  border-radius: var(--r-sm); padding: 10px 14px; margin-bottom: 14px;
+  font-family: var(--font-body); font-size: 13px; color: var(--fg-2);
+}
 
 .libstatus {
   font-family: var(--font-mono); font-size: 13px; color: var(--fg-1); line-height: 1.7;
