@@ -714,7 +714,7 @@ async fn download_stream(
             }
         }
         file.flush().await.map_err(|e| e.to_string())?;
-        Ok(format!("{:x}", hasher.finalize()))
+        Ok(hasher.finalize().iter().map(|b| format!("{:02x}", b)).collect::<String>())
     }
     .await;
 
