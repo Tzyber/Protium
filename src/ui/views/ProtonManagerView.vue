@@ -253,7 +253,7 @@ const statusLine = computed(() => {
 .rname { font-family: var(--font-display); font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px; }
 .rsub { color: var(--fg-2); font-size: 13px; font-weight: 600; margin-top: 3px; }
 
-.tag { font-family: var(--font-body); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; padding: 2px 6px; border-radius: 999px; }
+.tag { font-family: var(--font-body); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; padding: 2px 6px; border-radius: 999px; }
 .tag.ok { color: var(--tier-platinum); background: color-mix(in srgb, var(--tier-platinum) 14%, transparent); }
 .tag.distro { color: var(--fg-2); border: 1px solid var(--line); margin-left: 8px; }
 
@@ -283,7 +283,7 @@ const statusLine = computed(() => {
 .progress { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
 .track { flex: 1; max-width: 320px; height: 5px; background: var(--bg-0); border-radius: 999px; overflow: hidden; }
 .fill { height: 100%; background: var(--signal); transition: width 0.2s; }
-.phase { color: var(--fg-2); font-size: 10px; }
+.phase { color: var(--fg-2); font-size: 12px; }
 .phase.act::before {
   content: "·";
   display: inline-block;

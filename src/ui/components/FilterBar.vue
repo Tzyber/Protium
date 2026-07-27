@@ -147,7 +147,7 @@ function libShort(path: string): string {
   font-size: 16px;
   padding: 8px 0;
 }
-.search .clear { background: none; border: none; color: var(--fg-2); cursor: pointer; font-size: 14px; }
+.search .clear { background: none; border: none; color: var(--fg-2); cursor: pointer; font-size: 14px; min-width: 24px; min-height: 24px; display: grid; place-items: center; }
 
 .group { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 
