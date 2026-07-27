@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { Tier } from "../../core/types";
-import type { SortKey } from "../filter";
 import { t } from "../i18n";
 import { useLibraryStore } from "../stores/libraryStore";
 import { useScanStore } from "../stores/scanStore";

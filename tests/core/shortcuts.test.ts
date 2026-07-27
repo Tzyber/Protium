@@ -20,8 +20,6 @@ function fsWithUnreadableUserdata(base: ReturnType<typeof nodeFs>): ReturnType<t
 
 // ---- binary-VDF-fixtures ----
 
-const td = new TextDecoder();
-
 function makeBinVdf(entries: { appId?: number; name?: string; hasTags?: boolean }[]): Uint8Array {
   const parts: number[] = [];
   parts.push(0x00);

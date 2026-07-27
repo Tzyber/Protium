@@ -113,18 +113,15 @@ const selectedHereBytes = computed(() =>
 );
 
 const deleteCandidates = ref<OrphanEntry[]>([]);
-const deleting = ref(false);
 
 function startDelete(candidates: OrphanEntry[]) {
   if (candidates.length) deleteCandidates.value = [...candidates];
 }
 
 async function confirmDelete() {
-  deleting.value = true;
   await cleanup.deleteOrphans(deleteCandidates.value);
   deleteCandidates.value = [];
   selected.clear();
-  deleting.value = false;
   await cleanup.scanOrphans();
 }
 
@@ -634,6 +631,7 @@ const tabLabel = (id: Tab) =>
   display: flex; gap: 6px;
   border-bottom: 1px solid var(--line);
   margin-bottom: 4px;
+  flex: 0 0 auto;
 }
 .tab {
   display: flex; align-items: center; gap: 8px;
@@ -655,7 +653,6 @@ const tabLabel = (id: Tab) =>
 .tab.on .tab-count { color: var(--fg-1); border-color: var(--signal-dim); }
 
 .panel { padding-top: 14px; }
-.tabs { flex: 0 0 auto; }
 .panel:focus-visible { outline: 2px solid var(--signal); outline-offset: 4px; border-radius: var(--r-sm); }
 
 .section-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 10px; min-height: 34px; }

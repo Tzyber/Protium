@@ -9,15 +9,11 @@ import {
   removeTool,
 } from "../../core/geproton";
 import type { CompatTool } from "../../core/types";
+import { errMsg } from "../format";
 import { t } from "../i18n";
 import { useScanStore } from "./scanStore";
 
 export type Phase = "queued" | "downloading" | "verifying" | "extracting";
-
-/** rust-commands rejecten mit einem rohen string (kein Error-objekt) → sicher auslesen. */
-function errMsg(e: unknown): string {
-  return typeof e === "string" ? e : ((e as Error)?.message ?? String(e));
-}
 
 interface Job {
   tag: string;
@@ -65,7 +61,6 @@ export const useProtonStore = defineStore("proton", {
     installedTags(): Set<string> {
       return new Set(this.installedTools.map((t) => t.internalName));
     },
-    isBusy: (s) => s.activeTag !== null || s.queue.length > 0,
   },
   actions: {
     async init() {

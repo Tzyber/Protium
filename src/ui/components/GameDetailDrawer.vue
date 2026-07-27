@@ -5,7 +5,7 @@ import { SteamRunningError } from "../../core/configwrite";
 import { protonDbAppUrl } from "../../core/protondb";
 import type { Tier } from "../../core/types";
 import { focusFirstFocusable, restoreFocus, trapFocus } from "../a11y";
-import { formatBytes } from "../format";
+import { errMsg, formatBytes } from "../format";
 import { t } from "../i18n";
 import { useConfigStore } from "../stores/configStore";
 import { useScanStore } from "../stores/scanStore";
@@ -34,10 +34,6 @@ const TIER_LABEL = computed<Record<Tier, string>>(() => ({
 function errorText(e: unknown): string {
   if (e instanceof SteamRunningError) return t("errors.steamRunning");
   return errMsg(e);
-}
-
-function errMsg(e: unknown): string {
-  return typeof e === "string" ? e : ((e as Error)?.message ?? String(e));
 }
 
 // cover-kandidaten wie in der karte

@@ -4,7 +4,7 @@ import type { OrphanEntry, OrphanType } from "./types.js";
 
 const ORPHAN_TYPES: OrphanType[] = ["compatdata", "shadercache"];
 
-const NUMERIC_RE = /^\d+$/;
+export const NUMERIC_RE = /^\d+$/;
 
 export async function findOrphans(
   libraries: readonly string[],
