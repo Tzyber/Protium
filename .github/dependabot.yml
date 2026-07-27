@@ -7,6 +7,10 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    # typescript-majors brechen vue-tsc und müssen lokal geprüft werden, nicht per auto-PR
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
 
   # Rust / Tauri backend dependencies
   - package-ecosystem: "cargo"
