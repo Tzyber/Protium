@@ -333,6 +333,7 @@ watch(errorMessage, (msg) => {
   position: absolute; top: 14px; right: 16px;
   background: none; border: none; color: var(--fg-2);
   font-size: 15px; cursor: pointer; z-index: 2;
+  min-width: 24px; min-height: 24px; display: grid; place-items: center;
 }
 .close:hover { color: var(--fg-0); }
 
@@ -453,6 +454,7 @@ select.control option { background: var(--bg-1); color: var(--fg-0); }
 .toast-close {
   flex-shrink: 0; background: none; border: none; color: var(--fg-2);
   font-size: 12px; cursor: pointer; padding: 0; line-height: 1;
+  min-width: 24px; min-height: 24px; display: grid; place-items: center;
 }
 .toast-close:hover { color: var(--fg-0); }
 .toast-enter-active, .toast-leave-active { transition: opacity 0.2s, transform 0.2s; }

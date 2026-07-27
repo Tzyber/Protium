@@ -698,7 +698,10 @@ const tabLabel = (id: Tab) =>
    spaltenbreiten, damit sie identisch aussehen. */
 .row {
   display: grid;
-  grid-template-columns: 20px 90px minmax(0, 1fr) 90px;
+  /* rem statt px: skaliert mit root-schriftgröße (text-only-zoom). ch wäre hier
+     falsch — .row erbt Inter vom body, nicht Space Mono. ch in Inter (14px) ≈ 7px,
+     damit wäre 9ch ≈ 63px statt 90px. 5.6rem / 4.6rem bei root 16px = 90px / 74px. */
+  grid-template-columns: 20px 5.6rem minmax(0, 1fr) 5.6rem;
   align-items: center; gap: 14px;
   width: 100%; text-align: left;
   background: var(--bg-2); border: 1px solid var(--line);
@@ -708,8 +711,12 @@ const tabLabel = (id: Tab) =>
   scroll-margin-bottom: 80px;
 }
 /* papierkorb: datumsspalte zwischen pfad und größe, feste breite */
-.row.with-date { grid-template-columns: 20px 90px minmax(0, 1fr) 74px 90px; }
+.row.with-date { grid-template-columns: 20px 5.6rem minmax(0, 1fr) 4.6rem 5.6rem; }
 .row:hover { border-color: var(--signal-dim); background: var(--bg-3); }
+.row:hover .rpath,
+.row:hover .rdate {
+  color: var(--fg-1);
+}
 .row:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 .row.on { border-color: var(--signal); background: color-mix(in srgb, var(--signal) 10%, var(--bg-2)); }
 
@@ -784,7 +791,4 @@ const tabLabel = (id: Tab) =>
   padding: 10px 14px; font-family: var(--font-display); font-size: 14px; font-weight: 600; margin-bottom: 12px;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .row, .box { transition: none; }
-}
 </style>
