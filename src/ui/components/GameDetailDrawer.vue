@@ -234,7 +234,7 @@ watch(errorMessage, (msg) => {
             :confidence="game.protonDb.confidence"
           />
         </div>
-        <p class="meta mono">{{ formatBytes(game.sizeBytes) }} · app {{ game.appId }}</p>
+        <p class="meta mono">{{ formatBytes(game.sizeBytes) }} · appid -  {{ game.appId }}</p>
         <p class="meta-tier">{{ TIER_LABEL[game.protonDb?.tier ?? "unknown"] }}</p>
 
         <button
@@ -353,8 +353,8 @@ watch(errorMessage, (msg) => {
 .head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .head h2 { margin: 0; font-family: var(--font-display); font-size: 21px; font-weight: 600; letter-spacing: -0.02em; }
 .head :deep(*) { flex-shrink: 0; }
-.meta { margin: 6px 0 2px; color: var(--fg-2); font-size: 13px; }
-.meta-tier { margin: 0 0 20px; color: var(--fg-1); font-size: 13px; line-height: 1.5; }
+.meta { margin: 6px 0 2px; color: var(--fg-2); font-size: 14px; }
+.meta-tier { margin: 0 0 20px; color: var(--fg-1); font-size: 14px; line-height: 1.5; }
 
 .play {
   width: 100%;
@@ -381,14 +381,14 @@ watch(errorMessage, (msg) => {
 .divider { height: 1px; background: var(--line-soft); margin: 20px 0 16px; }
 .section-label {
   margin: 0 0 14px;
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.14em;
   color: var(--fg-1);
   text-transform: uppercase;
 }
 
 .field { margin-bottom: 16px; }
-.k { display: block; color: var(--fg-1); font-size: 13px; margin-bottom: 7px; }
+.k { display: block; color: var(--fg-1); font-size: 14px; margin-bottom: 7px; }
 .field-row { display: flex; gap: 8px; }
 .control {
   flex: 1;
@@ -413,7 +413,7 @@ select.control option { background: var(--bg-1); color: var(--fg-0); }
   padding: 11px 15px;
   font-family: var(--font-display);
   font-weight: 600;
-  font-size: 13px;
+  font-size: 14px;
   cursor: pointer;
   white-space: nowrap;
   transition: background 0.15s, border-color 0.15s;
@@ -421,7 +421,7 @@ select.control option { background: var(--bg-1); color: var(--fg-0); }
 .save:hover:not(:disabled) { background: var(--bg-3); border-color: var(--signal); }
 .save:disabled { opacity: 0.4; cursor: default; }
 
-.hint { margin: 9px 2px 0; color: var(--fg-2); font-size: 12.5px; line-height: 1.55; }
+.hint { margin: 9px 2px 0; color: var(--fg-2); font-size: 13px; line-height: 1.55; }
 
 .pdb-link {
   display: inline-block;
