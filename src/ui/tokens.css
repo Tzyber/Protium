@@ -6,7 +6,7 @@
   color-scheme: dark;
 
   /* flächen */
-  --bg-0: #0a0b11; /* app-hintergrund */
+  --bg-0: #08090e; /* app-hintergrund */
   --bg-1: #10121b; /* panels / sidebar */
   --bg-2: #161927; /* cards */
   --bg-3: #1e2233; /* erhöht / hover */
@@ -79,13 +79,7 @@ body {
 }
 
 /* subtiles technisches grid im hintergrund */
-#app {
-  background-image:
-    linear-gradient(var(--line-soft) 1px, transparent 1px),
-    linear-gradient(90deg, var(--line-soft) 1px, transparent 1px);
-  background-size: 40px 40px;
-  background-position: -1px -1px;
-}
+
 
 ::-webkit-scrollbar {
   width: 10px;

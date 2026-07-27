@@ -106,7 +106,7 @@ const showWarnings = ref(false);
 .title .unit { color: var(--fg-2); font-size: 15px; font-weight: 400; }
 
 .right { display: flex; align-items: center; gap: 12px; }
-.status { color: var(--fg-2); font-size: 11px; }
+.status { color: var(--fg-2); font-size: 14px; }
 
 .rescan {
   background: var(--signal);
@@ -116,7 +116,7 @@ const showWarnings = ref(false);
   padding: 8px 14px;
   font-family: var(--font-display);
   font-weight: 600;
-  font-size: 13px;
+  font-size: 16px;
   cursor: pointer;
   transition: background 0.15s, box-shadow 0.15s;
 }
@@ -143,7 +143,8 @@ const showWarnings = ref(false);
   border-left: 2px solid var(--tier-gold);
   border-radius: var(--r-sm);
   font-family: var(--font-body);
-  font-size: 12px;
+  font-size: 13px;
+  font-weight: 500;
   color: var(--fg-1);
   display: grid;
   gap: 6px;

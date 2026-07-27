@@ -231,11 +231,22 @@ const tabLabel = (id: Tab) =>
         <span class="label">{{ t("cleanup.label") }}</span>
         <h2>{{ t("cleanup.orphanedData") }}</h2>
       </div>
+      <button class="scan-btn" type="button" :disabled="busy" @click="cleanup.scanOrphans()">
+        {{ cleanup.scanning ? t("cleanup.searching") : t("cleanup.searchButton") }}
+      </button>
     </header>
+    <div
+        v-if="cleanup.ignoredMissingLibs.length && !cleanup.pathMissingLibs.length"
+        class="ignored"
+    >
+        <span :title="cleanup.ignoredMissingLibs.join('\n')">
+          {{ t("cleanup.ignoredMissingNote", { n: cleanup.ignoredMissingLibs.length }) }}
+        </span>
+      <button class="sel-all" type="button" @click="cleanup.unignoreMissingLibs()">
+        {{ t("cleanup.ignoredMissingUndo") }}
+      </button>
+    </div>
 
-    <button class="scan-btn" type="button" :disabled="busy" @click="cleanup.scanOrphans()">
-      {{ cleanup.scanning ? t("cleanup.searching") : t("cleanup.searchButton") }}
-    </button>
 
     <div v-if="cleanup.error" class="hint" role="status">{{ cleanup.error }}</div>
 
@@ -267,17 +278,7 @@ const tabLabel = (id: Tab) =>
         {{ t("cleanup.scanBlocked") }}
       </div>
 
-      <div
-        v-if="cleanup.ignoredMissingLibs.length && !cleanup.pathMissingLibs.length"
-        class="ignored"
-      >
-        <span :title="cleanup.ignoredMissingLibs.join('\n')">
-          {{ t("cleanup.ignoredMissingNote", { n: cleanup.ignoredMissingLibs.length }) }}
-        </span>
-        <button class="sel-all" type="button" @click="cleanup.unignoreMissingLibs()">
-          {{ t("cleanup.ignoredMissingUndo") }}
-        </button>
-      </div>
+
 
       <div v-if="cleanup.pathMissingLibs.length" class="pathmissing">
         <p class="pm-title">{{ t("cleanup.pathMissingTitle") }}</p>
@@ -296,11 +297,6 @@ const tabLabel = (id: Tab) =>
           <li v-for="p in cleanup.shortcutUnreadablePaths" :key="p" class="mono">{{ p }}</li>
         </ul>
       </div>
-
-      <div v-if="cleanup.orphans.length" class="summary">
-        {{ t("cleanup.summary", { n: cleanup.orphans.length, size: formatBytes(cleanup.totalOrphanBytes) }) }}
-      </div>
-
 
       <!-- ---- shader-caches ---- -->
       <div
@@ -580,10 +576,11 @@ const tabLabel = (id: Tab) =>
 .title .label { font-family: var(--font-body); font-size: 11px; letter-spacing: 0.14em; color: var(--fg-2); text-transform: uppercase; }
 
 .scan-btn {
+  align-self: flex-start;
   background: var(--bg-2); color: var(--fg-1);
   border: 1px solid var(--line); border-radius: var(--r-sm);
-  padding: 10px 16px; font-family: var(--font-body); font-size: 13px; cursor: pointer;
-  margin-bottom: 16px;
+  padding: 10px 16px; font-family: var(--font-body); font-size: 14px; cursor: pointer;
+
 }
 .scan-btn:hover:not(:disabled) { color: var(--fg-0); border-color: var(--signal-dim); }
 .scan-btn:disabled { opacity: 0.55; cursor: default; }
@@ -596,7 +593,7 @@ const tabLabel = (id: Tab) =>
   border-radius: var(--r-sm);
   padding: 12px 16px;
   font-family: var(--font-body);
-  font-size: 13px;
+  font-size: 14px;
   margin-bottom: 16px;
 }
 
@@ -610,8 +607,8 @@ const tabLabel = (id: Tab) =>
 }
 .pm-title { margin: 0 0 8px; color: var(--fg-0); font-size: 14px; }
 .pm-list { margin: 0 0 10px; padding-left: 18px; }
-.pm-list li { color: var(--fg-1); font-family: var(--font-mono); font-size: 13px; line-height: 1.6; }
-.pm-note { margin: 0 0 12px; color: var(--fg-2); font-size: 13px; line-height: 1.5; }
+.pm-list li { color: var(--fg-1); font-family: var(--font-mono); font-size: 14px; line-height: 1.6; }
+.pm-note { margin: 0 0 12px; color: var(--fg-2); font-size: 14px; line-height: 1.5; }
 .pm-btn {
   background: var(--signal); border: none; color: var(--bg-0);
   border-radius: var(--r-sm); padding: 10px 15px;
@@ -620,11 +617,7 @@ const tabLabel = (id: Tab) =>
 .pm-btn:hover { background: var(--signal-bright); }
 .pm-btn:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 
-.summary {
-  font-family: var(--font-body); font-size: 14px; color: var(--fg-1);
-  background: var(--bg-2); border: 1px solid var(--line);
-  border-radius: var(--r-sm); padding: 12px 16px; margin-bottom: 16px;
-}
+
 
 /* ---- tabs ---- */
 .tabs {
@@ -662,7 +655,7 @@ const tabLabel = (id: Tab) =>
 }
 .section .count { color: var(--fg-2); font-weight: 400; }
 .section .warn-label {
-  font-family: var(--font-body); font-size: 11px; color: var(--tier-gold);
+  font-family: var(--font-body); font-size: 14px; color: var(--fg-1);
   border: 1px solid color-mix(in srgb, var(--tier-gold) 45%, transparent);
   border-radius: 999px; padding: 2px 9px;
 }
@@ -671,7 +664,7 @@ const tabLabel = (id: Tab) =>
 .sel-all {
   background: none; border: 1px solid var(--line); color: var(--fg-1);
   border-radius: var(--r-sm); padding: 8px 14px;
-  font-family: var(--font-body); font-size: 13px; cursor: pointer;
+  font-family: var(--font-body); font-size: 14px; cursor: pointer;
 }
 .sel-all:hover:not(:disabled) { color: var(--fg-0); border-color: var(--signal-dim); }
 .sel-all:disabled { opacity: 0.55; cursor: default; }
@@ -679,15 +672,18 @@ const tabLabel = (id: Tab) =>
 .sel-all.warn:hover:not(:disabled) { border-color: var(--tier-gold); color: var(--tier-gold); }
 
 .ignored {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  background: var(--bg-2); border: 1px solid var(--line);
-  border-left: 3px solid var(--fg-2);
-  border-radius: var(--r-sm); padding: 10px 14px; margin-bottom: 14px;
-  font-family: var(--font-body); font-size: 13px; color: var(--fg-2);
+  display: flex; align-items: center; gap: 10px;
+  background: none; border: none; padding: 0;
+  margin: -4px 0 14px;
+  font-size: 14px; color: var(--fg-2);
 }
-
+.ignored button {
+  background: none; border: none; padding: 0;
+  color: var(--signal); font-size: 14px; cursor: pointer;
+  text-decoration: underline; text-underline-offset: 3px;
+}
 .libstatus {
-  font-family: var(--font-mono); font-size: 13px; color: var(--fg-1); line-height: 1.7;
+  font-family: var(--font-mono); font-size: 14px; color: var(--fg-1); line-height: 1.7;
   background: var(--bg-2); border: 1px solid var(--line);
   border-radius: var(--r-sm); padding: 12px 16px; margin-bottom: 14px;
   overflow-wrap: anywhere;
@@ -737,13 +733,13 @@ const tabLabel = (id: Tab) =>
 }
 .rpath {
   min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
-  color: var(--fg-2); font-size: 13px;
+  color: var(--fg-2); font-size: 14px;
 }
 .rsize { color: var(--fg-1); font-size: 14px; white-space: nowrap; text-align: right; }
-.rdate { color: var(--fg-2); font-size: 13px; white-space: nowrap; text-align: right; }
+.rdate { color: var(--fg-2); font-size: 14px; white-space: nowrap; text-align: right; }
 
 .moved-note {
-  color: var(--fg-2); font-size: 13px; font-family: var(--font-body);
+  color: var(--fg-2); font-size: 14px; font-family: var(--font-body);
   margin: 0 0 10px; font-style: italic;
 }
 
@@ -776,7 +772,7 @@ const tabLabel = (id: Tab) =>
 }
 .action.danger:hover:not(:disabled) { background: color-mix(in srgb, var(--tier-borked) 30%, transparent); }
 
-.hint { color: var(--tier-gold); font-family: var(--font-body); font-size: 13px; margin-bottom: 12px; }
+.hint { color: var(--tier-gold); font-family: var(--font-body); font-size: 14px; margin-bottom: 12px; }
 .empty { color: var(--fg-2); font-family: var(--font-body); font-size: 14px; padding: 32px 0; text-align: center; }
 
 .paths { margin: 8px 0 0; padding-left: 18px; color: var(--fg-1); max-height: 160px; overflow-y: auto; }
@@ -785,7 +781,7 @@ const tabLabel = (id: Tab) =>
   background: color-mix(in srgb, var(--tier-borked) 14%, transparent);
   border: 1px solid color-mix(in srgb, var(--tier-borked) 35%, transparent);
   color: var(--tier-borked); border-radius: var(--r-sm);
-  padding: 10px 14px; font-family: var(--font-display); font-size: 13px; font-weight: 600; margin-bottom: 12px;
+  padding: 10px 14px; font-family: var(--font-display); font-size: 14px; font-weight: 600; margin-bottom: 12px;
 }
 
 @media (prefers-reduced-motion: reduce) {

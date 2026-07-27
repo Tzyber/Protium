@@ -161,7 +161,7 @@ h3 {
   text-overflow: ellipsis;
 }
 .chip.muted { color: var(--fg-2); background: transparent; border-color: var(--line); }
-.size { color: var(--fg-2); font-size: 12px; white-space: nowrap; }
+.size { color: var(--fg-2); font-size: 13px; white-space: nowrap; }
 
 .meta-right { display: flex; align-items: center; gap: 8px; }
 .play {

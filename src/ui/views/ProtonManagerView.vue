@@ -223,7 +223,7 @@ const statusLine = computed(() => {
   border: 1px solid var(--line);
   transition: background 0.3s, border-color 0.3s, color 0.3s;
 }
-.statusline .ic { color: var(--tier-platinum); font-size: 12px; }
+.statusline .ic { color: var(--tier-platinum); font-size: 16px; }
 .statusline.warn { color: var(--tier-gold); }
 .statusline.warn .ic { color: var(--tier-gold); }
 .statusline.flash {
@@ -236,7 +236,7 @@ const statusLine = computed(() => {
 .rescan {
   background: var(--bg-2); color: var(--fg-1);
   border: 1px solid var(--line); border-radius: var(--r-sm);
-  padding: 8px 14px; font-family: var(--font-body); font-size: 12px; cursor: pointer;
+  padding: 8px 14px; font-family: var(--font-body); font-size: 14px; cursor: pointer;
 }
 .rescan:hover:not(:disabled) { color: var(--fg-0); border-color: var(--signal-dim); }
 
@@ -251,16 +251,16 @@ const statusLine = computed(() => {
 }
 .rmain { flex: 1; min-width: 0; }
 .rname { font-family: var(--font-display); font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px; }
-.rsub { color: var(--fg-2); font-size: 11px; margin-top: 3px; }
+.rsub { color: var(--fg-2); font-size: 13px; font-weight: 600; margin-top: 3px; }
 
-.tag { font-family: var(--font-body); font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; padding: 2px 6px; border-radius: 999px; }
+.tag { font-family: var(--font-body); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; padding: 2px 6px; border-radius: 999px; }
 .tag.ok { color: var(--tier-platinum); background: color-mix(in srgb, var(--tier-platinum) 14%, transparent); }
 .tag.distro { color: var(--fg-2); border: 1px solid var(--line); margin-left: 8px; }
 
-.used { background: none; border: 1px solid var(--signal-dim); color: var(--signal-bright); border-radius: var(--r-sm); padding: 5px 9px; font-family: var(--font-body); font-size: 11px; cursor: pointer; white-space: nowrap; }
+.used { background: none; border: 1px solid var(--signal-dim); color: var(--signal-bright); border-radius: var(--r-sm); padding: 5px 9px; font-family: var(--font-body); font-size: 14px; cursor: pointer; white-space: nowrap; }
 .used.muted { color: var(--fg-2); border-color: var(--line); cursor: default; }
 
-.rm { background: none; border: 1px solid color-mix(in srgb, var(--tier-borked) 45%, transparent); color: var(--tier-borked); border-radius: var(--r-sm); padding: 5px 10px; font-family: var(--font-body); font-size: 11px; cursor: pointer; }
+.rm { background: none; border: 1px solid color-mix(in srgb, var(--tier-borked) 45%, transparent); color: var(--tier-borked); border-radius: var(--r-sm); padding: 5px 10px; font-family: var(--font-body); font-size: 14px; cursor: pointer; }
 .rm:hover:not(:disabled) { background: color-mix(in srgb, var(--tier-borked) 14%, transparent); }
 .rm-lock { color: var(--fg-2); font-size: 13px; }
 
