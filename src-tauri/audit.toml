@@ -1,0 +1,19 @@
+# advisories, die wir bewusst tragen. per ID ignoriert, nicht pauschal —
+# ein NEUER advisory schlägt weiterhin an.
+[advisories]
+ignore = [
+  # gtk-rs GTK3-bindings unmaintained (gtk-rs ist auf GTK4 umgezogen).
+  # tauri v2 nutzt unter linux GTK3 + webkit2gtk — nicht von uns lösbar.
+  "RUSTSEC-2024-0411", "RUSTSEC-2024-0412", "RUSTSEC-2024-0413",
+  "RUSTSEC-2024-0414", "RUSTSEC-2024-0415", "RUSTSEC-2024-0416",
+  "RUSTSEC-2024-0417", "RUSTSEC-2024-0418", "RUSTSEC-2024-0419",
+  "RUSTSEC-2024-0420",
+  # glib VariantStrIter unsound: 12 pakete aus tauris gtk-0.18-stack pinnen
+  # glib ^0.18, der fix verlangt gtk-rs 0.20. folge ist ein NULL-deref-crash,
+  # kein angriffsvektor; der codepfad wird von protium nicht benutzt.
+  "RUSTSEC-2024-0429",
+  # build-time-only, läuft nicht in der ausgelieferten app
+  "RUSTSEC-2024-0370",
+  "RUSTSEC-2025-0075", "RUSTSEC-2025-0080", "RUSTSEC-2025-0081",
+  "RUSTSEC-2025-0098", "RUSTSEC-2025-0100",
+]
