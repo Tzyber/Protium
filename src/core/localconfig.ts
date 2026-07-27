@@ -1,4 +1,5 @@
 // localconfig.vdf (pro steam-account): startoptionen lesen/schreiben + aktiven user finden.
+import { NUMERIC_RE } from "./cleanup.js";
 import { writeSteamFile } from "./configwrite.js";
 import { paths } from "./paths.js";
 import type { FileSystem, System } from "./ports.js";
@@ -63,7 +64,7 @@ export async function findActiveUser(
     const dir = paths.userdataDir(steamRoot);
     if (!(await fs.exists(dir))) return null;
     for (const e of await fs.readDir(dir)) {
-      if (!e.isDirectory || !/^\d+$/.test(e.name)) continue;
+      if (!e.isDirectory || !NUMERIC_RE.test(e.name)) continue;
       if (await fs.exists(paths.localConfigVdf(steamRoot, e.name))) candidates.push(e.name);
     }
   } catch {

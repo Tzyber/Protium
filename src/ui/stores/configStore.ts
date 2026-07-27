@@ -23,8 +23,7 @@ export const useConfigStore = defineStore("config", {
         value,
         backupDir,
       );
-      const game = result.games.find((g) => g.appId === appId);
-      if (game) game.launchOptions = value;
+      useScanStore().applyGameConfig(appId, { launchOptions: value });
       return r;
     },
 
@@ -45,8 +44,7 @@ export const useConfigStore = defineStore("config", {
       } else {
         r = await writeCompatTool(tauriPorts, result.steamRoot, appId, internalName, backupDir);
       }
-      const game = result.games.find((g) => g.appId === appId);
-      if (game) game.compatTool = internalName ?? "default";
+      useScanStore().applyGameConfig(appId, { compatTool: internalName ?? "default" });
       return r;
     },
   },

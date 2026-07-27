@@ -1,3 +1,4 @@
+import { NUMERIC_RE } from "./cleanup.js";
 import { joinPath, paths } from "./paths.js";
 import type { DirEntry, FileSystem } from "./ports.js";
 
@@ -99,7 +100,7 @@ function parseMapBody(buf: Uint8Array, pos: number, onEntry: (appId: number) => 
     const childKey = readCString(buf, pos);
     pos = childKey.next;
 
-    if (childType === 0x00 && /^\d+$/.test(childKey.str)) {
+    if (childType === 0x00 && NUMERIC_RE.test(childKey.str)) {
       const { next } = parseEntryBody(buf, pos, onEntry);
       pos = next;
     } else {
@@ -184,7 +185,7 @@ export async function readAllShortcutAppIds(
   }
 
   for (const entry of entries) {
-    if (!entry.isDirectory || !/^\d+$/.test(entry.name)) continue;
+    if (!entry.isDirectory || !NUMERIC_RE.test(entry.name)) continue;
     const scPath = joinPath(dir, entry.name, "config", "shortcuts.vdf");
     if (!(await fs.exists(scPath))) continue;
 

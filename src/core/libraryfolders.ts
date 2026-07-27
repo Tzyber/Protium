@@ -1,3 +1,4 @@
+import { NUMERIC_RE } from "./cleanup.js";
 import { asNode, asString, getKeyInsensitive, getPath, parseVdf } from "./vdf.js";
 
 // libraryfolders.vdf: "libraryfolders" → "<index>" → { path }. index-0 ist die root selbst.
@@ -10,7 +11,7 @@ export function parseLibraryFolders(text: string): string[] {
 
   const out: string[] = [];
   for (const key of Object.keys(container)) {
-    if (!/^\d+$/.test(key)) continue; // nur numerische indizes
+    if (!NUMERIC_RE.test(key)) continue; // nur numerische indizes
     const path = asString(getPath(container, key, "path"));
     if (path && !out.includes(path)) out.push(path);
   }

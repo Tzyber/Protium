@@ -55,5 +55,15 @@ export const useScanStore = defineStore("scan", {
         this.elapsedMs = Math.round(performance.now() - t0);
       }
     },
+
+    /** einzige stelle, die spiel-konfigurationsfelder im scan-result setzt.
+     *  kein throw: der write in die steam-datei war erfolgreich, das update
+     *  im speicher ist nur ein cache. */
+    applyGameConfig(appId: number, patch: { launchOptions?: string; compatTool?: string }) {
+      const game = this.result?.games.find((g) => g.appId === appId);
+      if (!game) return;
+      if (patch.launchOptions !== undefined) game.launchOptions = patch.launchOptions;
+      if (patch.compatTool !== undefined) game.compatTool = patch.compatTool;
+    },
   },
 });
