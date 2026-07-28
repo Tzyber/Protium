@@ -12,6 +12,8 @@ entstanden, weil es genau dieses tool nicht gab. protonup-qt managt nur versione
 
 ![proton-manager: installierte versionen mit nutzung, GE-releases zum installieren](docs/screenshots/proton_page.png)
 
+![proton-manager: installierte versionen mit nutzung, GE-releases zum installieren](docs/screenshots/cleanup_view.png)
+
 ## was es kann
 
 **library-übersicht.** alle spiele über alle libraries (auch auf externen platten), mit cover, größe, zugewiesener proton-version und protondb-tier direkt auf der karte. cover kommen aus steams lokalem librarycache, die app funktioniert also auch komplett offline.
