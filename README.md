@@ -26,7 +26,7 @@ entstanden, weil es genau dieses tool nicht gab. protonup-qt managt nur versione
 
 **compat-tool + launch-options.** proton-version und startoptionen pro spiel direkt setzen. write-gate (steam-läuft-check → backup → atomarer rename), und ein chirurgischer vdf-string-patch statt voll-serialisierung, weil steams escaping und schlüsselreihenfolge sonst nicht erhalten bleiben.
 
-**cleanup.** verwaiste wine-prefixes und shader-caches finden und bereinigen, in drei getrennten bereichen: shader-caches, wine-prefixes, papierkorb. shader-caches werden hart gelöscht, prefixes wandern in den papierkorb Prefixes werden innerhalb desselben Dateisystems in den Papierkorb verschoben. Erst beim Leeren wird Speicherplatz freigegeben.
+**cleanup.** verwaiste wine-prefixes und shader-caches finden und bereinigen, in drei getrennten bereichen: shader-caches, wine-prefixes, papierkorb. shader-caches werden hart gelöscht. prefixes werden innerhalb desselben dateisystems in den papierkorb verschoben. erst beim leeren wird speicherplatz freigegeben.
 
 **fehlerfälle.** nicht verfügbare oder unlesbare Daten werden als solche angezeigt. Bei schreibenden und löschenden Aktionen fragt protium vorher nach und legt, wo möglich, einen Rückweg an.
 
@@ -50,13 +50,13 @@ wichtig: das ziel `compatdata/<appId>` darf nicht schon existieren. tut es das, 
 
 ## warum kein bestehendes tool
 
-Der Zweck ist, diese Informationen an einer Stelle sichtbar zu machen. Der erste Scan zeigte bereits Unterschiede zwischen der erwarteten und der tatsächlich verwendeten Proton-Konfiguration.
+der zweck ist, diese informationen an einer stelle sichtbar zu machen. der erste scan zeigte bereits unterschiede zwischen der erwarteten und der tatsächlich verwendeten proton-konfiguration.
 
 ## stack
 
 tauri v2 als shell, vue 3 + typescript für UI und domänenlogik, rust nur für das, was die webview nicht darf. kein electron, das binary bleibt klein und nutzt die system-webview (webkit2gtk).
 
-Konkret übernimmt Rust nur: unter 1000 produktive zeilen rust — pfad-validierung, streaming-downloads mit hash, tarball-extraktion, die beiden löschbefehle, prozess-check, fs-scope-freigabe. Geschäftslogik und UI-Entscheidungen liegen nicht in dieser Schicht. dazu fast doppelt so viele zeilen tests wie produktivcode. Diese Pfade verändern oder löschen Dateien und sind deshalb separat getestet.
+konkret übernimmt rust nur: unter 1000 produktive zeilen für pfad-validierung, streaming-downloads mit hash, tarball-extraktion, die beiden löschbefehle, prozess-check und fs-scope-freigabe. geschäftslogik und UI-entscheidungen liegen nicht in dieser schicht. dazu kommen fast doppelt so viele testzeilen wie produktivcode. diese pfade verändern oder löschen dateien und sind deshalb separat getestet.
 
 die domänenlogik in `src/core/` ist komplett UI-frei und redet mit dem system nur über ports/adapter. dadurch läuft die gesamte core-testsuite headless gegen fixtures, ohne tauri, ohne steam, ohne netz.
 
@@ -104,7 +104,7 @@ tests/          vitest gegen fake-steam-fixtures
 docs/           screenshots, smoke-checkliste
 ```
 
-Für die Implementierung gelten folgende Regeln: schreibende zugriffe auf steam-dateien laufen ausnahmslos durch ein write-gate (steam-läuft-check, backup, atomarer write). destruktive aktionen fragen immer nach und zeigen konkret, was passieren würde. wo pfadwissen gebraucht wird, kommt es aus `paths.ts` und nicht aus zusammengebauten strings. netzwerkausfall darf features verarmen, aber nie die app blockieren. Kann ein Wert nicht zuverlässig bestimmt werden, zeigt die App `unbekannt` an.
+für die implementierung gelten folgende regeln: schreibende zugriffe auf steam-dateien laufen ausnahmslos durch ein write-gate (steam-läuft-check, backup, atomarer write). destruktive aktionen fragen immer nach und zeigen konkret, was passieren würde. wo pfadwissen gebraucht wird, kommt es aus `paths.ts` und nicht aus zusammengebauten strings. netzwerkausfall darf features verarmen, aber nie die app blockieren. kann ein wert nicht zuverlässig bestimmt werden, zeigt die app `unbekannt` an.
 
 ## roadmap
 
