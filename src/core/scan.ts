@@ -145,7 +145,7 @@ export async function scanLibrary(ports: Ports, opts: ScanOptions): Promise<Scan
       const m = MANIFEST_RE.exec(entry.name);
       if (!m) continue;
       try {
-        const data = parseManifest(await fs.readTextFile(`${appsDir}/${entry.name}`));
+        const data = parseManifest(await fs.readTextFile(paths.appManifest(lib, Number(m[1]))));
         if (isBlocked(data.appId, data.name)) {
           blockedAppIds.add(data.appId);
           continue;

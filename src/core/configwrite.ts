@@ -38,8 +38,7 @@ export async function writeSteamFile(
     await fs.mkdir(backupDir);
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
     const base = path.split("/").pop() ?? "steam-datei";
-    const text = backupText;
-    await fs.writeTextFile(joinPath(backupDir, `${base}.${stamp}`), text);
+    await fs.writeTextFile(joinPath(backupDir, `${base}.${stamp}`), backupText);
   }
 
   const tmp = `${path}.protium-tmp`;

@@ -64,7 +64,6 @@ export const de = {
     pathMissingDismiss: "alte Platten ignorieren und fortfahren",
     shortcutUnreadableMessage:
       "shortcuts.vdf nicht lesbar — Non-Steam-Spiele können nicht identifiziert werden. Wine-Prefix-Bereinigung ist daher blockiert. Betroffene Dateien:",
-    summary: "{n} verwaiste Einträge · {size} freigebbar",
     shaderCaches: "Shader-Caches",
     winePrefixes: "Wine-Prefixes",
     winePrefixWarn: "Vorsicht — kann lokale Spielstände enthalten!",
@@ -94,7 +93,6 @@ export const de = {
     ignoredMissingUndo: "wieder berücksichtigen",
     trashSearching: "suche läuft…",
     trashSearchButton: "papierkorb durchsuchen",
-    trashSummary: "{n} einträge · {size}",
     trashEmptyState: "papierkorb ist leer",
     trashUnknownHint:
       "{n} verzeichnisse im papierkorb wurden nicht erkannt und werden nicht angeboten (INV-2):",
@@ -178,8 +176,6 @@ export const de = {
   errors: {
     steamRunning:
       "steam läuft gerade — die änderung würde beim beenden überschrieben. bitte steam erst beenden.",
-    shortcutUnreadable:
-      "shortcuts.vdf nicht lesbar — Non-Steam-Spiele können nicht identifiziert werden.",
     userdataUnreadableWithDetail:
       "userdata nicht lesbar — Wine-Prefix-Bereinigung deaktiviert: {detail}",
     shortcutsUnreadable: "shortcuts.vdf nicht lesbar — Wine-Prefix-Bereinigung deaktiviert.",

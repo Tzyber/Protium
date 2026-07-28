@@ -1,5 +1,5 @@
 import { NUMERIC_RE } from "./cleanup.js";
-import { joinPath, paths } from "./paths.js";
+import { paths } from "./paths.js";
 import type { DirEntry, FileSystem } from "./ports.js";
 
 export const SHORTCUT_ID_THRESHOLD = 2_147_483_648; // 2^31
@@ -186,7 +186,7 @@ export async function readAllShortcutAppIds(
 
   for (const entry of entries) {
     if (!entry.isDirectory || !NUMERIC_RE.test(entry.name)) continue;
-    const scPath = joinPath(dir, entry.name, "config", "shortcuts.vdf");
+    const scPath = paths.shortcutsVdf(steamRoot, entry.name);
     if (!(await fs.exists(scPath))) continue;
 
     anyExists = true;

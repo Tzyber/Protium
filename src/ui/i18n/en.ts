@@ -69,7 +69,6 @@ export const en = {
     pathMissingDismiss: "ignore old drives and continue",
     shortcutUnreadableMessage:
       "shortcuts.vdf unreadable — non-Steam games cannot be identified. Wine-prefix cleanup is blocked. affected files:",
-    summary: "{n} orphaned entries · {size} reclaimable",
     shaderCaches: "shader-caches",
     winePrefixes: "Wine-Prefixes",
     winePrefixWarn: "warning — may contain local savegames!",
@@ -98,7 +97,6 @@ export const en = {
     ignoredMissingUndo: "consider again",
     trashSearching: "searching…",
     trashSearchButton: "scan trash",
-    trashSummary: "{n} entries · {size}",
     trashEmptyState: "trash is empty",
     trashUnknownHint: "{n} directories in trash were not recognized and are not offered (INV-2):",
     trashSelectedInfo: "{n} selected · {size}",
@@ -181,7 +179,6 @@ export const en = {
   errors: {
     steamRunning:
       "steam is running — the change would be overwritten on exit. please close steam first.",
-    shortcutUnreadable: "shortcuts.vdf unreadable — non-Steam games cannot be identified.",
     userdataUnreadableWithDetail: "userdata unreadable — Wine-prefix cleanup disabled: {detail}",
     shortcutsUnreadable: "shortcuts.vdf unreadable — Wine-prefix cleanup disabled.",
     scanIncomplete: "scan incomplete — libraries skipped: {paths}",

@@ -57,10 +57,6 @@ export const useProtonStore = defineStore("proton", {
     installedTools(): CompatTool[] {
       return useScanStore().compatTools;
     },
-    // GE-tool aus dem user-dir → über protium löschbar (FR-3.4)
-    installedTags(): Set<string> {
-      return new Set(this.installedTools.map((t) => t.internalName));
-    },
   },
   actions: {
     async init() {

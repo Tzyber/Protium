@@ -266,7 +266,6 @@ const statusLine = computed(() => {
 
 .install { background: var(--signal); color: #0a0b11; border: none; border-radius: var(--r-sm); padding: 7px 14px; font-family: var(--font-display); font-weight: 600; font-size: 13px; cursor: pointer; }
 .install:hover:not(:disabled) { background: var(--signal-bright); }
-.install:disabled { opacity: 0.55; cursor: default; }
 .cancel {
   background: none;
   border: 1px solid color-mix(in srgb, var(--tier-borked) 50%, transparent);

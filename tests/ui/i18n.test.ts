@@ -60,9 +60,7 @@ describe("i18n — interpolation", () => {
 
   it("mehrere platzhalter im selben string", () => {
     setLocale("de");
-    expect(t("cleanup.summary", { n: 28, size: "14.2 GB" })).toBe(
-      "28 verwaiste Einträge · 14.2 GB freigebbar",
-    );
+    expect(t("cleanup.selectedInfo", { n: 28, size: "14.2 GB" })).toBe("28 ausgewählt · 14.2 GB");
   });
 
   it("zahlen werden zu string konvertiert", () => {
@@ -78,9 +76,7 @@ describe("i18n — interpolation", () => {
 
   it("interpolation funktioniert in en genauso", () => {
     setLocale("en");
-    expect(t("cleanup.summary", { n: 28, size: "14.2 GB" })).toBe(
-      "28 orphaned entries · 14.2 GB reclaimable",
-    );
+    expect(t("cleanup.selectedInfo", { n: 28, size: "14.2 GB" })).toBe("28 selected · 14.2 GB");
   });
 });
 

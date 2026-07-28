@@ -60,7 +60,7 @@ export interface OrphanEntry {
 
 // StateFlags ist ein bitfield: bit 2 (=4) = fully installed. maskieren, nie === 4,
 // weil installiert+update-pending = 6 wäre (S-2).
-export const STATE_FLAG_FULLY_INSTALLED = 4;
+const STATE_FLAG_FULLY_INSTALLED = 4;
 
 export function isFullyInstalled(stateFlags: number): boolean {
   return (stateFlags & STATE_FLAG_FULLY_INSTALLED) !== 0;

@@ -25,7 +25,7 @@ function onError() {
 }
 
 function launch() {
-  void launchGame(props.game.appId);
+  void launchGame(props.game.appId).catch(() => {});
 }
 </script>
 

@@ -7,7 +7,7 @@ const FOCUSABLE_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(",");
 
-export function getFocusableElements(root: HTMLElement): HTMLElement[] {
+function getFocusableElements(root: HTMLElement): HTMLElement[] {
   return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter((el) => {
     if (el.hasAttribute("disabled")) return false;
     if (el.getAttribute("aria-hidden") === "true") return false;

@@ -4,7 +4,7 @@ import type { TrashEntry } from "../../core/trash";
 import type { OrphanEntry } from "../../core/types";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
 import { formatBytes } from "../format";
-import { t } from "../i18n";
+import { getLocale, t } from "../i18n";
 import { useCleanupStore } from "../stores/cleanupStore";
 
 const cleanup = useCleanupStore();
@@ -194,7 +194,7 @@ const trashConfirmPaths = computed(() => trashDeleteCandidates.value.map((e) => 
 /** kurzform für die spalte — der volle satz steht im title-attribut. eine
  *  datumsspalte in flexibler breite hat die zeile über den viewport geschoben. */
 function trashDate(ms: number): string {
-  return new Date(ms).toLocaleDateString("de-DE", {
+  return new Date(ms).toLocaleDateString(getLocale() === "de" ? "de-DE" : "en-GB", {
     year: "2-digit",
     month: "2-digit",
     day: "2-digit",

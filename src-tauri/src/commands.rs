@@ -424,6 +424,11 @@ pub fn batch_dir_sizes(paths: Vec<String>) -> Result<HashMap<String, u64>, Strin
     Ok(map)
 }
 
+/// name des papierkorb-verzeichnisses — existiert genau einmal hier, weil der
+/// papierkorb in rust konstruiert wird (der webview-fs-scope erfasst
+/// verzeichnisse mit führendem punkt nicht zuverlässig, s. list_trash_entries).
+const TRASH_DIR_NAME: &str = ".protium-trash";
+
 /// löscht ein verwaistes compatdata- oder shadercache-verzeichnis.
 /// leitet library + typ selbst ab (defense-in-depth: backend traut frontend nicht).
 /// compatdata → trash (rename), shadercache → hard delete.
@@ -507,7 +512,7 @@ fn remove_orphan_dir_inner(canonical: &Path, library: &Path) -> Result<String, S
             Ok("deleted".into())
         }
         "compatdata" => {
-            let trash_dir = library.join("steamapps").join(".protium-trash");
+            let trash_dir = library.join("steamapps").join(TRASH_DIR_NAME);
             fs::create_dir_all(&trash_dir).map_err(|e| e.to_string())?;
             let ts = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -561,7 +566,7 @@ pub fn remove_trash_entry(path: String) -> Result<String, String> {
         .split_once('/')
         .ok_or_else(|| "invalid suffix structure".to_string())?;
 
-    if trash_marker != ".protium-trash" {
+    if trash_marker != TRASH_DIR_NAME {
         return Err(format!(
             "expected .protium-trash, got: {trash_marker}"
         ));
@@ -857,7 +862,7 @@ pub fn list_trash_entries(library: String) -> Result<TrashListing, String> {
         return Err("blocked path".into());
     }
 
-    let trash_dir = real.join("steamapps").join(".protium-trash");
+    let trash_dir = real.join("steamapps").join(TRASH_DIR_NAME);
     let dir = trash_dir.to_string_lossy().into_owned();
 
     // symlink_metadata: ein symlink an dieser stelle wird nicht verfolgt

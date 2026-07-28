@@ -40,7 +40,6 @@ export const useCleanupStore = defineStore("cleanup", {
   getters: {
     compatdataOrphans: (s) => s.orphans.filter((o) => o.type === "compatdata"),
     shadercacheOrphans: (s) => s.orphans.filter((o) => o.type === "shadercache"),
-    totalOrphanBytes: (s) => s.orphans.reduce((sum, o) => sum + (o.sizeBytes ?? 0), 0),
   },
   actions: {
     key(entry: OrphanEntry): string {

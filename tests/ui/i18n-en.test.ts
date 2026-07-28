@@ -19,9 +19,7 @@ describe("i18n — locale-wechsel per setLocale (regression: englische UI render
     setLocale("en");
     expect(t("library.gamesCount", { n: 0 })).toBe("/ 0 games");
     expect(t("library.gamesCount", { n: 42 })).toBe("/ 42 games");
-    expect(t("cleanup.summary", { n: 28, size: "14.2 GB" })).toBe(
-      "28 orphaned entries · 14.2 GB reclaimable",
-    );
+    expect(t("cleanup.selectedInfo", { n: 28, size: "14.2 GB" })).toBe("28 selected · 14.2 GB");
     expect(t("proton.usedBy", { n: 3 })).toBe("3 game(s) →");
   });
 

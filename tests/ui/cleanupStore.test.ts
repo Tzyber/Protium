@@ -400,9 +400,6 @@ describe("cleanupStore — batch_dir_sizes NotFound-Skip", () => {
     const vanished = store.orphans.find((o) => o.appId === 99999);
     expect(real?.sizeBytes).toBe(8192);
     expect(vanished?.sizeBytes).toBeUndefined();
-
-    // rechner müssen ?? 0 nutzen, damit die summe kein NaN wird:
-    expect(store.totalOrphanBytes).toBe(8192);
   });
 
   it("UI-ternary: undefined-sizeBytes rendert '…' (nicht '—', nicht '0 B')", () => {

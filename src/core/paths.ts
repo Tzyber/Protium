@@ -36,18 +36,17 @@ export async function discoverSteamRoot(fs: FileSystem, home: string): Promise<s
 }
 
 export const paths = {
-  steamapps: (root: string) => join(root, "steamapps"),
   libraryFoldersVdf: (root: string) => join(root, "steamapps", "libraryfolders.vdf"),
   configVdf: (root: string) => join(root, "config", "config.vdf"), // mapping liegt in der root
   loginusersVdf: (root: string) => join(root, "config", "loginusers.vdf"),
   compatToolsDir: (root: string) => join(root, "compatibilitytools.d"),
-  compatToolVdf: (root: string, toolDir: string) =>
-    join(root, "compatibilitytools.d", toolDir, "compatibilitytool.vdf"),
   compatToolVdfIn: (baseDir: string, toolDir: string) =>
     join(baseDir, toolDir, "compatibilitytool.vdf"),
   userdataDir: (root: string) => join(root, "userdata"),
   localConfigVdf: (root: string, userId: string) =>
     join(root, "userdata", userId, "config", "localconfig.vdf"),
+  shortcutsVdf: (root: string, userId: string) =>
+    join(root, "userdata", userId, "config", "shortcuts.vdf"),
   libraryAppsDir: (libraryPath: string) => join(libraryPath, "steamapps"),
   appManifest: (libraryPath: string, appId: number) =>
     join(libraryPath, "steamapps", `appmanifest_${appId}.acf`),
@@ -57,9 +56,6 @@ export const paths = {
     join(libraryPath, "steamapps", "compatdata", String(appId)),
   shadercachePath: (libraryPath: string, appId: number | string) =>
     join(libraryPath, "steamapps", "shadercache", String(appId)),
-  trashDir: (libraryPath: string) => join(libraryPath, "steamapps", ".protium-trash"),
-  trashPath: (libraryPath: string, name: string) =>
-    join(libraryPath, "steamapps", ".protium-trash", name),
   headerImageUrl: (appId: number) =>
     `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/header.jpg`,
   // hash-unterordner, zentral in der root (nicht pro library)
