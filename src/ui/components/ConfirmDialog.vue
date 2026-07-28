@@ -97,7 +97,7 @@ h3 {
   color: #0a0b11;
   border-radius: var(--r-sm);
   padding: 8px 14px;
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-weight: 600;
   font-size: 0.8125rem;
   cursor: pointer;

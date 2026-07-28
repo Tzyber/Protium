@@ -611,7 +611,7 @@ const tabLabel = (id: Tab) =>
 .pm-btn {
   background: var(--signal); border: none; color: var(--bg-0);
   border-radius: var(--r-sm); padding: 10px 15px;
-  font-family: var(--font-display); font-weight: 600; font-size: 0.875rem; cursor: pointer;
+  font-family: var(--font-body); font-weight: 600; font-size: 0.875rem; cursor: pointer;
 }
 .pm-btn:hover { background: var(--signal-bright); }
 .pm-btn:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
@@ -631,7 +631,7 @@ const tabLabel = (id: Tab) =>
   color: var(--fg-2); cursor: pointer;
   /* großzügige trefferfläche statt kompakter reiter (a11y) */
   padding: 12px 18px;
-  font-family: var(--font-display); font-size: 0.9375rem; font-weight: 600;
+  font-family: var(--font-body); font-size: 0.9375rem; font-weight: 600;
   margin-bottom: -1px;
 }
 .tab:hover { color: var(--fg-1); }
@@ -766,7 +766,7 @@ const tabLabel = (id: Tab) =>
 .action {
   background: var(--signal); color: var(--bg-0); border: none;
   border-radius: var(--r-sm); padding: 10px 16px;
-  font-family: var(--font-display); font-weight: 600; font-size: 0.875rem; cursor: pointer;
+  font-family: var(--font-body); font-weight: 600; font-size: 0.875rem; cursor: pointer;
 }
 .action:hover:not(:disabled) { background: var(--signal-bright); }
 .action:disabled { opacity: 0.4; cursor: default; }

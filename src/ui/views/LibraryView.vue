@@ -114,7 +114,7 @@ const showWarnings = ref(false);
   border: none;
   border-radius: var(--r-sm);
   padding: 8px 14px;
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-weight: 600;
   font-size: 1rem;
   cursor: pointer;

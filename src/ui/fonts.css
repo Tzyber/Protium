@@ -1,25 +1,25 @@
 /* gebündelte fonts (SIL Open Font License) — self-hosted, kein CDN/CSP-loch. */
 
 @font-face {
-  font-family: "Space Grotesk";
+  font-family: "Saira";
   font-style: normal;
   font-weight: 500;
   font-display: swap;
-  src: url("../fonts/space-grotesk-500.ttf") format("truetype");
+  src: url("../fonts/saira-500.ttf") format("truetype");
 }
 @font-face {
-  font-family: "Space Grotesk";
+  font-family: "Saira";
   font-style: normal;
   font-weight: 600;
   font-display: swap;
-  src: url("../fonts/space-grotesk-600.ttf") format("truetype");
+  src: url("../fonts/saira-600.ttf") format("truetype");
 }
 @font-face {
-  font-family: "Space Grotesk";
+  font-family: "Saira";
   font-style: normal;
   font-weight: 700;
   font-display: swap;
-  src: url("../fonts/space-grotesk-700.ttf") format("truetype");
+  src: url("../fonts/saira-700.ttf") format("truetype");
 }
 
 @font-face {

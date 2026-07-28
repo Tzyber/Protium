@@ -1,5 +1,5 @@
 /* protium design-tokens — "mission control": tiefes dunkel, periwinkle-signal,
-   space grotesk display / mono-akzente. fonts fallen ohne bundle auf system zurück
+   saira display / inter body / space mono-akzente. fonts fallen ohne bundle auf system zurück
    (bundling folgt). */
 
 :root {
@@ -33,7 +33,7 @@
   --tier-unknown: #565d75;
 
   /* typo */
-  --font-display: "Space Grotesk", "Inter", system-ui, sans-serif;
+  --font-display: "Saira", "Inter", system-ui, sans-serif;
   --font-body: "Inter", system-ui, -apple-system, sans-serif;
   --font-mono: "Space Mono", ui-monospace, "JetBrains Mono", monospace;
 

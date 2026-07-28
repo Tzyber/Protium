@@ -264,7 +264,7 @@ const statusLine = computed(() => {
 .rm:hover:not(:disabled) { background: color-mix(in srgb, var(--tier-borked) 14%, transparent); }
 .rm-lock { color: var(--fg-2); font-size: 0.8125rem; }
 
-.install { background: var(--signal); color: #0a0b11; border: none; border-radius: var(--r-sm); padding: 7px 14px; font-family: var(--font-display); font-weight: 600; font-size: 0.8125rem; cursor: pointer; }
+.install { background: var(--signal); color: #0a0b11; border: none; border-radius: var(--r-sm); padding: 7px 14px; font-family: var(--font-body); font-weight: 600; font-size: 0.8125rem; cursor: pointer; }
 .install:hover:not(:disabled) { background: var(--signal-bright); }
 .cancel {
   background: none;

@@ -364,7 +364,7 @@ watch(errorMessage, (msg) => {
   color: var(--bg-0);
   border-radius: var(--r-sm);
   padding: 13px 14px;
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-weight: 700;
   font-size: 0.9375rem;
   cursor: pointer;
@@ -412,7 +412,7 @@ select.control option { background: var(--bg-1); color: var(--fg-0); }
   color: var(--signal-bright);
   border-radius: var(--r-sm);
   padding: 11px 15px;
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-weight: 600;
   font-size: 0.875rem;
   cursor: pointer;

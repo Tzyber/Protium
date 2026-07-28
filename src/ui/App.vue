@@ -102,7 +102,7 @@ nav { display: flex; flex-direction: column; gap: 2px; }
   border-radius: var(--r-sm);
   padding: 9px 12px;
   color: var(--fg-1);
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: 0.875rem;
   font-weight: 500;
   text-align: left;
