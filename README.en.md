@@ -10,7 +10,7 @@
 
 protium is a linux desktop app for steam/proton housekeeping. it shows you what is actually going on your system: which games run on which proton version, how those are rated on protondb, which GE-proton versions are eating space unused, and which orphaned prefixes from long-uninstalled games still occupy gigabytes.
 
-it exists because this particular tool did not. protonup-qt only manages versions, protontricks is a winetricks wrapper, steamtinkerlaunch does everything and is unwieldy for exactly that reason. protium aims to be the one tidy surface for the whole workflow.
+it exists because this particular tool did not. protonup-qt only manages versions, protontricks is a winetricks wrapper, steamtinkerlaunch does everything and is unwieldy for exactly that reason. protium bundles these tasks in one surface.
 
 ![library view: cover grid with protondb tiers, proton assignment and filters](docs/screenshots/main_page.png)
 
@@ -26,9 +26,9 @@ it exists because this particular tool did not. protonup-qt only manages version
 
 **compat tool + launch options.** set the proton version and launch options per game. write gate (steam-is-running check → backup → atomic rename), and a surgical vdf string patch instead of full serialisation, because otherwise steam's escaping and key order do not survive.
 
-**cleanup.** find and clear orphaned wine prefixes and shader caches, in three separate areas: shader caches, wine prefixes, trash. shader caches are deleted outright, prefixes are moved to the trash (same filesystem → rename, no data loss) — **only emptying the trash frees space**, and the UI says exactly that.
+**cleanup.** find and clear orphaned wine prefixes and shader caches, in three separate areas: shader caches, wine prefixes, trash. shader caches are deleted outright, Prefixes are moved to the trash by renaming them within the same filesystem. Disk space is released only when the trash is emptied.
 
-**honest error handling.** unmounted drives, broken manifests, unreadable directories, protondb offline: everything degrades to warnings rather than crashes. an unreadable trash directory is shown as unreadable, not as empty. the app does not lie to you and does not do anything it cannot undo.
+**failure cases.** unavailable or unreadable data is shown as such. Before writing or deleting, protium asks for confirmation and, where possible, keeps a way back.
 
 **launching games.** via `steam://rungameid/<appId>` — no launcher of its own, no process supervision.
 
@@ -50,13 +50,13 @@ important: the target `compatdata/<appId>` must not already exist. if it does, y
 
 ## why not an existing tool
 
-short version: visibility is the product. the very first scan on the developer's own machine turned up 2.8 GB of unused GE versions and three games running on three different protons, contrary to what the author assumed. when a tool tells its own author something new about his system, that is a good sign.
+The purpose is to make this information visible in one place. The first scan already revealed differences between the expected and the actually used proton configuration.
 
 ## stack
 
 tauri v2 as the shell, vue 3 + typescript for UI and domain logic, rust only for what the webview is not allowed to do. no electron; the binary stays small and uses the system webview (webkit2gtk).
 
-"only what the webview is not allowed to do" means, concretely: under 1000 productive lines of rust — path validation, streaming downloads with hashing, tarball extraction, the two delete commands, process check, fs scope grants. no domain logic, no UI-adjacent decisions. plus nearly twice as many lines of tests as production code, because this is precisely where data can be lost.
+Concretely, rust only handles: under 1000 productive lines of rust — path validation, streaming downloads with hashing, tarball extraction, the two delete commands, process check, fs scope grants. Domain logic and UI decisions do not live in this layer. plus nearly twice as many lines of tests as production code. These paths modify or delete files and are therefore tested separately.
 
 the domain logic in `src/core/` is entirely UI-free and talks to the system only through ports/adapters. that lets the whole core test suite run headless against fixtures — no tauri, no steam, no network.
 
@@ -83,7 +83,7 @@ npm run tauri dev     # start the app (the first build compiles rust, takes a wh
 
 the cache lives in `~/.cache/com.protium.desktop/`.
 
-before committing changes to `src-tauri/src/commands.rs`: work through `docs/SMOKE.md` — the unit tests do not cover the GE installation path. this is not a formality: two bugs that made every installation impossible slipped past a green test suite, because the http stub sends no redirects and the fixture tarballs contain no symlinks.
+before committing changes to `src-tauri/src/commands.rs`: work through `docs/SMOKE.md` — the unit tests do not cover the GE installation path. The smoke check supplements the unit tests: two bugs that made every installation impossible slipped past a green test suite, because the http stub sends no redirects and the fixture tarballs contain no symlinks.
 
 ### dependencies and advisories
 
@@ -104,7 +104,7 @@ tests/          vitest against fake-steam fixtures
 docs/           screenshots, smoke checklist
 ```
 
-ground rules that hold everywhere: writes to steam files go through a write gate without exception (steam-is-running check, backup, atomic write). destructive actions always ask and show concretely what would happen. where path knowledge is needed it comes from `paths.ts`, not from assembled strings. a network outage may impoverish features but must never block the app. and: when in doubt, display "unknown" instead of asserting something.
+The implementation follows these rules: writes to steam files go through a write gate without exception (steam-is-running check, backup, atomic write). destructive actions always ask and show concretely what would happen. where path knowledge is needed it comes from `paths.ts`, not from assembled strings. a network outage may impoverish features but must never block the app. If a value cannot be determined reliably, the app displays `unknown`.
 
 ## roadmap
 
@@ -121,4 +121,4 @@ ground rules that hold everywhere: writes to steam files go through a write gate
 
 ## status
 
-under active development. api and UI change without notice. if you are reading this before version 0.1 exists: the roadmap above is the honest state, not a wishlist.
+under active development. api and UI change without notice. if you are reading this before version 0.1 exists: The roadmap describes the current state; it is not a promise of future versions.

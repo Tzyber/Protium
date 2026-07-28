@@ -10,7 +10,7 @@
 
 protium ist eine linux-desktop-app für steam/proton-housekeeping. sie zeigt dir, was auf deinem system wirklich los ist: welche spiele über welche proton-version laufen, wie die auf protondb bewertet sind, welche GE-proton-versionen ungenutzt platz fressen und welche verwaisten prefixes von längst deinstallierten spielen noch gigabytes belegen.
 
-entstanden, weil es genau dieses tool nicht gab. protonup-qt managt nur versionen, protontricks ist ein winetricks-wrapper, steamtinkerlaunch kann alles und ist genau deshalb unübersichtlich. protium will die eine aufgeräumte oberfläche für den kompletten workflow sein.
+entstanden, weil es genau dieses tool nicht gab. protonup-qt managt nur versionen, protontricks ist ein winetricks-wrapper, steamtinkerlaunch kann alles und ist genau deshalb unübersichtlich. protium bündelt diese Aufgaben in einer Oberfläche.
 
 ![library-ansicht: cover-grid mit protondb-tiers, proton-zuordnung und filtern](docs/screenshots/main_page.png)
 
@@ -26,9 +26,9 @@ entstanden, weil es genau dieses tool nicht gab. protonup-qt managt nur versione
 
 **compat-tool + launch-options.** proton-version und startoptionen pro spiel direkt setzen. write-gate (steam-läuft-check → backup → atomarer rename), und ein chirurgischer vdf-string-patch statt voll-serialisierung, weil steams escaping und schlüsselreihenfolge sonst nicht erhalten bleiben.
 
-**cleanup.** verwaiste wine-prefixes und shader-caches finden und bereinigen, in drei getrennten bereichen: shader-caches, wine-prefixes, papierkorb. shader-caches werden hart gelöscht, prefixes wandern in den papierkorb (gleiches dateisystem → rename, kein datenverlust) — **erst das leeren des papierkorbs gibt platz frei**, und genau das sagt die oberfläche auch.
+**cleanup.** verwaiste wine-prefixes und shader-caches finden und bereinigen, in drei getrennten bereichen: shader-caches, wine-prefixes, papierkorb. shader-caches werden hart gelöscht, prefixes wandern in den papierkorb Prefixes werden innerhalb desselben Dateisystems in den Papierkorb verschoben. Erst beim Leeren wird Speicherplatz freigegeben.
 
-**ehrliche fehlerbehandlung.** nicht gemountete platten, kaputte manifeste, unlesbare verzeichnisse, protondb offline: alles degradiert sauber zu warnings statt zu crashes. ein unlesbarer papierkorb wird als unlesbar angezeigt und nicht als leerer. die app lügt dich nicht an und tut nichts, was sie nicht rückgängig machen kann.
+**fehlerfälle.** nicht verfügbare oder unlesbare Daten werden als solche angezeigt. Bei schreibenden und löschenden Aktionen fragt protium vorher nach und legt, wo möglich, einen Rückweg an.
 
 **spiele starten.** via `steam://rungameid/<appId>` — kein eigener launcher, keine prozess-überwachung.
 
@@ -50,13 +50,13 @@ wichtig: das ziel `compatdata/<appId>` darf nicht schon existieren. tut es das, 
 
 ## warum kein bestehendes tool
 
-kurz: sichtbarkeit ist das produkt. beim ersten scan auf dem eigenen entwicklungsrechner fanden sich 2,8 GB ungenutzte GE-versionen und drei spiele, die entgegen der eigenen annahme auf drei verschiedenen protons liefen. wenn das tool dem eigenen autor was neues über sein system erzählt, ist das ein gutes zeichen.
+Der Zweck ist, diese Informationen an einer Stelle sichtbar zu machen. Der erste Scan zeigte bereits Unterschiede zwischen der erwarteten und der tatsächlich verwendeten Proton-Konfiguration.
 
 ## stack
 
 tauri v2 als shell, vue 3 + typescript für UI und domänenlogik, rust nur für das, was die webview nicht darf. kein electron, das binary bleibt klein und nutzt die system-webview (webkit2gtk).
 
-„nur für das, was die webview nicht darf" heißt konkret: unter 1000 produktive zeilen rust — pfad-validierung, streaming-downloads mit hash, tarball-extraktion, die beiden löschbefehle, prozess-check, fs-scope-freigabe. keine geschäftslogik, keine UI-nahe entscheidung. dazu fast doppelt so viele zeilen tests wie produktivcode, weil genau hier daten verloren gehen können.
+Konkret übernimmt Rust nur: unter 1000 produktive zeilen rust — pfad-validierung, streaming-downloads mit hash, tarball-extraktion, die beiden löschbefehle, prozess-check, fs-scope-freigabe. Geschäftslogik und UI-Entscheidungen liegen nicht in dieser Schicht. dazu fast doppelt so viele zeilen tests wie produktivcode. Diese Pfade verändern oder löschen Dateien und sind deshalb separat getestet.
 
 die domänenlogik in `src/core/` ist komplett UI-frei und redet mit dem system nur über ports/adapter. dadurch läuft die gesamte core-testsuite headless gegen fixtures, ohne tauri, ohne steam, ohne netz.
 
@@ -83,7 +83,7 @@ npm run tauri dev     # app starten (erster build kompiliert rust, dauert etwas)
 
 cache liegt unter `~/.cache/com.protium.desktop/`.
 
-vor commits an `src-tauri/src/commands.rs`: `docs/SMOKE.md` abarbeiten — die unit-tests decken den GE-installationspfad nicht ab. das ist keine formalität: zwei fehler, die jede installation unmöglich machten, sind an einer grünen testsuite vorbeigelaufen, weil der http-stub keine redirects schickt und die fixture-tarballs keine symlinks enthalten.
+vor commits an `src-tauri/src/commands.rs`: `docs/SMOKE.md` abarbeiten — die unit-tests decken den GE-installationspfad nicht ab. Der Smoke-Check ergänzt die Unit-Tests: zwei fehler, die jede installation unmöglich machten, sind an einer grünen testsuite vorbeigelaufen, weil der http-stub keine redirects schickt und die fixture-tarballs keine symlinks enthalten.
 
 ### abhängigkeiten und advisories
 
@@ -104,7 +104,7 @@ tests/          vitest gegen fake-steam-fixtures
 docs/           screenshots, smoke-checkliste
 ```
 
-grundregeln, die überall gelten: schreibende zugriffe auf steam-dateien laufen ausnahmslos durch ein write-gate (steam-läuft-check, backup, atomarer write). destruktive aktionen fragen immer nach und zeigen konkret, was passieren würde. wo pfadwissen gebraucht wird, kommt es aus `paths.ts` und nicht aus zusammengebauten strings. netzwerkausfall darf features verarmen, aber nie die app blockieren. und: im zweifel „unbekannt" anzeigen statt etwas zu behaupten.
+Für die Implementierung gelten folgende Regeln: schreibende zugriffe auf steam-dateien laufen ausnahmslos durch ein write-gate (steam-läuft-check, backup, atomarer write). destruktive aktionen fragen immer nach und zeigen konkret, was passieren würde. wo pfadwissen gebraucht wird, kommt es aus `paths.ts` und nicht aus zusammengebauten strings. netzwerkausfall darf features verarmen, aber nie die app blockieren. Kann ein Wert nicht zuverlässig bestimmt werden, zeigt die App `unbekannt` an.
 
 ## roadmap
 
@@ -121,4 +121,4 @@ grundregeln, die überall gelten: schreibende zugriffe auf steam-dateien laufen 
 
 ## status
 
-in aktiver entwicklung. api und UI ändern sich ohne vorwarnung. wer das liest, bevor version 0.1 existiert: die roadmap oben ist der ehrliche stand, nicht der wunschzettel.
+in aktiver entwicklung. api und UI ändern sich ohne vorwarnung. wer das liest, bevor version 0.1 existiert: Die Roadmap beschreibt den aktuellen Stand; sie ist keine Zusage für kommende Versionen.
