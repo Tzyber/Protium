@@ -712,7 +712,6 @@ const tabLabel = (id: Tab) =>
 /* papierkorb: datumsspalte zwischen pfad und größe, feste breite */
 .row.with-date { grid-template-columns: 20px 5.6rem minmax(0, 1fr) 4.6rem 5.6rem; }
 .row:hover { border-color: var(--signal-dim); background: var(--bg-3); }
-.row:hover .rpath,
 .row:hover .rdate {
   color: var(--fg-1);
 }
@@ -739,7 +738,7 @@ const tabLabel = (id: Tab) =>
 }
 .rpath {
   min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
-  color: var(--fg-2); font-size: 0.875rem;
+  color: var(--fg-1); font-size: 0.875rem;
 }
 .rsize { color: var(--fg-1); font-size: 0.875rem; white-space: nowrap; text-align: right; }
 .rdate { color: var(--fg-2); font-size: 0.875rem; white-space: nowrap; text-align: right; }
