@@ -1,10 +1,14 @@
 # protium
 
+**deutsch** · [english](README.en.md)
+
+[![CI](https://github.com/Tzyber/Protium/actions/workflows/ci.yml/badge.svg)](https://github.com/Tzyber/Protium/actions/workflows/ci.yml)
+
 > ein proton. ein elektron. das simpelste atom im universum, und ungefähr so viel overhead soll auch dieses tool haben.
 
 > Claude — Contributor: spirituell. Commits: nicht nachweisbar.
 
-protium ist eine linux-desktop-app für steam/proton-housekeeping. sie zeigt dir, was auf deinem system wirklich los ist: welche spiele über welche proton-version laufen, wie die auf protondb bewertet sind, welche GE-proton-versionen ungenutzt platz fressen und (bald) welche verwaisten prefixes von längst deinstallierten spielen noch gigabytes belegen.
+protium ist eine linux-desktop-app für steam/proton-housekeeping. sie zeigt dir, was auf deinem system wirklich los ist: welche spiele über welche proton-version laufen, wie die auf protondb bewertet sind, welche GE-proton-versionen ungenutzt platz fressen und welche verwaisten prefixes von längst deinstallierten spielen noch gigabytes belegen.
 
 entstanden, weil es genau dieses tool nicht gab. protonup-qt managt nur versionen, protontricks ist ein winetricks-wrapper, steamtinkerlaunch kann alles und ist genau deshalb unübersichtlich. protium will die eine aufgeräumte oberfläche für den kompletten workflow sein.
 
@@ -12,23 +16,27 @@ entstanden, weil es genau dieses tool nicht gab. protonup-qt managt nur versione
 
 ![proton-manager: installierte versionen mit nutzung, GE-releases zum installieren](docs/screenshots/proton_page.png)
 
-![proton-manager: installierte versionen mit nutzung, GE-releases zum installieren](docs/screenshots/cleanup_view.png)
+![cleanup-ansicht: tabs für shader-caches, wine-prefixes und papierkorb](docs/screenshots/cleanup_view.png)
 
 ## was es kann
 
 **library-übersicht.** alle spiele über alle libraries (auch auf externen platten), mit cover, größe, zugewiesener proton-version und protondb-tier direkt auf der karte. cover kommen aus steams lokalem librarycache, die app funktioniert also auch komplett offline.
 
-**GE-proton-manager.** installierte versionen mit größe und der info, welche spiele sie tatsächlich nutzen. neue releases direkt von github installieren (streaming-download mit sha512-prüfung), ungenutzte löschen. distro-protons wie proton-cachyos werden erkannt und als read-only markiert, die gehören dem paketmanager, nicht uns.
+**GE-proton-manager.** installierte versionen mit größe und der info, welche spiele sie tatsächlich nutzen. neue releases direkt von github installieren (streaming-download mit sha512-prüfung, abbrechbar, mit aufräumen der partiellen datei), ungenutzte löschen. distro-protons wie proton-cachyos werden erkannt und als read-only markiert — die gehören dem paketmanager, nicht uns.
 
-**ehrliche fehlerbehandlung.** nicht gemountete platten, kaputte manifeste, protondb offline: alles degradiert sauber zu warnings statt zu crashes. die app lügt dich nicht an und tut nichts, was sie nicht rückgängig machen kann.
+**compat-tool + launch-options.** proton-version und startoptionen pro spiel direkt setzen. write-gate (steam-läuft-check → backup → atomarer rename), und ein chirurgischer vdf-string-patch statt voll-serialisierung, weil steams escaping und schlüsselreihenfolge sonst nicht erhalten bleiben.
 
-**compat-tool + launch-options.** proton-version und startoptionen pro spiel direkt setzen — write-gate, backups, vdf-string-patch statt voll-serialisierung.
+**cleanup.** verwaiste wine-prefixes und shader-caches finden und bereinigen, in drei getrennten bereichen: shader-caches, wine-prefixes, papierkorb. shader-caches werden hart gelöscht, prefixes wandern in den papierkorb (gleiches dateisystem → rename, kein datenverlust) — **erst das leeren des papierkorbs gibt platz frei**, und genau das sagt die oberfläche auch.
 
-**cleanup.** verwaiste wine-prefixes und shader-caches finden und bereinigen. prefixes landen im papierkorb (gleiches dateisystem → rename, kein datenverlust), shader-caches werden hart gelöscht. der papierkorb kann aus der app geleert werden — erst dann wird der platz frei.
+**ehrliche fehlerbehandlung.** nicht gemountete platten, kaputte manifeste, unlesbare verzeichnisse, protondb offline: alles degradiert sauber zu warnings statt zu crashes. ein unlesbarer papierkorb wird als unlesbar angezeigt und nicht als leerer. die app lügt dich nicht an und tut nichts, was sie nicht rückgängig machen kann.
+
+**spiele starten.** via `steam://rungameid/<appId>` — kein eigener launcher, keine prozess-überwachung.
+
+**bedienbarkeit.** vollständig mit der tastatur bedienbar, sichtbare focus-states, tabs nach WAI-ARIA-pattern (pfeiltasten, roving tabindex), kontraste auf WCAG-AA geprüft, `prefers-reduced-motion` global respektiert. schriftgrößen in `rem`, damit die app mit der system-schriftgröße mitwächst. oberfläche auf deutsch und englisch, key-parität durch einen test abgesichert.
 
 ### prefix aus dem papierkorb zurückholen
 
-protium hat bewusst **keine** wiederherstellungs-funktion: sobald ein spiel neu installiert ist, existiert `compatdata/<appId>` wieder, und ein automatisches zurückschieben müsste entscheiden, welcher stand gilt. das ist eine entscheidung für den menschen, nicht für ein tool.
+protium hat bewusst **keine** wiederherstellungs-funktion: sobald ein spiel neu installiert ist, existiert `compatdata/<appId>` wieder, und ein automatisches zurückschieben müsste entscheiden, welcher stand gilt. dazu kommt, dass ein prefix von einer anderen proton-version stammen kann als die aktuell eingestellte. das sind entscheidungen für den menschen, nicht für ein tool.
 
 von hand ist es ein `mv`. der papierkorb liegt in derselben library, der eintrag heisst `compatdata_<appId>_<zeitstempel>`:
 
@@ -40,17 +48,17 @@ mv .protium-trash/compatdata_1477940_1785071505657 compatdata/1477940
 
 wichtig: das ziel `compatdata/<appId>` darf nicht schon existieren. tut es das, hast du zwei stände — dann erst den vorhandenen wegsichern und danach entscheiden. steam legt einen fehlenden prefix beim nächsten spielstart selbst neu an (dann ohne die alten spielstände).
 
-**spiele starten.** via `steam://rungameid/<appId>` — kein eigener launcher, keine prozess-überwachung.
-
 ## warum kein bestehendes tool
 
 kurz: sichtbarkeit ist das produkt. beim ersten scan auf dem eigenen entwicklungsrechner fanden sich 2,8 GB ungenutzte GE-versionen und drei spiele, die entgegen der eigenen annahme auf drei verschiedenen protons liefen. wenn das tool dem eigenen autor was neues über sein system erzählt, ist das ein gutes zeichen.
 
 ## stack
 
-tauri v2 als shell, vue 3 + typescript für UI und domänenlogik, rust nur als dünne schicht für das, was die webview nicht kann (tarball-extraktion, streaming-downloads mit hash, prozess-checks). kein electron, das binary bleibt klein und nutzt die system-webview (webkit2gtk).
+tauri v2 als shell, vue 3 + typescript für UI und domänenlogik, rust nur für das, was die webview nicht darf. kein electron, das binary bleibt klein und nutzt die system-webview (webkit2gtk).
 
-die domänenlogik in `src/core/` ist komplett UI-frei und redet mit dem system nur über ports/adapter. dadurch läuft die gesamte core-testsuite headless gegen fixtures, ohne tauri, ohne steam, ohne netz. die rust-schicht hat eigene tests für die heiklen pfade (download-abbruch und -cleanup gegen einen lokalen http-stub).
+„nur für das, was die webview nicht darf" heißt konkret: unter 1000 produktive zeilen rust — pfad-validierung, streaming-downloads mit hash, tarball-extraktion, die beiden löschbefehle, prozess-check, fs-scope-freigabe. keine geschäftslogik, keine UI-nahe entscheidung. dazu fast doppelt so viele zeilen tests wie produktivcode, weil genau hier daten verloren gehen können.
+
+die domänenlogik in `src/core/` ist komplett UI-frei und redet mit dem system nur über ports/adapter. dadurch läuft die gesamte core-testsuite headless gegen fixtures, ohne tauri, ohne steam, ohne netz.
 
 ## dev-setup
 
@@ -65,27 +73,38 @@ dann:
 
 ```sh
 npm install
-npm test              # vitest — core headless gegen fixtures (165 tests)
+npm test              # vitest — core headless gegen fixtures
 npm run check         # biome (lint + format) + vue-tsc --noEmit
-(cd src-tauri && cargo test)   # rust-tests: download-pfade, pfad-validierung, tarball-extraktion, cleanup/papierkorb (77 tests)
+(cd src-tauri && cargo test)   # rust: download-pfade, pfad-validierung, tarball-extraktion, cleanup/papierkorb
 npm run tauri dev     # app starten (erster build kompiliert rust, dauert etwas)
 ```
 
+`npm run check` und `npm test` laufen zusätzlich in der CI bei jedem push und pull request. der tauri-build läuft dort **nicht** — der braucht systemabhängigkeiten (webkit2gtk) und ist ein eigener schritt.
+
 cache liegt unter `~/.cache/com.protium.desktop/`.
 
-vor commits an `src-tauri/src/commands.rs`: `docs/SMOKE.md` abarbeiten — die unit-tests decken nicht alles ab.
+vor commits an `src-tauri/src/commands.rs`: `docs/SMOKE.md` abarbeiten — die unit-tests decken den GE-installationspfad nicht ab. das ist keine formalität: zwei fehler, die jede installation unmöglich machten, sind an einer grünen testsuite vorbeigelaufen, weil der http-stub keine redirects schickt und die fixture-tarballs keine symlinks enthalten.
+
+### abhängigkeiten und advisories
+
+```sh
+(cd src-tauri && cargo audit)
+```
+
+`src-tauri/audit.toml` listet advisories, die bewusst getragen werden — jeweils per ID mit begründung, damit ein **neuer** advisory weiterhin anschlägt. betrifft im wesentlichen tauris GTK3-stack (die gtk-rs-bindings sind unmaintained, gtk-rs ist auf GTK4 umgezogen) und build-time-only-crates. wiedervorlage, sobald tauri auf gtk-rs 0.20 geht.
 
 ## struktur
 
 ```
-src/core/       domänenlogik, UI-frei. scanLibrary(ports) ist die einzige public api
+src/core/       domänenlogik, UI-frei. redet nur über ports
 src/core/adapters/tauri.ts   ports gegen plugin-fs/http + rust-commands
-src/ui/         vue-app: library, proton-manager, views je phase
-src-tauri/      rust-commands (extract, download, prozess-check, dir-size, fs-scope)
+src/ui/         vue-app: library, proton-manager, cleanup, i18n (de/en)
+src-tauri/      rust-commands (extract, download, prozess-check, dir-size, fs-scope, löschpfade)
 tests/          vitest gegen fake-steam-fixtures
+docs/           screenshots, smoke-checkliste
 ```
 
-grundregeln, die überall gelten: schreibende zugriffe auf steam-dateien laufen ausnahmslos durch ein write-gate (steam-läuft-check, backup, atomarer write). destruktive aktionen fragen immer nach und zeigen konkret, was passieren würde. netzwerkausfall darf features verarmen, aber nie die app blockieren.
+grundregeln, die überall gelten: schreibende zugriffe auf steam-dateien laufen ausnahmslos durch ein write-gate (steam-läuft-check, backup, atomarer write). destruktive aktionen fragen immer nach und zeigen konkret, was passieren würde. wo pfadwissen gebraucht wird, kommt es aus `paths.ts` und nicht aus zusammengebauten strings. netzwerkausfall darf features verarmen, aber nie die app blockieren. und: im zweifel „unbekannt" anzeigen statt etwas zu behaupten.
 
 ## roadmap
 
@@ -96,7 +115,9 @@ grundregeln, die überall gelten: schreibende zugriffe auf steam-dateien laufen 
 - [x] phase 4: compat-tool und launch-options setzen (write-gate, backups, vdf-string-patch)
 - [x] phase 5: cleanup verwaister prefixes und shader-caches + papierkorb
 - [x] spiele starten (via steam-protokoll, kein eigener launcher)
-- [ ] phase 6: release (CI-build via ubuntu-22.04-runner, AppImage, AUR-paket)
+- [x] i18n (deutsch/englisch)
+- [x] CI: lint, typecheck und tests bei jedem push
+- [ ] phase 6: release — AppImage-build in der CI, danach AUR-paket
 
 ## status
 
