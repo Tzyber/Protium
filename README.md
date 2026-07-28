@@ -2,6 +2,8 @@
 
 > ein proton. ein elektron. das simpelste atom im universum, und ungefähr so viel overhead soll auch dieses tool haben.
 
+> Claude — Contributor: spirituell. Commits: nicht nachweisbar.
+
 protium ist eine linux-desktop-app für steam/proton-housekeeping. sie zeigt dir, was auf deinem system wirklich los ist: welche spiele über welche proton-version laufen, wie die auf protondb bewertet sind, welche GE-proton-versionen ungenutzt platz fressen und (bald) welche verwaisten prefixes von längst deinstallierten spielen noch gigabytes belegen.
 
 entstanden, weil es genau dieses tool nicht gab. protonup-qt managt nur versionen, protontricks ist ein winetricks-wrapper, steamtinkerlaunch kann alles und ist genau deshalb unübersichtlich. protium will die eine aufgeräumte oberfläche für den kompletten workflow sein.
