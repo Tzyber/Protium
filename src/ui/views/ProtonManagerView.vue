@@ -160,7 +160,7 @@ const statusLine = computed(() => {
           <div class="rsub mono">{{ formatBytes(r.tarball.size) }}</div>
           <div v-if="proton.jobs[r.tag]" class="progress">
             <template v-if="proton.jobs[r.tag]?.phase === 'downloading'">
-              <div class="track"><div class="fill" :style="{ width: (pct(r.tag) ?? 30) + '%' }" /></div>
+              <div class="track"><div class="fill" :style="{ transform: `scaleX(${(pct(r.tag) ?? 30) / 100})` }" /></div>
               <span class="phase">{{ phaseLabel(r.tag) }}<span v-if="pct(r.tag) !== null"> · {{ pct(r.tag) }}%</span></span>
             </template>
             <span v-else class="phase act">{{ phaseLabel(r.tag) }}</span>
@@ -212,7 +212,7 @@ const statusLine = computed(() => {
 .update { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .statusline {
   font-family: var(--font-body);
-  font-size: 11px;
+  font-size: 0.8125rem;
   color: var(--fg-1);
   display: flex;
   align-items: center;
@@ -223,7 +223,7 @@ const statusLine = computed(() => {
   border: 1px solid var(--line);
   transition: background 0.3s, border-color 0.3s, color 0.3s;
 }
-.statusline .ic { color: var(--tier-platinum); font-size: 16px; }
+.statusline .ic { color: var(--tier-platinum); font-size: 1rem; }
 .statusline.warn { color: var(--tier-gold); }
 .statusline.warn .ic { color: var(--tier-gold); }
 .statusline.flash {
@@ -231,16 +231,16 @@ const statusLine = computed(() => {
   border-color: var(--signal);
   background: color-mix(in srgb, var(--signal) 16%, transparent);
 }
-.title h2 { margin: 2px 0 0; font-family: var(--font-display); font-size: 26px; font-weight: 600; letter-spacing: -0.02em; }
+.title h2 { margin: 2px 0 0; font-family: var(--font-display); font-size: 1.625rem; font-weight: 600; letter-spacing: -0.02em; }
 
 .rescan {
   background: var(--bg-2); color: var(--fg-1);
   border: 1px solid var(--line); border-radius: var(--r-sm);
-  padding: 8px 14px; font-family: var(--font-body); font-size: 14px; cursor: pointer;
+  padding: 8px 14px; font-family: var(--font-body); font-size: 0.875rem; cursor: pointer;
 }
 .rescan:hover:not(:disabled) { color: var(--fg-0); border-color: var(--signal-dim); }
 
-.section { font-family: var(--font-display); font-size: 14px; font-weight: 600; margin: 22px 0 10px; color: var(--fg-1); }
+.section { font-family: var(--font-display); font-size: 0.875rem; font-weight: 600; margin: 22px 0 10px; color: var(--fg-1); }
 .section .count { color: var(--fg-2); font-weight: 400; }
 
 .list { display: grid; gap: 8px; }
@@ -250,21 +250,21 @@ const statusLine = computed(() => {
   border-radius: var(--r-md); padding: 12px 14px;
 }
 .rmain { flex: 1; min-width: 0; }
-.rname { font-family: var(--font-display); font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px; }
-.rsub { color: var(--fg-2); font-size: 13px; font-weight: 600; margin-top: 3px; }
+.rname { font-family: var(--font-display); font-weight: 600; font-size: 0.875rem; display: flex; align-items: center; gap: 8px; }
+.rsub { color: var(--fg-2); font-size: 0.8125rem; font-weight: 600; margin-top: 3px; }
 
-.tag { font-family: var(--font-body); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; padding: 2px 6px; border-radius: 999px; }
+.tag { font-family: var(--font-body); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; padding: 2px 6px; border-radius: 999px; }
 .tag.ok { color: var(--tier-platinum); background: color-mix(in srgb, var(--tier-platinum) 14%, transparent); }
 .tag.distro { color: var(--fg-2); border: 1px solid var(--line); margin-left: 8px; }
 
-.used { background: none; border: 1px solid var(--signal-dim); color: var(--signal-bright); border-radius: var(--r-sm); padding: 5px 9px; font-family: var(--font-body); font-size: 14px; cursor: pointer; white-space: nowrap; }
+.used { background: none; border: 1px solid var(--signal-dim); color: var(--signal-bright); border-radius: var(--r-sm); padding: 5px 9px; font-family: var(--font-body); font-size: 0.875rem; cursor: pointer; white-space: nowrap; }
 .used.muted { color: var(--fg-2); border-color: var(--line); cursor: default; }
 
-.rm { background: none; border: 1px solid color-mix(in srgb, var(--tier-borked) 45%, transparent); color: var(--tier-borked); border-radius: var(--r-sm); padding: 5px 10px; font-family: var(--font-body); font-size: 14px; cursor: pointer; }
+.rm { background: none; border: 1px solid color-mix(in srgb, var(--tier-borked) 45%, transparent); color: var(--tier-borked); border-radius: var(--r-sm); padding: 5px 10px; font-family: var(--font-body); font-size: 0.875rem; cursor: pointer; }
 .rm:hover:not(:disabled) { background: color-mix(in srgb, var(--tier-borked) 14%, transparent); }
-.rm-lock { color: var(--fg-2); font-size: 13px; }
+.rm-lock { color: var(--fg-2); font-size: 0.8125rem; }
 
-.install { background: var(--signal); color: #0a0b11; border: none; border-radius: var(--r-sm); padding: 7px 14px; font-family: var(--font-display); font-weight: 600; font-size: 13px; cursor: pointer; }
+.install { background: var(--signal); color: #0a0b11; border: none; border-radius: var(--r-sm); padding: 7px 14px; font-family: var(--font-display); font-weight: 600; font-size: 0.8125rem; cursor: pointer; }
 .install:hover:not(:disabled) { background: var(--signal-bright); }
 .cancel {
   background: none;
@@ -273,7 +273,7 @@ const statusLine = computed(() => {
   border-radius: var(--r-sm);
   padding: 7px 12px;
   font-family: var(--font-body);
-  font-size: 11px;
+  font-size: 0.8125rem;
   cursor: pointer;
   white-space: nowrap;
 }
@@ -281,11 +281,14 @@ const statusLine = computed(() => {
 
 .progress { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
 .track { flex: 1; max-width: 320px; height: 5px; background: var(--bg-0); border-radius: 999px; overflow: hidden; }
-.fill { height: 100%; background: var(--signal); transition: width 0.2s; }
-.phase { color: var(--fg-2); font-size: 12px; }
+.fill { width: 100%; height: 100%; background: var(--signal); transform-origin: left; transition: transform 0.2s; }
+.phase { color: var(--fg-2); font-size: 0.75rem; }
 .phase.act::before {
   content: "·";
   display: inline-block;
+  font-size: 1.125rem;
+  line-height: 1;
+  vertical-align: middle;
   animation: phase-pulse 1s ease-in-out infinite;
 }
 .phase.act { color: var(--signal-bright); }
@@ -297,7 +300,7 @@ const statusLine = computed(() => {
   .phase.act::before { opacity: 0.6; animation: none; }
 }
 
-.hint { color: var(--tier-gold); font-family: var(--font-body); font-size: 12px; margin-bottom: 10px; }
+.hint { color: var(--tier-gold); font-family: var(--font-body); font-size: 0.75rem; margin-bottom: 10px; }
 .games { margin: 8px 0 0; padding-left: 18px; color: var(--fg-1); }
 .games li { margin: 2px 0; }
 </style>

@@ -29,7 +29,7 @@ const color = computed(() => COLORS[props.tier]);
   align-items: center;
   gap: 5px;
   font-family: var(--font-body);
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;

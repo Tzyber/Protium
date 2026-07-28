@@ -332,7 +332,7 @@ watch(errorMessage, (msg) => {
 .close {
   position: absolute; top: 14px; right: 16px;
   background: none; border: none; color: var(--fg-2);
-  font-size: 15px; cursor: pointer; z-index: 2;
+  font-size: 0.9375rem; cursor: pointer; z-index: 2;
   min-width: 24px; min-height: 24px; display: grid; place-items: center;
 }
 .close:hover { color: var(--fg-0); }
@@ -352,10 +352,10 @@ watch(errorMessage, (msg) => {
 }
 
 .head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.head h2 { margin: 0; font-family: var(--font-display); font-size: 21px; font-weight: 600; letter-spacing: -0.02em; }
+.head h2 { margin: 0; font-family: var(--font-display); font-size: 1.3125rem; font-weight: 600; letter-spacing: -0.02em; }
 .head :deep(*) { flex-shrink: 0; }
-.meta { margin: 6px 0 2px; color: var(--fg-2); font-size: 14px; }
-.meta-tier { margin: 0 0 20px; color: var(--fg-1); font-size: 14px; line-height: 1.5; }
+.meta { margin: 6px 0 2px; color: var(--fg-2); font-size: 0.875rem; }
+.meta-tier { margin: 0 0 20px; color: var(--fg-1); font-size: 0.875rem; line-height: 1.5; }
 
 .play {
   width: 100%;
@@ -366,7 +366,7 @@ watch(errorMessage, (msg) => {
   padding: 13px 14px;
   font-family: var(--font-display);
   font-weight: 700;
-  font-size: 15px;
+  font-size: 0.9375rem;
   cursor: pointer;
   transition: filter 0.15s, transform 0.1s;
   display: flex;
@@ -382,14 +382,14 @@ watch(errorMessage, (msg) => {
 .divider { height: 1px; background: var(--line-soft); margin: 20px 0 16px; }
 .section-label {
   margin: 0 0 14px;
-  font-size: 12px;
+  font-size: 0.75rem;
   letter-spacing: 0.14em;
   color: var(--fg-1);
   text-transform: uppercase;
 }
 
 .field { margin-bottom: 16px; }
-.k { display: block; color: var(--fg-1); font-size: 14px; margin-bottom: 7px; }
+.k { display: block; color: var(--fg-1); font-size: 0.875rem; margin-bottom: 7px; }
 .field-row { display: flex; gap: 8px; }
 .control {
   flex: 1;
@@ -399,7 +399,7 @@ watch(errorMessage, (msg) => {
   color: var(--fg-0);
   border-radius: var(--r-sm);
   padding: 11px 13px;
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 .control:focus { outline: none; border-color: var(--signal-dim); }
 select.control { cursor: pointer; }
@@ -414,7 +414,7 @@ select.control option { background: var(--bg-1); color: var(--fg-0); }
   padding: 11px 15px;
   font-family: var(--font-display);
   font-weight: 600;
-  font-size: 14px;
+  font-size: 0.875rem;
   cursor: pointer;
   white-space: nowrap;
   transition: background 0.15s, border-color 0.15s;
@@ -422,12 +422,12 @@ select.control option { background: var(--bg-1); color: var(--fg-0); }
 .save:hover:not(:disabled) { background: var(--bg-3); border-color: var(--signal); }
 .save:disabled { opacity: 0.4; cursor: default; }
 
-.hint { margin: 9px 2px 0; color: var(--fg-2); font-size: 13px; line-height: 1.55; }
+.hint { margin: 9px 2px 0; color: var(--fg-2); font-size: 0.8125rem; line-height: 1.55; }
 
 .pdb-link {
   display: inline-block;
   color: var(--signal-bright);
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 600;
   text-decoration: none;
   transition: color 0.15s;
@@ -444,16 +444,15 @@ select.control option { background: var(--bg-1); color: var(--fg-0); }
   gap: 9px;
   background: var(--bg-2);
   border: 1px solid var(--tier-borked);
-  border-left: 3px solid var(--tier-borked);
   border-radius: var(--r-sm);
   padding: 11px 13px;
   box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.6);
 }
-.toast-icon { color: var(--tier-borked); font-size: 14px; flex-shrink: 0; margin-top: 1px; }
-.toast-msg { flex: 1; color: var(--fg-0); font-size: 13.5px; line-height: 1.5; }
+.toast-icon { color: var(--tier-borked); font-size: 0.875rem; flex-shrink: 0; margin-top: 1px; }
+.toast-msg { flex: 1; color: var(--fg-0); font-size: 0.84375rem; line-height: 1.5; }
 .toast-close {
   flex-shrink: 0; background: none; border: none; color: var(--fg-2);
-  font-size: 12px; cursor: pointer; padding: 0; line-height: 1;
+  font-size: 0.75rem; cursor: pointer; padding: 0; line-height: 1;
   min-width: 24px; min-height: 24px; display: grid; place-items: center;
 }
 .toast-close:hover { color: var(--fg-0); }

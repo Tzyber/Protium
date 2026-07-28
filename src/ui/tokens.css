@@ -73,7 +73,7 @@ body {
   background: var(--bg-0);
   color: var(--fg-0);
   font-family: var(--font-body);
-  font-size: 14px;
+  font-size: 0.875rem;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
@@ -98,7 +98,7 @@ body {
 }
 .label {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 0.8125rem;
   font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;

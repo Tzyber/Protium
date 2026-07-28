@@ -99,14 +99,14 @@ const showWarnings = ref(false);
 .title h2 {
   margin: 2px 0 0;
   font-family: var(--font-display);
-  font-size: 26px;
+  font-size: 1.625rem;
   font-weight: 600;
   letter-spacing: -0.02em;
 }
-.title .unit { color: var(--fg-2); font-size: 15px; font-weight: 400; }
+.title .unit { color: var(--fg-2); font-size: 0.9375rem; font-weight: 400; }
 
 .right { display: flex; align-items: center; gap: 12px; }
-.status { color: var(--fg-2); font-size: 14px; }
+.status { color: var(--fg-2); font-size: 0.875rem; }
 
 .rescan {
   background: var(--signal);
@@ -116,7 +116,7 @@ const showWarnings = ref(false);
   padding: 8px 14px;
   font-family: var(--font-display);
   font-weight: 600;
-  font-size: 16px;
+  font-size: 1rem;
   cursor: pointer;
   transition: background 0.15s, box-shadow 0.15s;
 }
@@ -130,7 +130,7 @@ const showWarnings = ref(false);
   border-radius: var(--r-sm);
   padding: 6px 10px;
   font-family: var(--font-body);
-  font-size: 11px;
+  font-size: 0.8125rem;
   cursor: pointer;
 }
 
@@ -140,10 +140,9 @@ const showWarnings = ref(false);
   list-style: none;
   background: var(--bg-1);
   border: 1px solid var(--line);
-  border-left: 2px solid var(--tier-gold);
   border-radius: var(--r-sm);
   font-family: var(--font-body);
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 500;
   color: var(--fg-1);
   display: grid;

@@ -86,10 +86,10 @@ onBeforeUnmount(() => {
 h3 {
   margin: 0 0 12px;
   font-family: var(--font-display);
-  font-size: 17px;
+  font-size: 1.0625rem;
   font-weight: 600;
 }
-.content { color: var(--fg-1); font-size: 13px; margin-bottom: 18px; }
+.content { color: var(--fg-1); font-size: 0.8125rem; margin-bottom: 18px; }
 .actions { display: flex; justify-content: flex-end; gap: 10px; }
 .btn {
   border: 1px solid var(--signal);
@@ -99,7 +99,7 @@ h3 {
   padding: 8px 14px;
   font-family: var(--font-display);
   font-weight: 600;
-  font-size: 13px;
+  font-size: 0.8125rem;
   cursor: pointer;
 }
 .btn.ghost { background: transparent; color: var(--fg-1); border-color: var(--line); }

@@ -572,14 +572,14 @@ const tabLabel = (id: Tab) =>
   padding-bottom: 8px;
 }
 .bar { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 16px; }
-.title h2 { margin: 2px 0 0; font-family: var(--font-display); font-size: 26px; font-weight: 600; letter-spacing: -0.02em; }
-.title .label { font-family: var(--font-body); font-size: 11px; letter-spacing: 0.14em; color: var(--fg-2); text-transform: uppercase; }
+.title h2 { margin: 2px 0 0; font-family: var(--font-display); font-size: 1.625rem; font-weight: 600; letter-spacing: -0.02em; }
+.title .label { font-family: var(--font-body); font-size: 0.8125rem; letter-spacing: 0.14em; color: var(--fg-2); text-transform: uppercase; }
 
 .scan-btn {
   align-self: flex-start;
   background: var(--bg-2); color: var(--fg-1);
   border: 1px solid var(--line); border-radius: var(--r-sm);
-  padding: 10px 16px; font-family: var(--font-body); font-size: 14px; cursor: pointer;
+  padding: 10px 16px; font-family: var(--font-body); font-size: 0.875rem; cursor: pointer;
 
 }
 .scan-btn:hover:not(:disabled) { color: var(--fg-0); border-color: var(--signal-dim); }
@@ -593,26 +593,25 @@ const tabLabel = (id: Tab) =>
   border-radius: var(--r-sm);
   padding: 12px 16px;
   font-family: var(--font-body);
-  font-size: 14px;
+  font-size: 0.875rem;
   margin-bottom: 16px;
 }
 
 .pathmissing {
   background: var(--bg-2);
   border: 1px solid var(--line);
-  border-left: 3px solid var(--signal);
   border-radius: var(--r-sm);
   padding: 14px 16px;
   margin-bottom: 16px;
 }
-.pm-title { margin: 0 0 8px; color: var(--fg-0); font-size: 14px; }
+.pm-title { margin: 0 0 8px; color: var(--signal); font-size: 0.875rem; }
 .pm-list { margin: 0 0 10px; padding-left: 18px; }
-.pm-list li { color: var(--fg-1); font-family: var(--font-mono); font-size: 14px; line-height: 1.6; }
-.pm-note { margin: 0 0 12px; color: var(--fg-2); font-size: 14px; line-height: 1.5; }
+.pm-list li { color: var(--fg-1); font-family: var(--font-mono); font-size: 0.875rem; line-height: 1.6; }
+.pm-note { margin: 0 0 12px; color: var(--fg-2); font-size: 0.875rem; line-height: 1.5; }
 .pm-btn {
   background: var(--signal); border: none; color: var(--bg-0);
   border-radius: var(--r-sm); padding: 10px 15px;
-  font-family: var(--font-display); font-weight: 600; font-size: 14px; cursor: pointer;
+  font-family: var(--font-display); font-weight: 600; font-size: 0.875rem; cursor: pointer;
 }
 .pm-btn:hover { background: var(--signal-bright); }
 .pm-btn:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
@@ -632,14 +631,14 @@ const tabLabel = (id: Tab) =>
   color: var(--fg-2); cursor: pointer;
   /* großzügige trefferfläche statt kompakter reiter (a11y) */
   padding: 12px 18px;
-  font-family: var(--font-display); font-size: 15px; font-weight: 600;
+  font-family: var(--font-display); font-size: 0.9375rem; font-weight: 600;
   margin-bottom: -1px;
 }
 .tab:hover { color: var(--fg-1); }
 .tab:focus-visible { outline: 2px solid var(--signal); outline-offset: -2px; border-radius: var(--r-sm); }
 .tab.on { color: var(--fg-0); border-bottom-color: var(--signal); }
 .tab-count {
-  font-family: var(--font-mono); font-size: 12px; font-weight: 400;
+  font-family: var(--font-mono); font-size: 0.75rem; font-weight: 400;
   color: var(--fg-2); background: var(--bg-2);
   border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px;
 }
@@ -650,12 +649,12 @@ const tabLabel = (id: Tab) =>
 
 .section-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 10px; min-height: 34px; }
 .section {
-  font-family: var(--font-display); font-size: 16px; font-weight: 600; color: var(--fg-1);
+  font-family: var(--font-display); font-size: 1rem; font-weight: 600; color: var(--fg-1);
   display: flex; align-items: center; gap: 10px;
 }
 .section .count { color: var(--fg-2); font-weight: 400; }
 .section .warn-label {
-  font-family: var(--font-body); font-size: 14px; color: var(--fg-1);
+  font-family: var(--font-body); font-size: 0.875rem; color: var(--fg-1);
   border: 1px solid color-mix(in srgb, var(--tier-gold) 45%, transparent);
   border-radius: 999px; padding: 2px 9px;
 }
@@ -664,7 +663,7 @@ const tabLabel = (id: Tab) =>
 .sel-all {
   background: none; border: 1px solid var(--line); color: var(--fg-1);
   border-radius: var(--r-sm); padding: 8px 14px;
-  font-family: var(--font-body); font-size: 14px; cursor: pointer;
+  font-family: var(--font-body); font-size: 0.875rem; cursor: pointer;
 }
 .sel-all:hover:not(:disabled) { color: var(--fg-0); border-color: var(--signal-dim); }
 .sel-all:disabled { opacity: 0.55; cursor: default; }
@@ -675,15 +674,15 @@ const tabLabel = (id: Tab) =>
   display: flex; align-items: center; gap: 10px;
   background: none; border: none; padding: 0;
   margin: -4px 0 14px;
-  font-size: 14px; color: var(--fg-2);
+  font-size: 0.875rem; color: var(--fg-2);
 }
 .ignored button {
   background: none; border: none; padding: 0;
-  color: var(--signal); font-size: 14px; cursor: pointer;
+  color: var(--signal); font-size: 0.875rem; cursor: pointer;
   text-decoration: underline; text-underline-offset: 3px;
 }
 .libstatus {
-  font-family: var(--font-mono); font-size: 14px; color: var(--fg-1); line-height: 1.7;
+  font-family: var(--font-mono); font-size: 0.875rem; color: var(--fg-1); line-height: 1.7;
   background: var(--bg-2); border: 1px solid var(--line);
   border-radius: var(--r-sm); padding: 12px 16px; margin-bottom: 14px;
   overflow-wrap: anywhere;
@@ -731,22 +730,22 @@ const tabLabel = (id: Tab) =>
   border: solid var(--bg-0); border-width: 0 2px 2px 0; transform: rotate(45deg);
 }
 
-.rname { font-size: 15px; color: var(--fg-0); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rname { font-size: 0.9375rem; color: var(--fg-0); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sc-warn {
   display: inline-block; width: 16px; height: 16px; line-height: 16px; text-align: center;
-  border-radius: 50%; font-size: 11px; font-weight: 700; margin-left: 4px;
+  border-radius: 50%; font-size: 0.8125rem; font-weight: 700; margin-left: 4px;
   background: color-mix(in srgb, var(--tier-gold) 20%, transparent);
   color: var(--tier-gold); border: 1px solid color-mix(in srgb, var(--tier-gold) 40%, transparent);
 }
 .rpath {
   min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
-  color: var(--fg-2); font-size: 14px;
+  color: var(--fg-2); font-size: 0.875rem;
 }
-.rsize { color: var(--fg-1); font-size: 14px; white-space: nowrap; text-align: right; }
-.rdate { color: var(--fg-2); font-size: 14px; white-space: nowrap; text-align: right; }
+.rsize { color: var(--fg-1); font-size: 0.875rem; white-space: nowrap; text-align: right; }
+.rdate { color: var(--fg-2); font-size: 0.875rem; white-space: nowrap; text-align: right; }
 
 .moved-note {
-  color: var(--fg-2); font-size: 14px; font-family: var(--font-body);
+  color: var(--fg-2); font-size: 0.875rem; font-family: var(--font-body);
   margin: 0 0 10px; font-style: italic;
 }
 
@@ -761,13 +760,13 @@ const tabLabel = (id: Tab) =>
   background: var(--bg-1);
   border-top: 1px solid var(--line);
 }
-.sel-info { font-size: 14px; color: var(--fg-1); }
+.sel-info { font-size: 0.875rem; color: var(--fg-1); }
 .actionbar-btns { display: flex; gap: 10px; }
 
 .action {
   background: var(--signal); color: var(--bg-0); border: none;
   border-radius: var(--r-sm); padding: 10px 16px;
-  font-family: var(--font-display); font-weight: 600; font-size: 14px; cursor: pointer;
+  font-family: var(--font-display); font-weight: 600; font-size: 0.875rem; cursor: pointer;
 }
 .action:hover:not(:disabled) { background: var(--signal-bright); }
 .action:disabled { opacity: 0.4; cursor: default; }
@@ -779,16 +778,16 @@ const tabLabel = (id: Tab) =>
 }
 .action.danger:hover:not(:disabled) { background: color-mix(in srgb, var(--tier-borked) 30%, transparent); }
 
-.hint { color: var(--tier-gold); font-family: var(--font-body); font-size: 14px; margin-bottom: 12px; }
-.empty { color: var(--fg-2); font-family: var(--font-body); font-size: 14px; padding: 32px 0; text-align: center; }
+.hint { color: var(--tier-gold); font-family: var(--font-body); font-size: 0.875rem; margin-bottom: 12px; }
+.empty { color: var(--fg-2); font-family: var(--font-body); font-size: 0.875rem; padding: 32px 0; text-align: center; }
 
 .paths { margin: 8px 0 0; padding-left: 18px; color: var(--fg-1); max-height: 160px; overflow-y: auto; }
-.paths li { font-size: 12px; margin: 2px 0; }
+.paths li { font-size: 0.75rem; margin: 2px 0; }
 .saveurge {
   background: color-mix(in srgb, var(--tier-borked) 14%, transparent);
   border: 1px solid color-mix(in srgb, var(--tier-borked) 35%, transparent);
   color: var(--tier-borked); border-radius: var(--r-sm);
-  padding: 10px 14px; font-family: var(--font-display); font-size: 14px; font-weight: 600; margin-bottom: 12px;
+  padding: 10px 14px; font-family: var(--font-display); font-size: 0.875rem; font-weight: 600; margin-bottom: 12px;
 }
 
 </style>
