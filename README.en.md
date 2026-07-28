@@ -83,7 +83,6 @@ npm run tauri dev     # start the app (the first build compiles rust, takes a wh
 
 the cache lives in `~/.cache/com.protium.desktop/`.
 
-before committing changes to `src-tauri/src/commands.rs`: work through `docs/SMOKE.md` — the unit tests do not cover the GE installation path. The smoke check supplements the unit tests: two bugs that made every installation impossible slipped past a green test suite, because the http stub sends no redirects and the fixture tarballs contain no symlinks.
 
 ### dependencies and advisories
 
