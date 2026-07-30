@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { assetUrl, launchGame } from "../../core/adapters/tauri";
+import { assetUrl } from "../../core/adapters/tauri";
 import type { Game } from "../../core/types";
 import { formatBytes } from "../format";
 import { t } from "../i18n";
 import { useUiStore } from "../stores/uiStore";
+import PlayButton from "./PlayButton.vue";
 import TierBadge from "./TierBadge.vue";
 
 const props = defineProps<{ game: Game }>();
@@ -22,10 +23,6 @@ const idx = ref(0);
 const src = computed<string | null>(() => candidates.value[idx.value] ?? null);
 function onError() {
   idx.value++; // nächster kandidat; ist keiner mehr da → text-fallback (INV-3)
-}
-
-function launch() {
-  void launchGame(props.game.appId).catch(() => {});
 }
 </script>
 
@@ -69,15 +66,7 @@ function launch() {
         {{ game.compatTool }}
       </span>
       <div class="meta-right">
-        <button
-          class="play"
-          type="button"
-          :title="t('card.launch', { name: game.name })"
-          :aria-label="t('card.launch', { name: game.name })"
-          @click.stop="launch"
-        >
-          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9l7-4.5z" /></svg>
-        </button>
+        <PlayButton variant="compact" :appId="game.appId" :name="game.name" />
         <span class="size mono">{{ formatBytes(game.sizeBytes) }}</span>
       </div>
     </div>
@@ -178,21 +167,4 @@ h3 {
 .size { color: var(--fg-2); font-size: 0.8125rem; white-space: nowrap; }
 
 .meta-right { display: flex; align-items: center; gap: 8px; }
-.play {
-  display: grid;
-  place-items: center;
-  width: 45px;
-  height: 30px;
-  padding: 0;
-  cursor: pointer;
-  color: var(--signal-bright);
-  background: color-mix(in srgb, var(--signal) 12%, transparent);
-  border: 1px solid var(--signal-dim);
-  border-radius: 10px;
-  transition: background 0.15s, color 0.15s, transform 0.1s;
-}
-.play svg { width: 18px; height: 18px; fill: currentColor; margin-left: 1px; }
-.play:hover { background: var(--signal); color: var(--bg-1); }
-.play:active { transform: scale(0.92); }
-.play:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 </style>

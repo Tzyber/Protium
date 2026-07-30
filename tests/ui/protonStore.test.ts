@@ -19,7 +19,7 @@ vi.mock("../../src/core/adapters/tauri", async () => {
         get: async () => ({
           status: 200,
           ok: true,
-          text: "a".repeat(128) + "  x.tar.gz",
+          text: `${"a".repeat(128)}  x.tar.gz`,
           headers: {},
         }),
       },

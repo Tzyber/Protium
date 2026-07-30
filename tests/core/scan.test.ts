@@ -3,7 +3,6 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { discoverSteamRoot } from "../../src/core/paths.js";
 import { scanLibrary } from "../../src/core/scan.js";
-import type { SkippedLibrary } from "../../src/core/types.js";
 import { buildFakeSteam, fakeHttp, fakeSystem, memCache, nodeFs } from "../support/fakeSteam";
 
 describe("scanLibrary (integration — dominiks reales setup)", () => {

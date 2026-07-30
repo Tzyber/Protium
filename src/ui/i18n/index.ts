@@ -56,7 +56,7 @@ function lookup(table: Dict, path: string): string | undefined {
 // der platzhalter stehen (so fällt der fehler im UI sichtbar auf).
 function interpolate(template: string, params: Record<string, string | number>): string {
   return template.replace(/\{(\w+)\}/g, (_, k) =>
-    Object.prototype.hasOwnProperty.call(params, k) ? String(params[k]) : `{${k}}`,
+    Object.hasOwn(params, k) ? String(params[k]) : `{${k}}`,
   );
 }
 

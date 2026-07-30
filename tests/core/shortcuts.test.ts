@@ -25,8 +25,7 @@ function makeBinVdf(entries: { appId?: number; name?: string; hasTags?: boolean 
   parts.push(0x00);
   parts.push(...new TextEncoder().encode("shortcuts"), 0x00);
 
-  for (let idx = 0; idx < entries.length; idx++) {
-    const e = entries[idx]!;
+  for (const [idx, e] of entries.entries()) {
     parts.push(0x00); // type: MAP
     parts.push(...new TextEncoder().encode(String(idx)), 0x00); // key
 

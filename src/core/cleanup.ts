@@ -1,5 +1,5 @@
 import { paths } from "./paths.js";
-import type { FileSystem } from "./ports.js";
+import type { DirEntry, FileSystem } from "./ports.js";
 import type { OrphanEntry, OrphanType } from "./types.js";
 
 const ORPHAN_TYPES: OrphanType[] = ["compatdata", "shadercache"];
@@ -17,7 +17,7 @@ export async function findOrphans(
     for (const type of ORPHAN_TYPES) {
       const dir = type === "compatdata" ? paths.compatdataDir(lib) : paths.shadercacheDir(lib);
 
-      let entries;
+      let entries: DirEntry[];
       try {
         entries = await fs.readDir(dir);
       } catch {

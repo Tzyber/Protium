@@ -121,7 +121,7 @@ describe("scanStore.applyGameConfig", () => {
 
     store.applyGameConfig(42, { launchOptions: "-novid", compatTool: "GE-Proton10-1" });
 
-    const g = store.result.games[0]!;
+    const g = store.result.games[0] as (typeof store.result.games)[number];
     expect(g.launchOptions).toBe("-novid");
     expect(g.compatTool).toBe("GE-Proton10-1");
   });
@@ -131,7 +131,7 @@ describe("scanStore.applyGameConfig", () => {
     store.result = fakeResult();
 
     expect(() => store.applyGameConfig(999, { compatTool: "x" })).not.toThrow();
-    expect(store.result.games[0]!.compatTool).toBe("default");
+    expect(store.result.games[0]?.compatTool).toBe("default");
   });
 
   it("ohne scan-ergebnis: kein throw", () => {

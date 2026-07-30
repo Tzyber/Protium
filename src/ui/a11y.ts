@@ -38,8 +38,9 @@ export function trapFocus(event: KeyboardEvent, root: HTMLElement | null): void 
   }
 
   const current = document.activeElement;
-  const first = focusable[0]!;
-  const last = focusable[focusable.length - 1]!;
+  // focusable ist garantiert nicht leer (guard oben), ?? root macht TS happy
+  const first = focusable[0] ?? root;
+  const last = focusable[focusable.length - 1] ?? root;
 
   if (event.shiftKey) {
     if (current === first || !root.contains(current)) {
