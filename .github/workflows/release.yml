@@ -54,7 +54,7 @@ jobs:
 
       - name: Install appimagetool
         run: |
-          wget -q "https://github.com/AppImage/AppImageKit/releases/download/13/appimagetool-x86_64.AppImage" -O /tmp/appimagetool
+          wget -q "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage" -O /tmp/appimagetool
           chmod +x /tmp/appimagetool
           /tmp/appimagetool --appimage-extract
           mv squashfs-root /tmp/appimagetool-extracted
