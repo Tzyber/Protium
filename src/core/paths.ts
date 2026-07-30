@@ -1,4 +1,7 @@
 // INV-4: NUR diese datei konstruiert steam-pfade.
+// ACHTUNG: ROOT_CANDIDATES muss mit assetProtocol.scope in tauri.conf.json
+// synchron bleiben — beide listen müssen dieselben installationsarten abdecken.
+// bei änderungen hier IMMER tauri.conf.json → assetProtocol.scope mitpflegen.
 import type { FileSystem } from "./ports.js";
 import { SteamNotFoundError } from "./types.js";
 
@@ -7,7 +10,7 @@ const ROOT_CANDIDATES = [
   ".steam/steam", // symlink → meist .local/share/Steam
   ".steam/root",
   ".var/app/com.valvesoftware.Steam/.local/share/Steam", // flatpak
-  "snap/steam/common/.local/share/Steam", // snap (canonical)
+  "snap/steam/common/.local/share/Steam", // snap (canonical) — ungetestet auf echtem snap-system
 ] as const;
 
 function join(...parts: string[]): string {

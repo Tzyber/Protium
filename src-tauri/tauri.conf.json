@@ -32,7 +32,8 @@
         "scope": [
           "$HOME/.local/share/Steam/appcache/librarycache/**",
           "$HOME/.steam/**/appcache/librarycache/**",
-          "$HOME/.var/app/com.valvesoftware.Steam/.local/share/Steam/appcache/librarycache/**"
+          "$HOME/.var/app/com.valvesoftware.Steam/.local/share/Steam/appcache/librarycache/**",
+          "$HOME/snap/steam/common/.local/share/Steam/appcache/librarycache/**"
         ]
       }
     }

@@ -34,6 +34,15 @@ entstanden, weil es genau dieses tool nicht gab. protonup-qt managt nur versione
 
 **bedienbarkeit.** vollständig mit der tastatur bedienbar, sichtbare focus-states, tabs nach WAI-ARIA-pattern (pfeiltasten, roving tabindex), kontraste auf WCAG-AA geprüft, `prefers-reduced-motion` global respektiert. schriftgrößen in `rem`, damit die app mit der system-schriftgröße mitwächst. oberfläche auf deutsch und englisch, key-parität durch einen test abgesichert.
 
+### unterstützte steam-installationen
+
+protium erkennt steam automatisch in diesen installationsarten:
+- **nativ** — `~/.local/share/Steam` und `~/.steam/steam`
+- **flatpak** — `~/.var/app/com.valvesoftware.Steam/.local/share/Steam`
+- **symlinks und custom-pfade** — `discoverSteamRoot` löst symlinks via `realpath` auf
+
+snap-unterstützung (`~/snap/steam/`) folgt in 0.1.6.
+
 ### prefix aus dem papierkorb zurückholen
 
 protium hat bewusst **keine** wiederherstellungs-funktion: sobald ein spiel neu installiert ist, existiert `compatdata/<appId>` wieder, und ein automatisches zurückschieben müsste entscheiden, welcher stand gilt. dazu kommt, dass ein prefix von einer anderen proton-version stammen kann als die aktuell eingestellte. das sind entscheidungen für den menschen, nicht für ein tool.

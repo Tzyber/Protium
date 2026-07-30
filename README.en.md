@@ -34,6 +34,15 @@ it exists because this particular tool did not. protonup-qt only manages version
 
 **accessibility.** fully keyboard operable, visible focus states, tabs following the WAI-ARIA pattern (arrow keys, roving tabindex), contrasts checked against WCAG AA, `prefers-reduced-motion` respected globally. font sizes in `rem` so the app scales with the system font size. interface in german and english, key parity guarded by a test.
 
+### supported steam installations
+
+protium auto-detects steam in these installation types:
+- **native** — `~/.local/share/Steam` and `~/.steam/steam`
+- **flatpak** — `~/.var/app/com.valvesoftware.Steam/.local/share/Steam`
+- **symlinks and custom paths** — `discoverSteamRoot` resolves symlinks via `realpath`
+
+snap support (`~/snap/steam/`) coming in 0.1.6.
+
 ### restoring a prefix from the trash
 
 protium deliberately has **no** restore function: once a game is reinstalled, `compatdata/<appId>` exists again, and moving something back automatically would have to decide which state wins. on top of that, a prefix may originate from a different proton version than the one currently selected. those are decisions for a human, not for a tool.
