@@ -4,7 +4,7 @@ import { tauriPorts } from "../../core/adapters/tauri";
 import { findOrphans } from "../../core/cleanup";
 import { readAllShortcutAppIds, SHORTCUT_ID_THRESHOLD } from "../../core/shortcuts";
 import { findTrashEntries, type TrashEntry, type TrashLibraryStatus } from "../../core/trash";
-import { type OrphanEntry } from "../../core/types";
+import type { OrphanEntry } from "../../core/types";
 import { errMsg } from "../format";
 import { t } from "../i18n";
 import { useScanStore } from "./scanStore";

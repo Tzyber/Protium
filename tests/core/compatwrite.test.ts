@@ -191,7 +191,7 @@ describe("writeCompatTool", () => {
     expect(result).toBe("written");
     const backups = await readdir(backupDir);
     expect(backups).toHaveLength(1);
-    const backupText = await readFile(join(backupDir, backups[0]!), "utf8");
+    const backupText = await readFile(join(backupDir, backups[0] as string), "utf8");
     expect(backupText).toContain("ExternalTool-1");
     expect(backupText).not.toContain("foo"); // backup = vor dem patch
   });
