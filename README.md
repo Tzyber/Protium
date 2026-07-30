@@ -79,7 +79,7 @@ npm run check         # biome (lint + format) + vue-tsc --noEmit
 npm run tauri dev     # app starten (erster build kompiliert rust, dauert etwas)
 ```
 
-`npm run check` und `npm test` laufen zusätzlich in der CI bei jedem push und pull request. der tauri-build läuft dort **nicht** — der braucht systemabhängigkeiten (webkit2gtk) und ist ein eigener schritt.
+`npm run check`, `npm test` und die cargo-tests laufen zusätzlich in der CI bei jedem push und pull request. der eigentliche tauri-build (app-bundling) läuft dort **nicht** — das ist ein eigener schritt (phase 6).
 
 cache liegt unter `~/.cache/com.protium.desktop/`.
 
@@ -116,6 +116,17 @@ für die implementierung gelten folgende regeln: schreibende zugriffe auf steam-
 - [x] i18n (deutsch/englisch)
 - [x] CI: lint, typecheck und tests bei jedem push
 - [ ] phase 6: release — AppImage-build in der CI, danach AUR-paket
+
+## bekannte kleinfunde
+reihenfolge ≠ priorität.
+
+- [ ] `cache.set` in ein eigenes try hinter den rückgabewert (`geproton.ts`, `protondb.ts`) — ein cache-schreibfehler verwirft sonst frisch geladene netz-daten
+- [ ] binary-VDF-skip-tabelle ans kanonische layout angleichen (`shortcuts.ts`) — heute unkritisch, weil reale dateien nur die typen 0x00/01/02 nutzen, aber eine wartungsfalle
+- [ ] papierkorb-status: immer eine zeile pro library ausgeben (`trash.ts`) — bei zwei libraries mit gleichem realpath bekommt die zweite aktuell keine statuszeile
+- [ ] fehlgeschlagenen sha512-asset-fetch von fehlendem asset unterscheiden und in der UI warnen (`geproton.ts`) — aktuell läuft die installation dann still ohne prüfsumme durch
+- [ ] opener-fehler nicht lautlos schlucken (`GameDetailDrawer.vue`, `GameCard.vue`) — zumindest `console.warn`
+- [ ] `batchDirSizes` über den `System`-port statt per rohem `invoke` aufrufen (`cleanupStore.ts`) — mocking in tests wird leichter
+- [ ] `scanLibrary` aufteilen (`scan.ts`, 164 zeilen, 7 concerns) — eigener zyklus, nicht im vorbeigehen
 
 ## status
 
