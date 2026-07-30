@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
-import { assetUrl, launchGame, openExternal } from "../../core/adapters/tauri";
+import { assetUrl, openExternal } from "../../core/adapters/tauri";
 import { SteamRunningError } from "../../core/configwrite";
 import { protonDbAppUrl } from "../../core/protondb";
 import type { Tier } from "../../core/types";
@@ -10,6 +10,7 @@ import { t } from "../i18n";
 import { useConfigStore } from "../stores/configStore";
 import { useScanStore } from "../stores/scanStore";
 import { useUiStore } from "../stores/uiStore";
+import PlayButton from "./PlayButton.vue";
 import TierBadge from "./TierBadge.vue";
 
 const ui = useUiStore();
@@ -91,12 +92,6 @@ onBeforeUnmount(() => {
 
 async function openProtonDb() {
   if (game.value) await openExternal(protonDbAppUrl(game.value.appId)).catch(() => {});
-}
-
-function launch() {
-  const currentGame = game.value;
-  if (!currentGame) return;
-  void launchGame(currentGame.appId).catch(() => {});
 }
 
 // startoptionen (phase 4): "idle" | "saving" | "saved" | fehlermeldung
@@ -248,16 +243,7 @@ watch(errorMessage, (msg) => {
         <p class="meta mono">{{ formatBytes(game.sizeBytes) }} · appid -  {{ game.appId }}</p>
         <p class="meta-tier">{{ TIER_LABEL[game.protonDb?.tier ?? "unknown"] }}</p>
 
-        <button
-          class="play"
-          type="button"
-          :title="t('drawer.launch', { name: game.name })"
-          :aria-label="t('drawer.launch', { name: game.name })"
-          @click.stop="launch"
-        >
-          {{ t("drawer.play") }}
-          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9l7-4.5z" /></svg>
-        </button>
+        <PlayButton variant="full" :appId="game.appId" :name="game.name" />
 
         <div class="divider" />
         <p class="section-label mono">{{ t("drawer.configuration") }}</p>
@@ -367,28 +353,6 @@ watch(errorMessage, (msg) => {
 .head :deep(*) { flex-shrink: 0; }
 .meta { margin: 6px 0 2px; color: var(--fg-2); font-size: 0.875rem; }
 .meta-tier { margin: 0 0 20px; color: var(--fg-1); font-size: 0.875rem; line-height: 1.5; }
-
-.play {
-  width: 100%;
-  background: var(--signal);
-  border: 1px solid var(--signal);
-  color: var(--bg-0);
-  border-radius: var(--r-sm);
-  padding: 13px 14px;
-  font-family: var(--font-body);
-  font-weight: 700;
-  font-size: 0.9375rem;
-  cursor: pointer;
-  transition: filter 0.15s, transform 0.1s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-.play svg { width: 15px; height: 15px; fill: currentColor; }
-.play:hover { filter: brightness(1.12); }
-.play:active { transform: scale(0.98); }
-.play:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 
 .divider { height: 1px; background: var(--line-soft); margin: 20px 0 16px; }
 .section-label {
