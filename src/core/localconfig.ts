@@ -70,7 +70,8 @@ export async function findActiveUser(
   } catch {
     return null; // INV-2: userdata nicht lesbar → startoptionen bleiben unbekannt
   }
-  const first = candidates.sort()[0];
+  // numerisch sortieren: lexikographisch läge "10" vor "2".
+  const first = candidates.sort((a, b) => Number(a) - Number(b))[0];
   if (first === undefined) return null;
   if (candidates.length === 1) return { userId: first };
 

@@ -1,3 +1,4 @@
+import { errText } from "./errtext.js";
 import { joinPath } from "./paths.js";
 import type { System, TrashListing } from "./ports.js";
 
@@ -65,7 +66,7 @@ export async function findTrashEntries(
       // obwohl prefixes darin lagen. rust hat keinen webview-scope.
       listing = await system.listTrashEntries(lib);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
+      const msg = errText(e);
       status.push({ library: lib, dir: "", present: true, count: 0, error: msg });
       unreadable.push(lib);
       continue;

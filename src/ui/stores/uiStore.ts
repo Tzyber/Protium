@@ -1,5 +1,4 @@
 import { defineStore } from "pinia";
-import type { Game } from "../../core/types";
 import { useLibraryStore } from "./libraryStore";
 
 export type ViewId = "library" | "proton" | "cleanup";
@@ -7,17 +6,24 @@ export type ViewId = "library" | "proton" | "cleanup";
 export const useUiStore = defineStore("ui", {
   state: () => ({
     activeView: "library" as ViewId,
-    selectedGame: null as Game | null, // offenes detail-drawer
+    /** appId des spiels im offenen detail-drawer. bewusst KEINE Game-referenz:
+     *  ein rescan ersetzt scan.result komplett — eine gehaltene referenz würde
+     *  veralten, und applyGameConfig (schreibt ins neue array) käme im drawer
+     *  nie an. die appId bleibt über rescans stabil, der drawer löst sie live
+     *  gegen scan.result.games auf. */
+    selectedAppId: null as number | null,
+    /** modal/drawer offen → hauptinhalt + sidebar via inert stilllegen */
+    inertMain: false,
   }),
   actions: {
     go(view: ViewId) {
       this.activeView = view;
     },
-    openGame(game: Game) {
-      this.selectedGame = game;
+    openGame(appId: number) {
+      this.selectedAppId = appId;
     },
     closeGame() {
-      this.selectedGame = null;
+      this.selectedAppId = null;
     },
     // aus dem proton-manager in die nach compat-tool gefilterte library springen
     showLibraryForTool(internalName: string) {

@@ -4,6 +4,7 @@ import type { findOrphans } from "../../src/core/cleanup";
 import type { readAllShortcutAppIds } from "../../src/core/shortcuts";
 import type { findTrashEntries, TrashEntry } from "../../src/core/trash";
 import type { ScanResult } from "../../src/core/types";
+import { formatBytes } from "../../src/ui/format";
 import { setLocale } from "../../src/ui/i18n";
 
 const { mockFindOrphans, mockReadAllShortcutAppIds, mockFindTrashEntries, mockInvoke } = vi.hoisted(
@@ -402,16 +403,16 @@ describe("cleanupStore — batch_dir_sizes NotFound-Skip", () => {
     expect(vanished?.sizeBytes).toBeUndefined();
   });
 
-  it("UI-ternary: undefined-sizeBytes rendert '…' (nicht '—', nicht '0 B')", () => {
-    // derselbe ausdruck wie CleanupView.vue:150,183 — als regressionstest,
-    // damit eine zukünftige änderung an formatBytes oder dem ternären
-    // operator die unterscheidung "verschwunden (…)" vs "leer (—)" nicht
-    // versehentlich wieder verwischt.
-    const formatBytes = (b: number) => (!b || b < 0 ? "—" : `${b} B`);
+  it("UI-ternary: undefined-sizeBytes rendert '…' (nicht '—', nicht die größe)", () => {
+    // derselbe ausdruck wie in CleanupView.vue — als regressionstest, damit eine
+    // zukünftige änderung an formatBytes oder dem ternären operator die
+    // unterscheidung "verschwunden (…)" vs "leer (—)" nicht wieder verwischt.
+    // WICHTIG: die echte formatBytes importieren, kein lokales duplikat — ein
+    // duplikat bliebe grün, selbst wenn das original bricht.
     const renderSize = (sb?: number) => (sb != null ? formatBytes(sb) : "…");
     expect(renderSize(undefined)).toBe("…");
     expect(renderSize(0)).toBe("—"); // echtes leeres verzeichnis
-    expect(renderSize(8192)).toBe("8192 B");
+    expect(renderSize(8192)).toBe(formatBytes(8192));
   });
 });
 
@@ -453,7 +454,7 @@ describe("cleanupStore — trash", () => {
     expect(mockInvoke).not.toHaveBeenCalled();
   });
 
-  it("scanTrash füllt trash und trashSizes", async () => {
+  it("scanTrash füllt trash inkl. größen", async () => {
     const entry = fakeTrashEntry();
     mockFindTrashEntries.mockResolvedValue({
       entries: [entry],
@@ -475,7 +476,6 @@ describe("cleanupStore — trash", () => {
     expect(store.trash).toHaveLength(1);
     expect(store.trash[0]?.appId).toBe(1091500);
     expect(store.trash[0]?.sizeBytes).toBe(8192);
-    expect(store.trashSizes).toEqual({ [entry.path]: 8192 });
     expect(store.trashUnknown).toEqual([]);
   });
 
@@ -657,5 +657,30 @@ describe("cleanupStore — papierkorb-refresh nach dem löschen", () => {
     ]);
 
     expect(store.error).toContain("inzwischen installiert");
+  });
+
+  it("löschfehler überlebt den internen orphan-rescan (scanOrphans setzt error zurück)", async () => {
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === "remove_orphan_dir") throw new Error("permission denied");
+      return "deleted";
+    });
+    const scanStore = useScanStore();
+    scanStore.result = fakeScan([]);
+    const store = useCleanupStore();
+
+    await store.deleteOrphans([
+      {
+        appId: 888888,
+        type: "shadercache",
+        path: "/lib/steamapps/shadercache/888888",
+        library: "/lib",
+      },
+    ]);
+
+    // der rescan muss gelaufen sein (liste aktualisiert) UND der fehler
+    // darf davon nicht weggewischt worden sein
+    expect(mockFindOrphans).toHaveBeenCalled();
+    expect(store.error).toContain("888888");
+    expect(store.error).toContain("permission denied");
   });
 });

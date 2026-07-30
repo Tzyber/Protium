@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { availableBuiltinProtons, BLOCKLIST, isBlocked } from "../../src/core/blocklist.js";
 import { parseCompatToolMapping } from "../../src/core/compat.js";
+import { errText } from "../../src/core/errtext.js";
 import { parseLibraryFolders } from "../../src/core/libraryfolders.js";
 import { parseManifest } from "../../src/core/manifest.js";
 import { joinPath } from "../../src/core/paths.js";
@@ -131,6 +132,20 @@ describe("parseLibraryFolders", () => {
       "/home/u/.local/share/Steam",
       "/mnt/games/SteamLibrary",
     ]);
+  });
+});
+
+describe("errText", () => {
+  it("string-rejection (tauri invoke) bleibt erhalten", () => {
+    expect(errText("scope-fehler: forbidden path")).toBe("scope-fehler: forbidden path");
+  });
+  it("Error → message", () => {
+    expect(errText(new Error("kaputt"))).toBe("kaputt");
+  });
+  it("sonstiges → String()", () => {
+    expect(errText(42)).toBe("42");
+    expect(errText(null)).toBe("null");
+    expect(errText(undefined)).toBe("undefined");
   });
 });
 

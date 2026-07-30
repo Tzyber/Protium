@@ -36,8 +36,7 @@
       "allow": [
         { "url": "https://www.protondb.com/*" },
         { "url": "https://api.github.com/*" },
-        { "url": "https://github.com/*" },
-        { "url": "https://objects.githubusercontent.com/*" }
+        { "url": "https://github.com/*" }
       ]
     },
     {

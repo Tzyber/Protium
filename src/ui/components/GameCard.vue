@@ -30,55 +30,55 @@ function launch() {
 </script>
 
 <template>
-  <article
-    class="card"
-    role="button"
-    tabindex="0"
-    :aria-label="t('card.openDetails', { name: game.name })"
-    @click="ui.openGame(game)"
-    @keydown.enter.prevent="ui.openGame(game)"
-    @keydown.space.prevent="ui.openGame(game)"
-  >
-    <div class="cover">
-      <img
-        v-if="src"
-        :src="src"
-        :alt="game.name"
-        loading="lazy"
-        decoding="async"
-        @error="onError"
-      />
-      <div v-else class="cover-fallback">
-        <span class="fb-name">{{ game.name }}</span>
-      </div>
-
-      <div class="overlay-top">
-        <TierBadge
-          v-if="game.protonDb"
-          :tier="game.protonDb.tier"
-          :confidence="game.protonDb.confidence"
+  <article class="card">
+    <button
+      class="card-main"
+      type="button"
+      :aria-label="t('card.openDetails', { name: game.name })"
+      @click="ui.openGame(game.appId)"
+    >
+      <div class="cover">
+        <img
+          v-if="src"
+          :src="src"
+          :alt="game.name"
+          loading="lazy"
+          decoding="async"
+          @error="onError"
         />
-      </div>
-    </div>
-
-    <div class="body">
-      <h3 :title="game.name">{{ game.name }}</h3>
-      <div class="meta">
-        <span class="chip" :class="{ muted: game.compatTool === 'default' }" :title="game.compatTool">
-          {{ game.compatTool }}
-        </span>
-        <div class="meta-right">
-          <button
-            class="play"
-            type="button"
-            :title="t('card.launch', { name: game.name })"
-            :aria-label="t('card.launch', { name: game.name })"
-            @click.stop="launch"
-          >
-            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9l7-4.5z" /></svg>
-          </button>
-          <span class="size mono">{{ formatBytes(game.sizeBytes) }}</span>
+        <div v-else class="cover-fallback">
+          <span class="fb-name">{{ game.name }}</span>
         </div>
+
+        <div class="overlay-top">
+          <TierBadge
+            v-if="game.protonDb"
+            :tier="game.protonDb.tier"
+            :confidence="game.protonDb.confidence"
+          />
+        </div>
+      </div>
+
+      <div class="body">
+        <h3 :title="game.name">{{ game.name }}</h3>
+      </div>
+    </button>
+
+    <div class="meta">
+      <span class="chip" :class="{ muted: game.compatTool === 'default' }" :title="game.compatTool">
+        {{ game.compatTool }}
+      </span>
+      <div class="meta-right">
+        <button
+          class="play"
+          type="button"
+          :title="t('card.launch', { name: game.name })"
+          :aria-label="t('card.launch', { name: game.name })"
+          @click.stop="launch"
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9l7-4.5z" /></svg>
+        </button>
+        <span class="size mono">{{ formatBytes(game.sizeBytes) }}</span>
       </div>
     </div>
   </article>
@@ -90,18 +90,32 @@ function launch() {
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   overflow: hidden;
-  cursor: pointer;
+  cursor: default;
   transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
 }
-.card:hover {
+.card:has(.card-main:hover) {
   border-color: var(--signal-dim);
   transform: translateY(-2px);
   box-shadow: 0 8px 24px -12px var(--signal-glow);
 }
-.card:focus-visible {
+.card:has(.card-main:focus-visible) {
   outline: 2px solid var(--signal);
   outline-offset: 2px;
 }
+
+.card-main {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.card-main:focus-visible { outline: none; }
 
 .cover {
   position: relative;
@@ -135,7 +149,7 @@ function launch() {
 
 .overlay-top { position: absolute; top: 8px; right: 8px; }
 
-.body { padding: 12px 12px 12px; }
+.body { padding: 12px 12px 6px; }
 h3 {
   margin: 0 0 10px;
   font-family: var(--font-display);
@@ -146,7 +160,7 @@ h3 {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 12px 12px; }
 .chip {
   font-family: var(--font-mono);
   font-size: 0.75rem;

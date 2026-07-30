@@ -1,5 +1,6 @@
 import { availableBuiltinProtons, isBlocked } from "./blocklist.js";
 import { type CompatToolMapping, listCompatTools, parseCompatToolMapping } from "./compat.js";
+import { errText } from "./errtext.js";
 import { parseLibraryFolders } from "./libraryfolders.js";
 import { findActiveUser, readLaunchOptions } from "./localconfig.js";
 import { parseManifest } from "./manifest.js";
@@ -55,7 +56,7 @@ export async function scanLibrary(ports: Ports, opts: ScanOptions): Promise<Scan
       libraries = parseLibraryFolders(await fs.readTextFile(lfPath));
     }
   } catch (e) {
-    warnings.push(`libraryfolders.vdf nicht lesbar: ${(e as Error).message}`);
+    warnings.push(`libraryfolders.vdf nicht lesbar: ${errText(e)}`);
   }
   if (libraries.length === 0) libraries = [steamRoot]; // fallback: root ist selbst eine library
 
@@ -100,7 +101,7 @@ export async function scanLibrary(ports: Ports, opts: ScanOptions): Promise<Scan
     }
   } catch (e) {
     mappingUsable = false;
-    warnings.push(`config.vdf nicht lesbar: ${(e as Error).message}`);
+    warnings.push(`config.vdf nicht lesbar: ${errText(e)}`);
   }
   const compatFor = (appId: number): string =>
     !mappingUsable ? "unknown" : (mapping.get(appId) ?? "default");
@@ -117,7 +118,7 @@ export async function scanLibrary(ports: Ports, opts: ScanOptions): Promise<Scan
     try {
       localConfigText = await fs.readTextFile(paths.localConfigVdf(steamRoot, activeUser.userId));
     } catch (e) {
-      warnings.push(`localconfig.vdf nicht lesbar: ${(e as Error).message}`);
+      warnings.push(`localconfig.vdf nicht lesbar: ${errText(e)}`);
     }
   }
 
@@ -127,7 +128,7 @@ export async function scanLibrary(ports: Ports, opts: ScanOptions): Promise<Scan
     try {
       await system.allowLibraryScope(lib); // externe mounts vor read freigeben (R-5)
     } catch (e) {
-      warnings.push(`library "${lib}" nicht scope-bar, übersprungen: ${(e as Error).message}`);
+      warnings.push(`library "${lib}" nicht scope-bar, übersprungen: ${errText(e)}`);
       skippedLibraries.push({ path: lib, reason: "scope-failed" });
       continue;
     }
@@ -137,7 +138,7 @@ export async function scanLibrary(ports: Ports, opts: ScanOptions): Promise<Scan
       if (!(await fs.exists(appsDir))) continue;
       entries = await fs.readDir(appsDir);
     } catch (e) {
-      warnings.push(`library "${lib}" nicht lesbar: ${(e as Error).message}`);
+      warnings.push(`library "${lib}" nicht lesbar: ${errText(e)}`);
       skippedLibraries.push({ path: lib, reason: "read-failed" });
       continue;
     }
@@ -145,7 +146,9 @@ export async function scanLibrary(ports: Ports, opts: ScanOptions): Promise<Scan
       const m = MANIFEST_RE.exec(entry.name);
       if (!m) continue;
       try {
-        const data = parseManifest(await fs.readTextFile(paths.appManifest(lib, Number(m[1]))));
+        // entry.name statt pfad-neukonstruktion: ein dateiname wie
+        // appmanifest_042.acf (führende null) würde sonst als _42 gelesen → throw.
+        const data = parseManifest(await fs.readTextFile(joinPath(appsDir, entry.name)));
         if (isBlocked(data.appId, data.name)) {
           blockedAppIds.add(data.appId);
           continue;
@@ -166,7 +169,7 @@ export async function scanLibrary(ports: Ports, opts: ScanOptions): Promise<Scan
           prefixPath: paths.compatdataPath(lib, data.appId),
         });
       } catch (e) {
-        warnings.push(`${entry.name} übersprungen: ${(e as Error).message}`);
+        warnings.push(`${entry.name} übersprungen: ${errText(e)}`);
       }
     }
   }

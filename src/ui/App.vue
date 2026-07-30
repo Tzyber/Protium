@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted } from "vue";
+import { computed, nextTick, onMounted, watch } from "vue";
 import ProtiumLogo from "./components/ProtiumLogo.vue";
 import { t } from "./i18n";
 import { useScanStore } from "./stores/scanStore";
@@ -11,6 +11,25 @@ import ProtonManagerView from "./views/ProtonManagerView.vue";
 const scan = useScanStore();
 const ui = useUiStore();
 onMounted(() => scan.runScan());
+
+// view-wechsel: h1 der neuen view fokussieren, damit screenreader den titel ansagen
+watch(
+  () => ui.activeView,
+  async () => {
+    await nextTick();
+    const h1 = document.querySelector<HTMLElement>(".content h1");
+    if (!h1) return;
+    h1.tabIndex = -1;
+    h1.focus({ preventScroll: true });
+    h1.addEventListener(
+      "blur",
+      () => {
+        h1.removeAttribute("tabindex");
+      },
+      { once: true },
+    );
+  },
+);
 
 const nav: { id: ViewId | "settings"; label: string; active: boolean }[] = [
   { id: "library", label: t("app.navLibrary"), active: true },
@@ -26,8 +45,9 @@ const rootShort = computed(() => {
 </script>
 
 <template>
+  <a class="skip-link" href="#main-content">{{ t("app.skipToContent") }}</a>
   <div class="shell">
-    <aside class="sidebar">
+    <aside class="sidebar" :inert="ui.inertMain || undefined">
       <div class="brand">
         <div class="logo"><ProtiumLogo :size="28"/></div>
         <div>
@@ -60,7 +80,7 @@ const rootShort = computed(() => {
       </div>
     </aside>
 
-    <main class="content">
+    <main id="main-content" class="content">
       <LibraryView v-if="ui.activeView === 'library'" />
       <ProtonManagerView v-else-if="ui.activeView === 'proton'" />
       <CleanupView v-else-if="ui.activeView === 'cleanup'" />
@@ -69,6 +89,24 @@ const rootShort = computed(() => {
 </template>
 
 <style scoped>
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: 8px;
+  z-index: 100;
+  background: var(--signal);
+  color: var(--bg-0);
+  padding: 8px 14px;
+  border-radius: var(--r-sm);
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.875rem;
+  text-decoration: none;
+}
+.skip-link:focus-visible {
+  top: 8px;
+}
+
 .shell { display: grid; grid-template-columns: 216px 1fr; height: 100%; }
 
 .sidebar {
@@ -115,7 +153,7 @@ nav { display: flex; flex-direction: column; gap: 2px; }
   box-shadow: inset 2px 0 0 var(--signal);
 }
 .nav-item:disabled { color: var(--fg-2); cursor: default; }
-.soon { font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: 0.1em; opacity: 0.6; }
+.soon { font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: 0.1em; opacity: 0.85; }
 
 .readout {
   margin-top: auto;

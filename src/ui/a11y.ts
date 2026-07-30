@@ -11,6 +11,10 @@ function getFocusableElements(root: HTMLElement): HTMLElement[] {
   return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter((el) => {
     if (el.hasAttribute("disabled")) return false;
     if (el.getAttribute("aria-hidden") === "true") return false;
+    // der selector ist eine union: <button tabindex="-1"> matcht über den
+    // button-zweig, obwohl es aus der tab-reihenfolge entfernt wurde. ein
+    // focus-trap darf solche elemente nicht anspringen.
+    if (el.tabIndex < 0) return false;
     return true;
   });
 }
@@ -54,5 +58,18 @@ export function trapFocus(event: KeyboardEvent, root: HTMLElement | null): void 
 export function restoreFocus(target: HTMLElement | null): void {
   if (target?.isConnected) {
     target.focus({ preventScroll: true });
+    return;
   }
+  // nach unmount: aktiver sidebar-tab → view-h1 → body
+  const nav = document.querySelector<HTMLElement>('[aria-current="page"]');
+  if (nav) {
+    nav.focus({ preventScroll: true });
+    return;
+  }
+  const h1 = document.querySelectorAll<HTMLElement>(".content h1").item(0) ?? null;
+  if (h1) {
+    h1.focus({ preventScroll: true });
+    return;
+  }
+  document.body.focus({ preventScroll: true });
 }

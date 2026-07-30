@@ -104,5 +104,5 @@ h3 {
 }
 .btn.ghost { background: transparent; color: var(--fg-1); border-color: var(--line); }
 .btn.ghost:hover { color: var(--fg-0); border-color: var(--signal-dim); }
-.btn.danger { background: var(--tier-borked); border-color: var(--tier-borked); color: #fff; }
+.btn.danger { background: #c03940; border-color: #c03940; color: #fff; }
 </style>

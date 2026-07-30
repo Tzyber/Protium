@@ -3,10 +3,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GeRelease } from "../../src/core/geproton";
 import { setLocale } from "../../src/ui/i18n";
 
-const { mockAppCacheDir, mockDownloadFile, mockExtractTarball } = vi.hoisted(() => ({
+const { mockAppCacheDir, mockDownloadFile, mockExtractTarball, mockListen } = vi.hoisted(() => ({
   mockAppCacheDir: vi.fn(async () => "/tmp/cache"),
   mockDownloadFile: vi.fn(async () => "a".repeat(128)),
   mockExtractTarball: vi.fn<() => Promise<void>>(),
+  mockListen: vi.fn(async () => () => {}),
 }));
 
 vi.mock("../../src/core/adapters/tauri", async () => {
@@ -33,7 +34,7 @@ vi.mock("../../src/core/adapters/tauri", async () => {
 });
 
 vi.mock("@tauri-apps/api/event", () => ({
-  listen: vi.fn(async () => {}),
+  listen: mockListen,
 }));
 
 import { useProtonStore } from "../../src/ui/stores/protonStore";
@@ -47,6 +48,77 @@ const release: GeRelease = {
   tarball: { name: "GE-Proton9-27.tar.gz", url: "https://dl/ge.tar.gz", size: 400 },
   sha512Url: null,
 };
+
+function fakeScanResult() {
+  return {
+    steamRoot: "/root",
+    libraries: [],
+    games: [],
+    compatToolsInstalled: [],
+    builtinProtonsInstalled: [],
+    defaultCompatTool: null,
+    steamUserId: null,
+    warnings: [],
+    skippedLibraries: [],
+  };
+}
+
+describe("protonStore init + pump-robustheit", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    setLocale("de");
+    mockListen.mockReset();
+    mockListen.mockResolvedValue(() => {});
+    mockDownloadFile.mockClear();
+    mockExtractTarball.mockClear();
+    mockAppCacheDir.mockClear();
+    mockAppCacheDir.mockResolvedValue("/tmp/cache");
+    mockExtractTarball.mockImplementation(() => new Promise(() => {})); // blockiert
+  });
+
+  it("init: listener-fehler → keine unhandled rejection, releases laden trotzdem, retry möglich", async () => {
+    mockListen.mockRejectedValueOnce(new Error("event api unavailable"));
+    const store = useProtonStore();
+    const loadReleases = vi.fn(async () => {});
+    store.loadReleases = loadReleases;
+
+    await store.init();
+
+    expect(store.listenerReady).toBe(false);
+    expect(loadReleases).toHaveBeenCalledTimes(1);
+  });
+
+  it("init: erfolgreicher listener → kein erneutes listen beim zweiten aufruf", async () => {
+    const store = useProtonStore();
+    store.loadReleases = vi.fn(async () => {});
+
+    await store.init();
+    await store.init();
+
+    expect(store.listenerReady).toBe(true);
+    expect(mockListen).toHaveBeenCalledTimes(1);
+  });
+
+  it("pump: release nicht (mehr) in der liste → job-leiche wird aufgeräumt, queue hängt nicht", async () => {
+    const scanStore = useScanStore();
+    scanStore.result = fakeScanResult();
+    const store = useProtonStore();
+    store.releases = []; // z. B. direkt nach mount, releases noch nicht geladen
+
+    store.queueInstall(release);
+    await vi.waitFor(() => {
+      expect(store.jobs[release.tag]).toBeUndefined();
+    });
+    expect(store.activeTag).toBeNull();
+
+    // und der nächste gültige eintrag startet ganz normal
+    store.releases = [release];
+    store.queueInstall(release);
+    await vi.waitFor(() => {
+      expect(store.activeTag).toBe(release.tag);
+    });
+  });
+});
 
 describe("protonStore pump-phasen", () => {
   beforeEach(() => {

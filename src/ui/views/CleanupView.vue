@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import type { TrashEntry } from "../../core/trash";
 import type { OrphanEntry } from "../../core/types";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
 import { formatBytes } from "../format";
 import { getLocale, t } from "../i18n";
 import { useCleanupStore } from "../stores/cleanupStore";
+import { useUiStore } from "../stores/uiStore";
 
 const cleanup = useCleanupStore();
+const ui = useUiStore();
 
 // ---- tabs ----
 // drei listen auf einer seite waren nicht mehr bedienbar: bei 19 prefixes musste
@@ -79,8 +81,18 @@ const compatdataTotalBytes = computed(() =>
   compatdataOrphans.value.reduce((sum, o) => sum + (o.sizeBytes ?? 0), 0),
 );
 
+const shaderAllSelected = computed(
+  () =>
+    shadercacheOrphans.value.length > 0 &&
+    shadercacheOrphans.value.every((o) => selected.has(cleanup.key(o))),
+);
+const compatAllSelected = computed(() => {
+  const candidates = compatdataOrphans.value.filter((o) => !o.potentialShortcut);
+  return candidates.length > 0 && candidates.every((o) => selected.has(cleanup.key(o)));
+});
+
 function selectAllShader() {
-  const all = shadercacheOrphans.value.every((o) => selected.has(cleanup.key(o)));
+  const all = shaderAllSelected.value;
   for (const o of shadercacheOrphans.value) {
     if (all) selected.delete(cleanup.key(o));
     else selected.add(cleanup.key(o));
@@ -89,7 +101,7 @@ function selectAllShader() {
 
 function selectAllCompat() {
   const candidates = compatdataOrphans.value.filter((o) => !o.potentialShortcut);
-  const all = candidates.every((o) => selected.has(cleanup.key(o)));
+  const all = compatAllSelected.value;
   for (const o of candidates) {
     if (all) selected.delete(cleanup.key(o));
     else selected.add(cleanup.key(o));
@@ -119,10 +131,11 @@ function startDelete(candidates: OrphanEntry[]) {
 }
 
 async function confirmDelete() {
+  // der rescan läuft IM store (deleteOrphans) — ein zweiter hier würde die
+  // dort gesammelten löschfehler wieder zurücksetzen.
   await cleanup.deleteOrphans(deleteCandidates.value);
   deleteCandidates.value = [];
   selected.clear();
-  await cleanup.scanOrphans();
 }
 
 function cancelDelete() {
@@ -161,6 +174,17 @@ const trashSelectedBytes = computed(() =>
 
 const trashDeleteCandidates = ref<TrashEntry[]>([]);
 const trashDeleting = ref(false);
+
+// hauptinhalt stilllegen während confirm-dialog offen ist
+watch(
+  () => deleteCandidates.value.length + trashDeleteCandidates.value.length,
+  (n) => {
+    ui.inertMain = n > 0;
+  },
+);
+onBeforeUnmount(() => {
+  ui.inertMain = false;
+});
 
 function startTrashDelete(candidates: TrashEntry[]) {
   if (candidates.length) trashDeleteCandidates.value = [...candidates];
@@ -201,8 +225,12 @@ function trashDate(ms: number): string {
   });
 }
 
+const trashAllSelected = computed(
+  () => trashBySize.value.length > 0 && trashBySize.value.every((e) => trashSelected.has(e.path)),
+);
+
 function selectAllTrash() {
-  const all = trashBySize.value.every((e) => trashSelected.has(e.path));
+  const all = trashAllSelected.value;
   for (const e of trashBySize.value) {
     if (all) trashSelected.delete(e.path);
     else trashSelected.add(e.path);
@@ -229,7 +257,7 @@ const tabLabel = (id: Tab) =>
     <header class="bar">
       <div class="title">
         <span class="label">{{ t("cleanup.label") }}</span>
-        <h2>{{ t("cleanup.orphanedData") }}</h2>
+        <h1>{{ t("cleanup.orphanedData") }}</h1>
       </div>
       <button class="scan-btn" type="button" :disabled="busy" @click="cleanup.scanOrphans()">
         {{ cleanup.scanning ? t("cleanup.searching") : t("cleanup.searchButton") }}
@@ -248,7 +276,7 @@ const tabLabel = (id: Tab) =>
     </div>
 
 
-    <div v-if="cleanup.error" class="hint" role="status">{{ cleanup.error }}</div>
+    <div v-if="cleanup.error" class="hint" role="alert">{{ cleanup.error }}</div>
 
     <!-- tabs: eine liste sichtbar, eine aktionsleiste, kein endloses scrollen -->
     <div class="tabs" role="tablist" :aria-label="t('cleanup.tabsLabel')">
@@ -301,6 +329,7 @@ const tabLabel = (id: Tab) =>
       <!-- ---- shader-caches ---- -->
       <div
         v-show="tab === 'shaders'"
+        :aria-busy="cleanup.scanning"
         id="cv-panel-shaders"
         class="panel"
         role="tabpanel"
@@ -315,34 +344,39 @@ const tabLabel = (id: Tab) =>
             v-if="shadercacheOrphans.length"
             class="sel-all"
             type="button"
+            :aria-pressed="shaderAllSelected"
             @click="selectAllShader()"
           >
             {{ t("cleanup.selectAll") }}
           </button>
         </div>
 
-        <div v-if="shadercacheOrphans.length" class="list">
-          <button
+        <ul v-if="shadercacheOrphans.length" class="list">
+          <li
             v-for="o in shadercacheOrphans"
             :key="cleanup.key(o)"
-            type="button"
-            class="row"
-            :class="{ on: selected.has(cleanup.key(o)) }"
-            :aria-pressed="selected.has(cleanup.key(o))"
-            @click="toggle(cleanup.key(o))"
           >
-            <span class="box" aria-hidden="true" />
-            <span class="rname mono">{{ o.appId }}</span>
-            <span class="rpath mono" :title="o.path">{{ shortPath(o.path) }}</span>
-            <span class="rsize mono">{{ o.sizeBytes != null ? formatBytes(o.sizeBytes) : "…" }}</span>
-          </button>
-        </div>
+            <button
+              type="button"
+              class="row"
+              :class="{ on: selected.has(cleanup.key(o)) }"
+              :aria-pressed="selected.has(cleanup.key(o))"
+              @click="toggle(cleanup.key(o))"
+            >
+              <span class="box" aria-hidden="true" />
+              <span class="rname mono">{{ o.appId }}</span>
+              <span class="rpath mono" :title="o.path">{{ shortPath(o.path) }}<span class="sr-only">{{ o.path }}</span></span>
+              <span class="rsize mono">{{ o.sizeBytes != null ? formatBytes(o.sizeBytes) : "…" }}</span>
+            </button>
+          </li>
+        </ul>
         <div v-else class="empty">{{ t("cleanup.empty") }}</div>
       </div>
 
       <!-- ---- wine-prefixes ---- -->
       <div
         v-show="tab === 'prefixes'"
+        :aria-busy="cleanup.scanning"
         id="cv-panel-prefixes"
         class="panel"
         role="tabpanel"
@@ -358,6 +392,7 @@ const tabLabel = (id: Tab) =>
             v-if="compatdataOrphans.length"
             class="sel-all warn"
             type="button"
+            :aria-pressed="compatAllSelected"
             @click="selectAllCompat()"
           >
             {{ t("cleanup.selectAll") }}
@@ -366,35 +401,41 @@ const tabLabel = (id: Tab) =>
 
         <p class="moved-note">{{ t("cleanup.winePrefixMovedNote") }}</p>
 
-        <div v-if="compatdataOrphans.length" class="list">
-          <button
+        <ul v-if="compatdataOrphans.length" class="list">
+          <li
             v-for="o in compatdataOrphans"
             :key="cleanup.key(o)"
-            type="button"
-            class="row"
-            :class="{ on: selected.has(cleanup.key(o)) }"
-            :aria-pressed="selected.has(cleanup.key(o))"
-            @click="toggle(cleanup.key(o))"
           >
-            <span class="box" aria-hidden="true" />
-            <span class="rname mono">
-              {{ o.appId }}
-              <span
-                v-if="o.potentialShortcut"
-                class="sc-warn"
-                :title="t('cleanup.potentialShortcutTooltip')"
-              >?</span>
-            </span>
-            <span class="rpath mono" :title="o.path">{{ shortPath(o.path) }}</span>
-            <span class="rsize mono">{{ o.sizeBytes != null ? formatBytes(o.sizeBytes) : "…" }}</span>
-          </button>
-        </div>
+            <button
+              type="button"
+              class="row"
+              :class="{ on: selected.has(cleanup.key(o)) }"
+              :aria-pressed="selected.has(cleanup.key(o))"
+              @click="toggle(cleanup.key(o))"
+            >
+              <span class="box" aria-hidden="true" />
+              <span class="rname mono">
+                {{ o.appId }}
+                <span
+                  v-if="o.potentialShortcut"
+                  class="sc-warn"
+                  :title="t('cleanup.potentialShortcutTooltip')"
+                  aria-hidden="true"
+                >?</span>
+                <span v-if="o.potentialShortcut" class="sr-only">{{ t('cleanup.potentialShortcutTooltip') }}</span>
+              </span>
+              <span class="rpath mono" :title="o.path">{{ shortPath(o.path) }}<span class="sr-only">{{ o.path }}</span></span>
+              <span class="rsize mono">{{ o.sizeBytes != null ? formatBytes(o.sizeBytes) : "…" }}</span>
+            </button>
+          </li>
+        </ul>
         <div v-else class="empty">{{ t("cleanup.empty") }}</div>
       </div>
 
       <!-- ---- papierkorb ---- -->
       <div
         v-show="tab === 'trash'"
+        :aria-busy="cleanup.trashScanning"
         id="cv-panel-trash"
         class="panel"
         role="tabpanel"
@@ -410,6 +451,7 @@ const tabLabel = (id: Tab) =>
               v-if="trashBySize.length"
               class="sel-all"
               type="button"
+              :aria-pressed="trashAllSelected"
               @click="selectAllTrash()"
             >
               {{ t("cleanup.selectAll") }}
@@ -442,26 +484,29 @@ const tabLabel = (id: Tab) =>
           </ul>
         </div>
 
-        <div v-if="trashBySize.length" class="list">
-          <button
+        <ul v-if="trashBySize.length" class="list">
+          <li
             v-for="e in trashBySize"
             :key="e.path"
-            type="button"
-            class="row with-date"
-            :class="{ on: trashSelected.has(e.path) }"
-            :aria-pressed="trashSelected.has(e.path)"
-            @click="toggleTrash(e.path)"
           >
-            <span class="box" aria-hidden="true" />
-            <span class="rname mono">{{ e.appId }}</span>
-            <span class="rpath mono" :title="e.path">{{ shortPath(e.path) }}</span>
-            <span
-              class="rdate mono"
-              :title="t('cleanup.trashTrashedAt', { date: trashDate(e.trashedAt) })"
-            >{{ trashDate(e.trashedAt) }}</span>
-            <span class="rsize mono">{{ e.sizeBytes != null ? formatBytes(e.sizeBytes) : "…" }}</span>
-          </button>
-        </div>
+            <button
+              type="button"
+              class="row with-date"
+              :class="{ on: trashSelected.has(e.path) }"
+              :aria-pressed="trashSelected.has(e.path)"
+              @click="toggleTrash(e.path)"
+            >
+              <span class="box" aria-hidden="true" />
+              <span class="rname mono">{{ e.appId }}</span>
+              <span class="rpath mono" :title="e.path">{{ shortPath(e.path) }}<span class="sr-only">{{ e.path }}</span></span>
+              <span
+                class="rdate mono"
+                :title="t('cleanup.trashTrashedAt', { date: trashDate(e.trashedAt) })"
+              >{{ trashDate(e.trashedAt) }}</span>
+              <span class="rsize mono">{{ e.sizeBytes != null ? formatBytes(e.sizeBytes) : "…" }}</span>
+            </button>
+          </li>
+        </ul>
         <div v-else-if="!cleanup.trashScanning" class="empty">
           {{ t("cleanup.trashEmptyState") }}
         </div>
@@ -472,7 +517,7 @@ const tabLabel = (id: Tab) =>
     <!-- footer: außerhalb der scroll-fläche, deshalb immer am unteren rand und
          nie über einer listenzeile. bezieht sich nur auf den sichtbaren tab. -->
     <div v-if="tab !== 'trash' && selectedHere.length + tabCount(tab) > 0" class="actionbar">
-      <span class="sel-info">
+      <span class="sel-info" aria-live="polite">
         {{ t("cleanup.selectedInfo", { n: selectedHere.length, size: formatBytes(selectedHereBytes) }) }}
       </span>
       <div class="actionbar-btns">
@@ -497,7 +542,7 @@ const tabLabel = (id: Tab) =>
     </div>
 
     <div v-if="tab === 'trash' && cleanup.trash.length" class="actionbar">
-      <span class="sel-info">
+      <span class="sel-info" aria-live="polite">
         {{ t("cleanup.trashSelectedInfo", { n: trashSelectedAll.length, size: formatBytes(trashSelectedBytes) }) }}
       </span>
       <div class="actionbar-btns">
@@ -572,7 +617,7 @@ const tabLabel = (id: Tab) =>
   padding-bottom: 8px;
 }
 .bar { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 16px; }
-.title h2 { margin: 2px 0 0; font-family: var(--font-display); font-size: 1.625rem; font-weight: 600; letter-spacing: -0.02em; }
+.title h1 { margin: 2px 0 0; font-family: var(--font-display); font-size: 1.625rem; font-weight: 600; letter-spacing: -0.02em; }
 .title .label { font-family: var(--font-body); font-size: 0.8125rem; letter-spacing: 0.14em; color: var(--fg-2); text-transform: uppercase; }
 
 .scan-btn {
@@ -589,7 +634,7 @@ const tabLabel = (id: Tab) =>
 .blocked {
   background: color-mix(in srgb, var(--tier-borked) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--tier-borked) 40%, transparent);
-  color: var(--tier-borked);
+  color: #ff9aa0;
   border-radius: var(--r-sm);
   padding: 12px 16px;
   font-family: var(--font-body);
@@ -688,7 +733,8 @@ const tabLabel = (id: Tab) =>
   overflow-wrap: anywhere;
 }
 
-.list { display: grid; gap: 6px; }
+.list { display: grid; gap: 6px; list-style: none; padding: 0; margin: 0; }
+.list > li { display: contents; }
 
 /* ganze zeile ist die klickfläche (a11y: große trefferfläche statt mini-checkbox).
    grid statt flex: die pfad-spalte ist minmax(0, 1fr) und kann damit NICHT über
@@ -734,7 +780,7 @@ const tabLabel = (id: Tab) =>
   display: inline-block; width: 16px; height: 16px; line-height: 16px; text-align: center;
   border-radius: 50%; font-size: 0.8125rem; font-weight: 700; margin-left: 4px;
   background: color-mix(in srgb, var(--tier-gold) 20%, transparent);
-  color: var(--tier-gold); border: 1px solid color-mix(in srgb, var(--tier-gold) 40%, transparent);
+  color: #f5d678; border: 1px solid color-mix(in srgb, var(--tier-gold) 40%, transparent);
 }
 .rpath {
   min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
@@ -772,7 +818,7 @@ const tabLabel = (id: Tab) =>
 .action:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 .action.danger {
   background: color-mix(in srgb, var(--tier-borked) 18%, transparent);
-  color: var(--tier-borked);
+  color: #ff9aa0;
   border: 1px solid color-mix(in srgb, var(--tier-borked) 45%, transparent);
 }
 .action.danger:hover:not(:disabled) { background: color-mix(in srgb, var(--tier-borked) 30%, transparent); }
@@ -785,7 +831,7 @@ const tabLabel = (id: Tab) =>
 .saveurge {
   background: color-mix(in srgb, var(--tier-borked) 14%, transparent);
   border: 1px solid color-mix(in srgb, var(--tier-borked) 35%, transparent);
-  color: var(--tier-borked); border-radius: var(--r-sm);
+  color: #ff9aa0; border-radius: var(--r-sm);
   padding: 10px 14px; font-family: var(--font-display); font-size: 0.875rem; font-weight: 600; margin-bottom: 12px;
 }
 

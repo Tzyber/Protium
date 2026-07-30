@@ -37,10 +37,10 @@ function libShort(path: string): string {
   <div class="filterbar">
     <div class="search">
       <label class="sr-only" for="library-search">{{ t("filter.search") }}</label>
-      <span class="ico">⌕</span>
+      <span class="ico" aria-hidden="true">⌕</span>
       <input id="library-search" v-model="lib.search" type="text" :placeholder="t('filter.searchPlaceholder')" spellcheck="false" />
       <button v-if="lib.search" class="clear" type="button" :aria-label="t('filter.searchClear')" @click="lib.search = ''">
-        ✕
+        <span aria-hidden="true">✕</span>
       </button>
     </div>
 
@@ -55,7 +55,7 @@ function libShort(path: string): string {
         :aria-pressed="lib.sortKey === s.key"
         @click="lib.setSort(s.key)"
       >
-        {{ s.label }}<span v-if="lib.sortKey === s.key" class="arr">{{ arrow }}</span>
+        {{ s.label }}<span v-if="lib.sortKey === s.key" class="arr" aria-hidden="true">{{ arrow }}</span><span v-if="lib.sortKey === s.key" class="sr-only">{{ lib.sortDir === "asc" ? t("filter.sortAsc") : t("filter.sortDesc") }}</span>
       </button>
     </div>
 
@@ -141,12 +141,12 @@ function libShort(path: string): string {
   flex: 1;
   background: transparent;
   border: none;
-  outline: none;
   color: var(--fg-0);
   font-family: var(--font-body);
   font-size: 1rem;
   padding: 8px 0;
 }
+.search input:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 .search .clear { background: none; border: none; color: var(--fg-2); cursor: pointer; font-size: 0.875rem; min-width: 24px; min-height: 24px; display: grid; place-items: center; }
 
 .group { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }

@@ -3,6 +3,7 @@ import { getHome, tauriPorts } from "../../core/adapters/tauri";
 import { discoverSteamRoot } from "../../core/paths";
 import { scanLibrary } from "../../core/scan";
 import { type ScanResult, SteamNotFoundError } from "../../core/types";
+import { errMsg } from "../format";
 import { t } from "../i18n";
 
 type Status = "idle" | "scanning" | "done" | "not-found" | "error";
@@ -48,7 +49,7 @@ export const useScanStore = defineStore("scan", {
         } else {
           this.status = "error";
           this.statusText = t("status.error");
-          this.error = (e as Error)?.message ?? String(e);
+          this.error = errMsg(e);
           console.error("scan failed:", e);
         }
       } finally {

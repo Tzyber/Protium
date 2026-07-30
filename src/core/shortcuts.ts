@@ -1,4 +1,5 @@
 import { NUMERIC_RE } from "./cleanup.js";
+import { errText } from "./errtext.js";
 import { paths } from "./paths.js";
 import type { DirEntry, FileSystem } from "./ports.js";
 
@@ -173,7 +174,7 @@ export async function readAllShortcutAppIds(
   try {
     dirExists = await fs.exists(dir);
   } catch (e) {
-    return { status: "unreadable", paths: [], detail: (e as Error).message };
+    return { status: "unreadable", paths: [], detail: errText(e) };
   }
   if (!dirExists) return { status: "none" };
 
@@ -181,7 +182,7 @@ export async function readAllShortcutAppIds(
   try {
     entries = await fs.readDir(dir);
   } catch (e) {
-    return { status: "unreadable", paths: [], detail: (e as Error).message };
+    return { status: "unreadable", paths: [], detail: errText(e) };
   }
 
   for (const entry of entries) {

@@ -15,7 +15,9 @@ import TierBadge from "./TierBadge.vue";
 const ui = useUiStore();
 const config = useConfigStore();
 const scan = useScanStore();
-const game = computed(() => ui.selectedGame);
+// live-auflösung gegen den aktuellen scan-stand: nach einem rescan zeigt der
+// drawer die frischen daten (z. B. direkt nach compat-tool-/startoptionen-write).
+const game = computed(() => scan.result?.games.find((g) => g.appId === ui.selectedAppId) ?? null);
 
 // tier-labels: t() in einem object, damit wir pro tier den lokalisierten text haben.
 // (reactive weil t() selbst zustandslos ist, aber für saubere template-usage als
@@ -65,6 +67,7 @@ function onKeydown(event: KeyboardEvent) {
 watch(
   game,
   async (current) => {
+    ui.inertMain = !!current;
     if (current) {
       lastFocusedElement =
         document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -82,6 +85,7 @@ watch(
 
 onBeforeUnmount(() => {
   if (toastTimer) clearTimeout(toastTimer);
+  ui.inertMain = false;
   restoreFocus(lastFocusedElement);
 });
 
@@ -103,6 +107,9 @@ const launchDirty = computed(() => launchInput.value !== (game.value?.launchOpti
 watch(
   game,
   (g) => {
+    // cover-fehler-index zurücksetzen: ohne das erbt das nächste spiel den
+    // fallback-stand des vorherigen und zeigt trotz vorhandenem cover nur text.
+    idx.value = 0;
     launchInput.value = g?.launchOptions ?? "";
     launchState.value = "idle";
   },
@@ -114,10 +121,14 @@ watch(launchInput, () => {
 
 async function saveLaunch() {
   const g = game.value;
-  if (!g || launchState.value === "saving" || !launchDirty.value) return;
+  if (!g || launchState.value === "saving") return;
+  // dirty-vergleich und gespeicherter wert laufen beide getrimmt — sonst bliebe
+  // der save-button nach dem speichern von " foo " fälschlich aktiv.
+  launchInput.value = launchInput.value.trim();
+  if (!launchDirty.value) return;
   launchState.value = "saving";
   try {
-    await config.saveLaunchOptions(g.appId, launchInput.value.trim());
+    await config.saveLaunchOptions(g.appId, launchInput.value);
     launchState.value = "saved";
   } catch (e) {
     launchState.value = errorText(e);
@@ -215,7 +226,7 @@ watch(errorMessage, (msg) => {
         tabindex="-1"
         @keydown="onKeydown"
       >
-        <button class="close" type="button" :aria-label="t('drawer.close')" @click="ui.closeGame()">✕</button>
+        <button class="close" type="button" :aria-label="t('drawer.close')" @click="ui.closeGame()"><span aria-hidden="true">✕</span></button>
 
         <p :id="descriptionId" class="sr-only">
           {{ t("drawer.srDescription", { name: game.name, size: formatBytes(game.sizeBytes), compatTool: game.compatTool, appId: game.appId }) }}
@@ -295,7 +306,7 @@ watch(errorMessage, (msg) => {
 
         <div class="divider" />
 
-        <a class="pdb-link mono" href="#" @click.prevent="openProtonDb">
+        <a class="pdb-link mono" :href="game ? protonDbAppUrl(game.appId) : '#'" @click.prevent="openProtonDb">
           {{ t("drawer.protondbLink") }}
         </a>
         <p class="hint">{{ t("drawer.protondbHint") }}</p>
@@ -401,7 +412,7 @@ watch(errorMessage, (msg) => {
   padding: 11px 13px;
   font-size: 0.8125rem;
 }
-.control:focus { outline: none; border-color: var(--signal-dim); }
+.control:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; border-color: var(--signal-dim); }
 select.control { cursor: pointer; }
 select.control option { background: var(--bg-1); color: var(--fg-0); }
 

@@ -31,10 +31,10 @@ const showWarnings = ref(false);
     <header class="bar">
       <div class="title">
         <span class="label">{{ t("library.label") }}</span>
-        <h2>
+        <h1>
           {{ visible.length }}
           <span class="unit">{{ t("library.gamesCount", { n: scan.games.length }) }}</span>
-        </h2>
+        </h1>
       </div>
 
       <div class="right">
@@ -42,11 +42,12 @@ const showWarnings = ref(false);
           v-if="scan.warnings.length"
           class="warn-toggle"
           type="button"
+          :aria-label="t('library.warningsToggle', { n: scan.warnings.length })"
           :aria-expanded="showWarnings"
           :aria-controls="warningsId"
           @click="showWarnings = !showWarnings"
         >
-          ⚠ {{ scan.warnings.length }}
+          <span aria-hidden="true">⚠</span> {{ scan.warnings.length }}
         </button>
         <span class="status" role="status" aria-live="polite" aria-atomic="true">{{ scan.statusText }}</span>
         <button class="rescan" type="button" :disabled="scan.status === 'scanning'" @click="scan.runScan()">
@@ -72,15 +73,17 @@ const showWarnings = ref(false);
     <div v-if="scan.status === 'not-found'" class="empty">
       {{ t("library.noSteamFound") }}
     </div>
-    <div v-else-if="scan.status === 'error'" class="empty err">{{ t("library.errorPrefix", { error: scan.error ?? "" }) }}</div>
+    <div v-else-if="scan.status === 'error'" class="empty err" role="alert">{{ t("library.errorPrefix", { error: scan.error ?? "" }) }}</div>
     <div v-else-if="scan.status === 'scanning' && !scan.games.length" class="empty">{{ t("library.scanningState") }}</div>
     <div v-else-if="!visible.length" class="empty">
       {{ t("library.nothingFound") }}<button class="linklike" type="button" @click="lib.reset()">{{ t("library.resetFilter") }}</button>
     </div>
 
-    <div v-else class="grid">
-      <GameCard v-for="g in visible" :key="g.appId" :game="g" />
-    </div>
+    <ul v-else class="grid" :aria-busy="scan.status === 'scanning'">
+      <li v-for="g in visible" :key="g.appId" class="grid-item">
+        <GameCard :game="g" />
+      </li>
+    </ul>
 
     <GameDetailDrawer />
   </section>
@@ -96,7 +99,7 @@ const showWarnings = ref(false);
   gap: 16px;
   margin-bottom: 18px;
 }
-.title h2 {
+.title h1 {
   margin: 2px 0 0;
   font-family: var(--font-display);
   font-size: 1.625rem;
@@ -153,7 +156,11 @@ const showWarnings = ref(false);
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
   gap: var(--gap);
+  list-style: none;
+  padding: 0;
+  margin: 0;
 }
+.grid-item { display: contents; }
 
 .empty {
   padding: 60px 0;

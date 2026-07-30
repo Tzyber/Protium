@@ -33,9 +33,7 @@ export const useCleanupStore = defineStore("cleanup", {
     trashUnknown: [] as string[],
     trashUnreadable: [] as string[],
     trashLibraries: [] as TrashLibraryStatus[],
-    trashSizes: {} as Record<string, number>,
     trashScanning: false,
-    trashDeleting: null as string | null,
   }),
   getters: {
     compatdataOrphans: (s) => s.orphans.filter((o) => o.type === "compatdata"),
@@ -49,7 +47,12 @@ export const useCleanupStore = defineStore("cleanup", {
     async scanOrphans() {
       const scan = useScanStore();
       const result = scan.result;
-      if (!result) return;
+      if (!result) {
+        // gleiches verhalten wie scanTrash: klick vor scan-ende darf nicht
+        // lautlos ins leere laufen.
+        this.error = t("errors.noScanResult");
+        return;
+      }
 
       this.scanning = true;
       this.error = null;
@@ -185,10 +188,13 @@ export const useCleanupStore = defineStore("cleanup", {
           this.deleting.delete(k);
         }
       }
-      // reihenfolge: erst refresh, dann fehler setzen. scanTrash() setzt
-      // this.error zurück (es ist auch eine nutzer-aktion) und würde die
-      // löschfehler sonst verschlucken.
+      // reihenfolge: erst refreshes, dann fehler setzen. scanTrash() und
+      // scanOrphans() setzen this.error zurück und würden die löschfehler
+      // sonst verschlucken — der nutzer sähe die einträge noch in der liste,
+      // aber nicht warum. der orphan-rescan gehört deshalb HIERHER (nicht in
+      // die view): nur so ist die reihenfolge garantiert.
       if (trashedCompatdata) await this.scanTrash();
+      await this.scanOrphans();
       if (errors.length) {
         this.error = [this.error, errors.join("; ")].filter(Boolean).join(" | ");
       }
@@ -262,7 +268,6 @@ export const useCleanupStore = defineStore("cleanup", {
 
         const paths = entries.map((e) => e.path);
         const sizes = await invoke<Record<string, number>>("batch_dir_sizes", { paths });
-        this.trashSizes = sizes;
         for (const e of this.trash) {
           e.sizeBytes = sizes[e.path];
         }
@@ -273,29 +278,25 @@ export const useCleanupStore = defineStore("cleanup", {
       }
     },
 
+    // busy-state fürs löschen hält die view lokal (eine quelle, kein doppelter
+    // store/view-zustand für denselben button).
     async deleteTrashEntry(entry: TrashEntry) {
-      this.trashDeleting = entry.path;
       try {
         await invoke<string>("remove_trash_entry", { path: entry.path });
         this.trash = this.trash.filter((e) => e.path !== entry.path);
       } catch (e) {
         this.error = `${entry.name}: ${errMsg(e)}`;
-      } finally {
-        this.trashDeleting = null;
       }
     },
 
     async emptyTrash() {
       const errors: string[] = [];
       for (const entry of [...this.trash]) {
-        this.trashDeleting = entry.path;
         try {
           await invoke<string>("remove_trash_entry", { path: entry.path });
           this.trash = this.trash.filter((e) => e.path !== entry.path);
         } catch (e) {
           errors.push(`${entry.name}: ${errMsg(e)}`);
-        } finally {
-          this.trashDeleting = null;
         }
       }
       if (errors.length) this.error = errors.join("; ");

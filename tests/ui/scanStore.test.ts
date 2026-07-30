@@ -1,0 +1,141 @@
+import { createPinia, setActivePinia } from "pinia";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { discoverSteamRoot } from "../../src/core/paths";
+import type { scanLibrary } from "../../src/core/scan";
+import { type ScanResult, SteamNotFoundError } from "../../src/core/types";
+import { setLocale } from "../../src/ui/i18n";
+
+const { mockGetHome, mockDiscoverSteamRoot, mockScanLibrary } = vi.hoisted(() => ({
+  mockGetHome: vi.fn<() => Promise<string>>(async () => "/home/u"),
+  mockDiscoverSteamRoot: vi.fn<typeof discoverSteamRoot>(async () => "/home/u/.steam"),
+  mockScanLibrary: vi.fn<typeof scanLibrary>(),
+}));
+
+vi.mock("../../src/core/adapters/tauri", () => ({
+  getHome: mockGetHome,
+  tauriPorts: { fs: {}, http: {}, system: {}, cache: {} },
+}));
+vi.mock("../../src/core/paths", () => ({
+  discoverSteamRoot: mockDiscoverSteamRoot,
+}));
+vi.mock("../../src/core/scan", () => ({
+  scanLibrary: mockScanLibrary,
+}));
+
+import { useScanStore } from "../../src/ui/stores/scanStore";
+
+function fakeResult(): ScanResult {
+  return {
+    steamRoot: "/home/u/.steam",
+    libraries: ["/home/u/.steam"],
+    games: [
+      {
+        appId: 42,
+        name: "Game 42",
+        library: "/home/u/.steam",
+        sizeBytes: 100,
+        installed: true,
+        compatTool: "default",
+        protonDb: null,
+        localHeader: null,
+        headerImage: null,
+      },
+    ],
+    compatToolsInstalled: [],
+    builtinProtonsInstalled: [],
+    defaultCompatTool: null,
+    steamUserId: null,
+    warnings: [],
+    skippedLibraries: [],
+  };
+}
+
+describe("scanStore.runScan", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    setLocale("de");
+    mockGetHome.mockReset();
+    mockGetHome.mockResolvedValue("/home/u");
+    mockDiscoverSteamRoot.mockReset();
+    mockDiscoverSteamRoot.mockResolvedValue("/home/u/.steam");
+    mockScanLibrary.mockReset();
+  });
+
+  it("happy path: scanning → done, result gesetzt, fehler zurückgesetzt", async () => {
+    mockScanLibrary.mockResolvedValue(fakeResult());
+    const store = useScanStore();
+    store.error = "alter fehler";
+
+    await store.runScan();
+
+    expect(store.status).toBe("done");
+    expect(store.result?.games).toHaveLength(1);
+    expect(store.error).toBeNull();
+    expect(store.elapsedMs).toBeGreaterThanOrEqual(0);
+    expect(store.games[0]?.appId).toBe(42);
+  });
+
+  it("SteamNotFoundError → status not-found, kein error-text", async () => {
+    mockDiscoverSteamRoot.mockRejectedValue(new SteamNotFoundError(["/a", "/b"]));
+    const store = useScanStore();
+
+    await store.runScan();
+
+    expect(store.status).toBe("not-found");
+    expect(store.error).toBeNull();
+    expect(store.result).toBeNull();
+    expect(mockScanLibrary).not.toHaveBeenCalled();
+  });
+
+  it("generischer fehler → status error + meldung", async () => {
+    mockScanLibrary.mockRejectedValue(new Error("kaputt"));
+    const store = useScanStore();
+
+    await store.runScan();
+
+    expect(store.status).toBe("error");
+    expect(store.error).toBe("kaputt");
+  });
+
+  it("string-rejection (tauri-invoke) landet lesbar in error", async () => {
+    // tauri-invoke rejectet mit strings, nicht mit Error-objekten (A3)
+    mockGetHome.mockRejectedValue("forbidden path: /home/u");
+    const store = useScanStore();
+
+    await store.runScan();
+
+    expect(store.status).toBe("error");
+    expect(store.error).toBe("forbidden path: /home/u");
+  });
+});
+
+describe("scanStore.applyGameConfig", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    setLocale("de");
+  });
+
+  it("schreibt launchOptions + compatTool ins passende spiel", () => {
+    const store = useScanStore();
+    store.result = fakeResult();
+
+    store.applyGameConfig(42, { launchOptions: "-novid", compatTool: "GE-Proton10-1" });
+
+    const g = store.result.games[0]!;
+    expect(g.launchOptions).toBe("-novid");
+    expect(g.compatTool).toBe("GE-Proton10-1");
+  });
+
+  it("unbekannte appId: kein throw, kein write", () => {
+    const store = useScanStore();
+    store.result = fakeResult();
+
+    expect(() => store.applyGameConfig(999, { compatTool: "x" })).not.toThrow();
+    expect(store.result.games[0]!.compatTool).toBe("default");
+  });
+
+  it("ohne scan-ergebnis: kein throw", () => {
+    const store = useScanStore();
+    expect(() => store.applyGameConfig(42, { compatTool: "x" })).not.toThrow();
+  });
+});

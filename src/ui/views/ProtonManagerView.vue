@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { CompatTool } from "../../core/types";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
 import { formatBytes } from "../format";
@@ -23,12 +23,18 @@ function removable(tt: CompatTool): boolean {
   return tt.source === "user" && /^GE-Proton/i.test(tt.name);
 }
 
-const installedInternal = computed(
-  () => new Set(proton.installedTools.map((tt) => tt.internalName)),
-);
+// abgleich über den VERZEICHNISNAMEN: r.tag ist der GE-release-tag und wird als
+// ordnername in compatibilitytools.d installiert (= tt.name). internalName aus
+// der tool-vdf kann davon abweichen.
+const installedNames = computed(() => new Set(proton.installedTools.map((tt) => tt.name)));
 
 // remove-confirm-state
 const toRemove = ref<CompatTool | null>(null);
+
+// hauptinhalt stilllegen während confirm-dialog offen ist
+watch(toRemove, (v) => {
+  ui.inertMain = !!v;
+});
 const removeGames = computed(() =>
   toRemove.value
     ? toRemove.value.usedBy.map((id) => nameOf.value.get(id) ?? t("proton.appId", { id }))
@@ -70,13 +76,19 @@ function relTime(ts: number): string {
 }
 
 const statusFlash = ref(false);
+let flashTimer: ReturnType<typeof setTimeout> | null = null;
 async function refreshReleases() {
   await proton.loadReleases(true); // expliziter klick → cache umgehen
   statusFlash.value = true;
-  setTimeout(() => {
+  if (flashTimer) clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => {
     statusFlash.value = false;
   }, 1400);
 }
+onBeforeUnmount(() => {
+  if (flashTimer) clearTimeout(flashTimer);
+  ui.inertMain = false;
+});
 
 const statusLine = computed(() => {
   if (proton.loading) return null;
@@ -103,7 +115,7 @@ const statusLine = computed(() => {
     <header class="bar">
       <div class="title">
         <span class="label">{{ t("proton.label") }}</span>
-        <h2>{{ t("proton.versions") }}</h2>
+        <h1>{{ t("proton.versions") }}</h1>
       </div>
       <div class="update">
         <button class="rescan" type="button" :disabled="proton.loading" @click="refreshReleases">
@@ -112,80 +124,85 @@ const statusLine = computed(() => {
         <div
           v-if="statusLine"
           class="statusline"
+          role="status"
           :class="{ warn: !statusLine.ok, flash: statusFlash }"
         >
-          <span class="ic">{{ statusLine.icon }}</span> {{ statusLine.text }}
+          <span class="ic" aria-hidden="true">{{ statusLine.icon }}</span> {{ statusLine.text }}
         </div>
       </div>
     </header>
 
     <!-- installiert -->
     <h3 class="section">{{ t("proton.installed") }} <span class="count">{{ proton.installedTools.length }}</span></h3>
-    <div class="list">
-      <div v-for="tt in proton.installedTools" :key="tt.name" class="row">
-        <div class="rmain">
-          <div class="rname">{{ tt.displayName }}</div>
-          <div class="rsub mono">
-            {{ tt.internalName }} · {{ formatBytes(tt.sizeBytes) }}
-            <span v-if="tt.source === 'system'" class="tag distro">{{ t("proton.distroReadonly") }}</span>
+    <ul class="list" :aria-busy="proton.loading">
+      <li v-for="tt in proton.installedTools" :key="tt.name">
+        <div class="row">
+          <div class="rmain">
+            <div class="rname">{{ tt.displayName }}</div>
+            <div class="rsub mono">
+              {{ tt.internalName }} · {{ formatBytes(tt.sizeBytes) }}
+              <span v-if="tt.source === 'system'" class="tag distro">{{ t("proton.distroReadonly") }}</span>
+            </div>
           </div>
+          <button v-if="tt.usedBy.length" class="used" type="button" @click="ui.showLibraryForTool(tt.internalName)">
+            {{ t("proton.usedBy", { n: tt.usedBy.length }) }}
+          </button>
+          <span v-else class="used muted">{{ t("proton.unused") }}</span>
+          <button
+            v-if="removable(tt)"
+            class="rm"
+            type="button"
+            :disabled="proton.busyRemove === tt.name"
+            @click="toRemove = tt"
+          >
+            {{ proton.busyRemove === tt.name ? "…" : t("common.delete") }}
+          </button>
+          <span v-else class="rm-lock" :title="t('proton.notManageable')"><span aria-hidden="true">🔒</span><span class="sr-only">{{ t('proton.notManageable') }}</span></span>
         </div>
-        <button v-if="tt.usedBy.length" class="used" type="button" @click="ui.showLibraryForTool(tt.internalName)">
-          {{ t("proton.usedBy", { n: tt.usedBy.length }) }}
-        </button>
-        <span v-else class="used muted">{{ t("proton.unused") }}</span>
-        <button
-          v-if="removable(tt)"
-          class="rm"
-          type="button"
-          :disabled="proton.busyRemove === tt.name"
-          @click="toRemove = tt"
-        >
-          {{ proton.busyRemove === tt.name ? "…" : t("common.delete") }}
-        </button>
-        <span v-else class="rm-lock" :title="t('proton.notManageable')">🔒</span>
-      </div>
-    </div>
+      </li>
+    </ul>
 
     <!-- verfügbar -->
     <h3 class="section">{{ t("proton.geReleases") }}</h3>
-    <div v-if="proton.loadError" class="hint">{{ proton.loadError }}</div>
-    <div class="list">
-      <div v-for="r in proton.releases" :key="r.tag" class="row">
-        <div class="rmain">
-          <div class="rname">
-            {{ r.tag }}
-            <span v-if="installedInternal.has(r.tag)" class="tag ok">{{ t("proton.tagInstalled") }}</span>
+    <div v-if="proton.loadError" class="hint" role="alert">{{ proton.loadError }}</div>
+    <ul class="list" :aria-busy="proton.loading">
+      <li v-for="r in proton.releases" :key="r.tag">
+        <div class="row">
+          <div class="rmain">
+            <div class="rname">
+              {{ r.tag }}
+              <span v-if="installedNames.has(r.tag)" class="tag ok">{{ t("proton.tagInstalled") }}</span>
+            </div>
+            <div class="rsub mono">{{ formatBytes(r.tarball.size) }}</div>
+            <div v-if="proton.jobs[r.tag]" class="progress" role="progressbar" :aria-valuemin="0" :aria-valuemax="100" :aria-valuenow="pct(r.tag) ?? undefined" :aria-label="phaseLabel(r.tag)">
+              <template v-if="proton.jobs[r.tag]?.phase === 'downloading'">
+                <div class="track"><div class="fill" :style="{ transform: `scaleX(${(pct(r.tag) ?? 30) / 100})` }" /></div>
+                <span class="phase" aria-live="polite">{{ phaseLabel(r.tag) }}<span v-if="pct(r.tag) !== null"> · {{ pct(r.tag) }}%</span></span>
+              </template>
+              <span v-else class="phase act" aria-live="polite">{{ phaseLabel(r.tag) }}</span>
+            </div>
           </div>
-          <div class="rsub mono">{{ formatBytes(r.tarball.size) }}</div>
-          <div v-if="proton.jobs[r.tag]" class="progress">
-            <template v-if="proton.jobs[r.tag]?.phase === 'downloading'">
-              <div class="track"><div class="fill" :style="{ transform: `scaleX(${(pct(r.tag) ?? 30) / 100})` }" /></div>
-              <span class="phase">{{ phaseLabel(r.tag) }}<span v-if="pct(r.tag) !== null"> · {{ pct(r.tag) }}%</span></span>
-            </template>
-            <span v-else class="phase act">{{ phaseLabel(r.tag) }}</span>
-          </div>
+          <button
+            v-if="!installedNames.has(r.tag) && !proton.jobs[r.tag]"
+            class="install"
+            type="button"
+            @click="proton.queueInstall(r)"
+          >
+            {{ t("proton.install") }}
+          </button>
+          <button
+            v-else-if="proton.jobs[r.tag]"
+            class="cancel"
+            type="button"
+            :title="proton.activeTag === r.tag ? t('proton.cancelDownload') : t('proton.cancelQueue')"
+            @click="proton.cancel(r.tag)"
+          >
+            <span aria-hidden="true">✕</span> {{ t("proton.cancel") }}
+          </button>
+          <span v-else class="used muted" aria-label="✓">{{ t("proton.tagInstalled") }}</span>
         </div>
-        <button
-          v-if="!installedInternal.has(r.tag) && !proton.jobs[r.tag]"
-          class="install"
-          type="button"
-          @click="proton.queueInstall(r)"
-        >
-          {{ t("proton.install") }}
-        </button>
-        <button
-          v-else-if="proton.jobs[r.tag]"
-          class="cancel"
-          type="button"
-          :title="proton.activeTag === r.tag ? t('proton.cancelDownload') : t('proton.cancelQueue')"
-          @click="proton.cancel(r.tag)"
-        >
-          ✕ {{ t("proton.cancel") }}
-        </button>
-        <span v-else class="used muted">✓</span>
-      </div>
-    </div>
+      </li>
+    </ul>
 
     <ConfirmDialog
       v-if="toRemove"
@@ -231,7 +248,7 @@ const statusLine = computed(() => {
   border-color: var(--signal);
   background: color-mix(in srgb, var(--signal) 16%, transparent);
 }
-.title h2 { margin: 2px 0 0; font-family: var(--font-display); font-size: 1.625rem; font-weight: 600; letter-spacing: -0.02em; }
+.title h1 { margin: 2px 0 0; font-family: var(--font-display); font-size: 1.625rem; font-weight: 600; letter-spacing: -0.02em; }
 
 .rescan {
   background: var(--bg-2); color: var(--fg-1);
@@ -243,7 +260,8 @@ const statusLine = computed(() => {
 .section { font-family: var(--font-display); font-size: 0.875rem; font-weight: 600; margin: 22px 0 10px; color: var(--fg-1); }
 .section .count { color: var(--fg-2); font-weight: 400; }
 
-.list { display: grid; gap: 8px; }
+.list { display: grid; gap: 8px; list-style: none; padding: 0; margin: 0; }
+.list > li { display: contents; }
 .row {
   display: flex; align-items: center; gap: 14px;
   background: var(--bg-2); border: 1px solid var(--line);

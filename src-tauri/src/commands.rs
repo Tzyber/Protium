@@ -10,7 +10,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use futures_util::StreamExt;
 use serde::Serialize;
 use sha2::{Digest, Sha512};
-use sysinfo::System;
+use sysinfo::{ProcessRefreshKind, RefreshKind, System};
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_fs::FsExt;
 use tokio::io::AsyncWriteExt;
@@ -355,26 +355,45 @@ fn extract_blocking(src: &str, dest_dir: &str) -> Result<(), String> {
 
 /// R-2: steam-läuft-check (INV-1a). nur "steam" als name erlaubt —
 /// bewusst kein generisches process-enumeration-werkzeug für die webview.
+/// async + spawn_blocking: sync commands laufen bei tauri v2 auf dem main-thread,
+/// und dieser check steht vor JEDEM write-gate.
 #[tauri::command]
-pub fn is_process_running(name: String) -> Result<bool, String> {
+pub async fn is_process_running(name: String) -> Result<bool, String> {
     if name.to_lowercase() != "steam" {
         return Err("process check only allowed for steam".into());
     }
-    // Substring-Match schließt absichtlich Steam-Helper wie steamwebhelper ein;
-    // false-positive Blockade ist sicherer als false-negative während Writes.
-    let sys = System::new_all();
-    let target = name.to_lowercase();
-    Ok(sys
-        .processes()
-        .values()
-        .any(|p| p.name().to_string_lossy().to_lowercase().contains(&target)))
+    tokio::task::spawn_blocking(move || {
+        // Substring-Match schließt absichtlich Steam-Helper wie steamwebhelper ein;
+        // false-positive Blockade ist sicherer als false-negative während Writes.
+        // nur die prozessliste refreshen — new_all() baute eine komplette
+        // system-inventur (CPU/RAM/disks/netzwerk) für einen namens-check.
+        // name() kommt aus /proc/<pid>/stat und ist auch mit
+        // ProcessRefreshKind::nothing() befüllt.
+        let sys = System::new_with_specifics(
+            RefreshKind::nothing().with_processes(ProcessRefreshKind::nothing()),
+        );
+        let target = name.to_lowercase();
+        Ok(sys
+            .processes()
+            .values()
+            .any(|p| p.name().to_string_lossy().to_lowercase().contains(&target)))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
-/// R-3 (S-01: validierung nach batch_dir_sizes-vorlage)
+/// R-3 (S-01: validierung nach batch_dir_sizes-vorlage).
+/// async + spawn_blocking: der rekursive walk darf nicht auf dem main-thread laufen.
 #[tauri::command]
-pub fn dir_size(path: String) -> Result<u64, String> {
-    sanitize_path(&path, "dir_size")?;
-    let real = fs::canonicalize(&path).map_err(|e| e.to_string())?;
+pub async fn dir_size(path: String) -> Result<u64, String> {
+    tokio::task::spawn_blocking(move || dir_size_inner(&path))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn dir_size_inner(path: &str) -> Result<u64, String> {
+    sanitize_path(path, "dir_size")?;
+    let real = fs::canonicalize(path).map_err(|e| e.to_string())?;
     if !is_safe_path(&real.to_string_lossy()) {
         return Err(format!("blocked path: {path}"));
     }
@@ -400,8 +419,15 @@ fn dir_size_impl(path: &Path) -> u64 {
 }
 
 /// R-3b: batch-version — sequentiell (IO-bound, kein rayon).
+/// async + spawn_blocking: walkt GB-große bäume, gehört nicht auf den main-thread.
 #[tauri::command]
-pub fn batch_dir_sizes(paths: Vec<String>) -> Result<HashMap<String, u64>, String> {
+pub async fn batch_dir_sizes(paths: Vec<String>) -> Result<HashMap<String, u64>, String> {
+    tokio::task::spawn_blocking(move || batch_dir_sizes_inner(paths))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn batch_dir_sizes_inner(paths: Vec<String>) -> Result<HashMap<String, u64>, String> {
     let mut map = HashMap::new();
     for p in paths {
         sanitize_path(&p, "batch_dir_sizes")?;
@@ -432,11 +458,17 @@ const TRASH_DIR_NAME: &str = ".protium-trash";
 /// löscht ein verwaistes compatdata- oder shadercache-verzeichnis.
 /// leitet library + typ selbst ab (defense-in-depth: backend traut frontend nicht).
 /// compatdata → trash (rename), shadercache → hard delete.
+/// async + spawn_blocking: remove_dir_all/rename auf GB-großen prefixes
+/// darf den main-thread nicht blockieren.
 #[tauri::command]
-pub fn remove_orphan_dir(app: AppHandle, path: String) -> Result<String, String> {
-    let (library, canonical) = validate_and_prepare(&path)?;
-    allow_library_scope_inner(app, &library)?;
-    remove_orphan_dir_inner(&canonical, &library)
+pub async fn remove_orphan_dir(app: AppHandle, path: String) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || {
+        let (library, canonical) = validate_and_prepare(&path)?;
+        allow_library_scope_inner(app, &library)?;
+        remove_orphan_dir_inner(&canonical, &library)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// testbare validierungskette für den command-wrapper: sanitized input
@@ -531,8 +563,15 @@ fn remove_orphan_dir_inner(canonical: &Path, library: &Path) -> Result<String, S
 /// muster: `.protium-trash/(compatdata|shadercache)_<appId>_<ms>`.
 /// keinerlei gates (kein steam-läuft, kein scope-check): der papierkorb ist
 /// keine steam-datei, löschen kann nichts korrumpieren.
+/// async + spawn_blocking (remove_dir_all auf GB-bäumen).
 #[tauri::command]
-pub fn remove_trash_entry(path: String) -> Result<String, String> {
+pub async fn remove_trash_entry(path: String) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || remove_trash_entry_inner(&path))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn remove_trash_entry_inner(path: &str) -> Result<String, String> {
     sanitize_path(&path, "remove_trash_entry")?;
 
     // symlink-guard auf roh-input VOR canonicalize — canonicalize folgt symlinks,
@@ -854,8 +893,15 @@ pub struct TrashListing {
 /// papierkorbs schlug in externen libraries still fehl — die app zeigte einen
 /// leeren papierkorb, obwohl vier prefixes darin lagen. rust hat keinen
 /// webview-scope; dieselbe begründung wie bei dir_size und remove_trash_entry.
+/// async + spawn_blocking (verzeichnis-read auf dem main-thread vermeiden).
 #[tauri::command]
-pub fn list_trash_entries(library: String) -> Result<TrashListing, String> {
+pub async fn list_trash_entries(library: String) -> Result<TrashListing, String> {
+    tokio::task::spawn_blocking(move || list_trash_entries_inner(&library))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn list_trash_entries_inner(library: &str) -> Result<TrashListing, String> {
     sanitize_path(&library, "list_trash_entries")?;
     let real = fs::canonicalize(&library).map_err(|e| e.to_string())?;
     if !is_safe_path(&real.to_string_lossy()) {
@@ -922,7 +968,7 @@ pub fn path_identity(path: String) -> Result<PathIdentity, String> {
 #[cfg(test)]
 mod tests {
     use super::download_stream;
-    use super::{canonicalize_path, dir_size, is_descendant_of, is_safe_path, path_identity,
+    use super::{canonicalize_path, dir_size_inner, is_descendant_of, is_safe_path, path_identity,
     sanitize_path, validate_download_dest, validate_download_url, MAX_DOWNLOAD_BYTES};
     use std::io::{Read, Write};
     use std::net::TcpListener;
@@ -978,22 +1024,22 @@ mod tests {
     // S-01: dir_size lehnt blockierte/system-pfade ab
     #[test]
     fn dir_size_rejects_blocked_paths() {
-        assert!(dir_size("/etc".into()).is_err());
-        assert!(dir_size("/proc".into()).is_err());
-        assert!(dir_size("/sys".into()).is_err());
-        assert!(dir_size("/dev".into()).is_err());
+        assert!(dir_size_inner("/etc").is_err());
+        assert!(dir_size_inner("/proc").is_err());
+        assert!(dir_size_inner("/sys").is_err());
+        assert!(dir_size_inner("/dev").is_err());
     }
 
     #[test]
     fn dir_size_rejects_dotdot() {
-        assert!(dir_size("/home/../etc".into()).is_err());
+        assert!(dir_size_inner("/home/../etc").is_err());
     }
 
     #[test]
     fn dir_size_accepts_normal_paths() {
         let tmp = std::env::temp_dir();
-        assert!(dir_size(tmp.to_string_lossy().into_owned()).is_ok());
-        assert!(dir_size("/tmp".into()).is_ok());
+        assert!(dir_size_inner(&tmp.to_string_lossy()).is_ok());
+        assert!(dir_size_inner("/tmp").is_ok());
     }
 
     // R-3b: batch_dir_sizes mit einem verschwundenen pfad (NotFound-Race)
@@ -1003,7 +1049,7 @@ mod tests {
     // fällt auf 0 / unbekannt zurück).
     #[test]
     fn batch_dir_sizes_partial_failure_skips_missing_paths() {
-        use super::batch_dir_sizes;
+        use super::batch_dir_sizes_inner;
 
         let mut root = std::env::temp_dir();
         root.push(format!("protium-batch-partial-{}", std::process::id()));
@@ -1019,7 +1065,7 @@ mod tests {
         // nicht-existenter eintrag: nur den pfad konstruieren, NICHT anlegen
         let missing = root.join("compatdata/99999_gone");
 
-        let res = batch_dir_sizes(vec![
+        let res = batch_dir_sizes_inner(vec![
             real_canon.to_string_lossy().into_owned(),
             missing.to_string_lossy().into_owned(),
         ]);
@@ -1045,12 +1091,12 @@ mod tests {
     // generische "alle fehler verschlucken"-lücke.
     #[test]
     fn batch_dir_sizes_propagates_blocked_path() {
-        use super::batch_dir_sizes;
+        use super::batch_dir_sizes_inner;
 
         // /etc ist geblockt (is_safe_path). auch wenn ein gültiger pfad
         // vorne steht, schlägt der batch fehl sobald /etc drankommt.
         let tmp = std::env::temp_dir();
-        let res = batch_dir_sizes(vec![
+        let res = batch_dir_sizes_inner(vec![
             tmp.to_string_lossy().into_owned(),
             "/etc".to_string(),
         ]);
@@ -1082,7 +1128,7 @@ mod tests {
         std::fs::create_dir_all(&via).unwrap();
         unixfs::symlink(&real, via.join("link-to-real")).unwrap();
 
-        let res = dir_size(via.to_string_lossy().into_owned()).unwrap();
+        let res = dir_size_inner(&via.to_string_lossy()).unwrap();
         // ohne symlink-follow: nur die paar bytes des symlinks selbst (~50 bytes).
         // MIT symlink-follow: mindestens 5 MB.
         assert!(
@@ -1896,10 +1942,10 @@ mod tests {
 
     // ---- remove_trash_entry ----
     // selbes tempdir-muster wie remove_orphan_dir.
-    // tests prüfen die gesamte command-funktion (nicht nur einen inner-helper),
-    // weil remove_trash_entry keinen AppHandle braucht und direkt aufrufbar ist.
+    // tests prüfen remove_trash_entry_inner — die komplette validierungs- und
+    // löschkette (der async-command darüber ist nur spawn_blocking).
 
-    use super::remove_trash_entry;
+    use super::remove_trash_entry_inner;
 
     fn trash_fixture(tag: &str) -> std::path::PathBuf {
         let mut p = std::env::temp_dir();
@@ -1918,7 +1964,7 @@ mod tests {
         std::fs::create_dir_all(&entry).unwrap();
         std::fs::write(entry.join("marker"), b"x").unwrap();
 
-        let res = remove_trash_entry(entry.to_string_lossy().to_string());
+        let res = remove_trash_entry_inner(&entry.to_string_lossy());
         assert_eq!(res.as_deref(), Ok("deleted"));
         assert!(!entry.exists(), "eintrag muss gelöscht sein");
         // trash-verzeichnis selbst darf stehen bleiben (enthält evtl. andere einträge)
@@ -1937,7 +1983,7 @@ mod tests {
 
         // konstruiere einen pfad mit .., der auf den eintrag zeigt
         let tricky = trash.join("../.protium-trash/compatdata_1_2");
-        let res = remove_trash_entry(tricky.to_string_lossy().to_string());
+        let res = remove_trash_entry_inner(&tricky.to_string_lossy());
         assert!(res.is_err(), ".. muss abgelehnt werden");
         assert!(entry.exists(), "ziel darf nicht gelöscht worden sein");
 
@@ -1956,7 +2002,7 @@ mod tests {
         let link = trash.join("compatdata_42_100");
         unixfs::symlink(&target.join("42"), &link).unwrap();
 
-        let res = remove_trash_entry(link.to_string_lossy().to_string());
+        let res = remove_trash_entry_inner(&link.to_string_lossy());
         assert!(res.is_err(), "symlink muss abgelehnt werden");
         assert!(res.as_ref().unwrap_err().contains("symlink"));
         assert!(link.exists(), "symlink selbst darf nicht angetastet werden");
@@ -1972,7 +2018,7 @@ mod tests {
         let dir = lib.join("steamapps/compatdata/42");
         std::fs::create_dir_all(&dir).unwrap();
 
-        let res = remove_trash_entry(dir.to_string_lossy().to_string());
+        let res = remove_trash_entry_inner(&dir.to_string_lossy());
         assert!(res.is_err(), "pfad nicht in .protium-trash muss abgelehnt werden");
         assert!(res.as_ref().unwrap_err().contains(".protium-trash"));
         assert!(dir.exists());
@@ -1988,7 +2034,7 @@ mod tests {
         let entry = trash.join("compatdata_1091500");
         std::fs::create_dir_all(&entry).unwrap();
 
-        let res = remove_trash_entry(entry.to_string_lossy().to_string());
+        let res = remove_trash_entry_inner(&entry.to_string_lossy());
         assert!(res.is_err(), "ohne timestamp muss abgelehnt werden");
         assert!(entry.exists());
 
@@ -2003,7 +2049,7 @@ mod tests {
         let entry = trash.join("compatdata_0_123");
         std::fs::create_dir_all(&entry).unwrap();
 
-        let res = remove_trash_entry(entry.to_string_lossy().to_string());
+        let res = remove_trash_entry_inner(&entry.to_string_lossy());
         assert!(res.is_err(), "appId 0 muss abgelehnt werden");
         assert!(res.as_ref().unwrap_err().contains("appId 0"));
         assert!(entry.exists());
@@ -2019,7 +2065,7 @@ mod tests {
         let deep = trash.join("compatdata_1_2/pfx");
         std::fs::create_dir_all(&deep).unwrap();
 
-        let res = remove_trash_entry(deep.to_string_lossy().to_string());
+        let res = remove_trash_entry_inner(&deep.to_string_lossy());
         assert!(res.is_err(), "tiefer pfad mit / muss abgelehnt werden");
         assert!(deep.exists());
 
@@ -2035,7 +2081,7 @@ mod tests {
         let entry = nested.join("compatdata_1_2");
         std::fs::create_dir_all(&entry).unwrap();
 
-        let res = remove_trash_entry(entry.to_string_lossy().to_string());
+        let res = remove_trash_entry_inner(&entry.to_string_lossy());
         assert!(res.is_ok(), "rfind muss das letzte /steamapps/ nehmen: {res:?}");
         assert!(!entry.exists(), "eintrag muss gelöscht sein");
 

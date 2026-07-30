@@ -1,3 +1,4 @@
+import { errText } from "./errtext.js";
 import { joinPath, paths, SYSTEM_COMPAT_DIRS } from "./paths.js";
 import type { DirEntry, FileSystem, System } from "./ports.js";
 import type { CompatTool } from "./types.js";
@@ -88,7 +89,7 @@ export async function listCompatTools(
       if (!(await fs.exists(dir))) continue;
       entries = await fs.readDir(dir);
     } catch (e) {
-      warnings.push(`compat-verzeichnis "${dir}" nicht lesbar: ${(e as Error).message}`);
+      warnings.push(`compat-verzeichnis "${dir}" nicht lesbar: ${errText(e)}`);
       continue;
     }
 
@@ -119,7 +120,7 @@ export async function listCompatTools(
         }
         tools.push({ name, internalName, displayName, sizeBytes, usedBy, source });
       } catch (e) {
-        warnings.push(`compat-tool "${name}" übersprungen: ${(e as Error).message}`);
+        warnings.push(`compat-tool "${name}" übersprungen: ${errText(e)}`);
       }
     }
   }

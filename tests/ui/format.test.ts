@@ -1,0 +1,37 @@
+import { describe, expect, it } from "vitest";
+import { errMsg, formatBytes } from "../../src/ui/format";
+
+describe("formatBytes", () => {
+  it("0 und negativ → gedankenstrich (leer/ungültig ≠ fehlend)", () => {
+    expect(formatBytes(0)).toBe("—");
+    expect(formatBytes(-5)).toBe("—");
+  });
+  it("bytes ohne dezimalstelle", () => {
+    expect(formatBytes(512)).toBe("512 B");
+  });
+  it("1024 → 1.0 KB", () => {
+    expect(formatBytes(1024)).toBe("1.0 KB");
+  });
+  it("1536 → 1.5 KB", () => {
+    expect(formatBytes(1536)).toBe("1.5 KB");
+  });
+  it("ab 100 einheiten keine dezimalstelle", () => {
+    expect(formatBytes(100 * 1024)).toBe("100 KB");
+  });
+  it("deckel bei TB", () => {
+    expect(formatBytes(5 * 1024 ** 4)).toBe("5.0 TB");
+  });
+});
+
+describe("errMsg", () => {
+  it("string-rejection (rust-command) bleibt erhalten", () => {
+    expect(errMsg("forbidden path")).toBe("forbidden path");
+  });
+  it("Error → message", () => {
+    expect(errMsg(new Error("kaputt"))).toBe("kaputt");
+  });
+  it("sonstiges → String()", () => {
+    expect(errMsg(null)).toBe("null");
+    expect(errMsg(7)).toBe("7");
+  });
+});

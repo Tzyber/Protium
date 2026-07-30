@@ -1,8 +1,24 @@
 <script setup lang="ts">
+import { onBeforeUnmount, onMounted, ref } from "vue";
+
 withDefaults(defineProps<{ size?: number }>(), { size: 22 });
 
-const animate =
-  typeof window !== "undefined" && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const reduced = ref(
+  typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+);
+
+let mq: MediaQueryList | null = null;
+
+onMounted(() => {
+  mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const handler = (e: MediaQueryListEvent) => {
+    reduced.value = e.matches;
+  };
+  mq.addEventListener("change", handler);
+  onBeforeUnmount(() => {
+    mq?.removeEventListener("change", handler);
+  });
+});
 </script>
 
 <template>
@@ -16,7 +32,7 @@ const animate =
     <!-- kern: das eine proton -->
     <circle cx="16" cy="16" r="3.2" fill="currentColor">
       <animate
-        v-if="animate"
+        v-if="!reduced"
         attributeName="r"
         values="3.2;3.7;3.2"
         dur="2.6s"
@@ -37,8 +53,8 @@ const animate =
         stroke-width="1.4"
         opacity="0.35"
       />
-      <circle r="1.9" fill="currentColor" :opacity="animate ? undefined : 0.9" :cx="animate ? undefined : 4" :cy="animate ? undefined : 16">
-        <template v-if="animate">
+      <circle r="1.9" fill="currentColor" :opacity="!reduced ? undefined : 0.9" :cx="!reduced ? undefined : 4" :cy="!reduced ? undefined : 16">
+        <template v-if="!reduced">
           <animateMotion
             dur="3.2s"
             repeatCount="indefinite"

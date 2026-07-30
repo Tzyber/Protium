@@ -37,6 +37,22 @@ describe("findActiveUser", () => {
     const found = await findActiveUser(nodeFs(), root);
     expect(found?.userId).toBe(userId);
   });
+
+  it("fallback ohne loginusers.vdf: numerisch kleinster account, nicht lexikographisch", async () => {
+    // lexikographisch läge "10" vor "2" — das wäre der falsche account.
+    const root = await mkdtemp(join(tmpdir(), "protium-multiuser-"));
+    for (const id of ["10", "2"]) {
+      await mkdir(join(root, "userdata", id, "config"), { recursive: true });
+      await writeFile(
+        join(root, "userdata", id, "config", "localconfig.vdf"),
+        `"UserLocalConfigStore"\n{\n}\n`,
+        "utf8",
+      );
+    }
+    const found = await findActiveUser(nodeFs(), root);
+    expect(found?.userId).toBe("2");
+    expect(found?.warning).toBeTruthy();
+  });
 });
 
 describe("writeLaunchOptions", () => {

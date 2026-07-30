@@ -61,18 +61,25 @@ export const useProtonStore = defineStore("proton", {
   actions: {
     async init() {
       if (this.listenerReady) return;
-      this.listenerReady = true;
-      await listen<{ id: string; downloaded: number; total: number | null }>(
-        "download-progress",
-        (e) => {
-          const job = this.jobs[e.payload.id];
-          if (job) {
-            job.downloaded = e.payload.downloaded;
-            job.total = e.payload.total;
-          }
-        },
-      );
-      if (!this.releases.length) this.loadReleases();
+      try {
+        await listen<{ id: string; downloaded: number; total: number | null }>(
+          "download-progress",
+          (e) => {
+            const job = this.jobs[e.payload.id];
+            if (job) {
+              job.downloaded = e.payload.downloaded;
+              job.total = e.payload.total;
+            }
+          },
+        );
+        this.listenerReady = true;
+      } catch (e) {
+        // ohne listener fehlt nur die fortschritts-anzeige — die view darf
+        // deshalb nicht leer bleiben, und der nächste mount darf es erneut
+        // versuchen (flag bleibt false).
+        console.warn("download-progress listener nicht verfügbar:", e);
+      }
+      if (!this.releases.length) void this.loadReleases();
     },
 
     async loadReleases(force = false) {
@@ -129,7 +136,13 @@ export const useProtonStore = defineStore("proton", {
       if (!tag) return;
       const release = this.releases.find((r) => r.tag === tag);
       const job = this.jobs[tag];
-      if (!release || !job) return;
+      if (!release || !job) {
+        // release nach einem refresh nicht mehr in der github-liste: der job
+        // würde ewig mit cancel-button herumliegen und die queue stünde still.
+        delete this.jobs[tag];
+        void this.pump();
+        return;
+      }
 
       this.activeTag = tag;
       const scan = useScanStore();

@@ -48,8 +48,6 @@ export const paths = {
   shortcutsVdf: (root: string, userId: string) =>
     join(root, "userdata", userId, "config", "shortcuts.vdf"),
   libraryAppsDir: (libraryPath: string) => join(libraryPath, "steamapps"),
-  appManifest: (libraryPath: string, appId: number) =>
-    join(libraryPath, "steamapps", `appmanifest_${appId}.acf`),
   compatdataDir: (libraryPath: string) => join(libraryPath, "steamapps", "compatdata"),
   shadercacheDir: (libraryPath: string) => join(libraryPath, "steamapps", "shadercache"),
   compatdataPath: (libraryPath: string, appId: number | string) =>
