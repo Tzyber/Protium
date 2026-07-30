@@ -75,6 +75,10 @@ jobs:
           cp src-tauri/appimage-hooks/01-wayland-fix.sh squashfs-root/apprun-hooks/
           chmod +x squashfs-root/apprun-hooks/01-wayland-fix.sh
 
+          # linuxdeploys AppRun sourced NUR linuxdeploy-plugin-gtk.sh,
+          # iteriert nicht über apprun-hooks/*. unseren hook hinterhersourcen.
+          sed -i '/source.*linuxdeploy-plugin-gtk\.sh/a source "$this_dir"/apprun-hooks/"01-wayland-fix.sh"' squashfs-root/AppRun
+
           ARCH=x86_64 appimagetool squashfs-root "${APPIMAGE}"
 
           echo "Gepatchtes AppImage: ${APPIMAGE}"
