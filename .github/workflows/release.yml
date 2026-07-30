@@ -40,7 +40,8 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev \
             libssl-dev \
-            patchelf
+            patchelf \
+            squashfs-tools
 
       - name: Install frontend dependencies
         run: npm ci
@@ -51,15 +52,47 @@ jobs:
           npm test
           cargo test --manifest-path src-tauri/Cargo.toml
 
-      - name: Build AppImage and create draft release
-        uses: tauri-apps/tauri-action@v1
+      - name: Install appimagetool
+        run: |
+          wget -q "https://github.com/AppImage/AppImageKit/releases/download/13/appimagetool-x86_64.AppImage" -O /tmp/appimagetool
+          chmod +x /tmp/appimagetool
+          /tmp/appimagetool --appimage-extract
+          mv squashfs-root /tmp/appimagetool-extracted
+          ln -s /tmp/appimagetool-extracted/AppRun /usr/local/bin/appimagetool
+
+      - name: Build AppImage
+        run: npm run tauri build -- --bundles appimage
+
+      - name: Patch AppImage with Wayland/EGL fix
+        run: |
+          APPIMAGE=$(echo src-tauri/target/release/bundle/appimage/protium_*_amd64.AppImage)
+          echo "Patching: ${APPIMAGE}"
+
+          [ -f "${APPIMAGE}" ] || { echo "FEHLER: AppImage nicht gefunden: ${APPIMAGE}"; exit 1; }
+
+          "${APPIMAGE}" --appimage-extract
+          mkdir -p squashfs-root/apprun-hooks
+          cp src-tauri/appimage-hooks/01-wayland-fix.sh squashfs-root/apprun-hooks/
+          chmod +x squashfs-root/apprun-hooks/01-wayland-fix.sh
+
+          ARCH=x86_64 appimagetool squashfs-root "${APPIMAGE}"
+
+          echo "Gepatchtes AppImage: ${APPIMAGE}"
+
+      - name: Create release and upload assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "Protium ${{ github.ref_name }}"
+          body: |
+            Siehe README und Changelog für Details.
+
+            **Hinweis für Wayland-Nutzer:** Das AppImage lädt automatisch die system-eigene `libwayland-client.so`,
+            falls vorhanden. Kein manuelles `LD_PRELOAD` mehr nötig.
+          draft: true
+          prerelease: false
+          files: |
+            src-tauri/target/release/bundle/appimage/protium_*_amd64.AppImage
+            src-tauri/target/release/bundle/deb/*.deb
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "Protium ${{ github.ref_name }}"
-          releaseBody: |
-            Siehe README und Changelog für Details.
-          releaseDraft: true
-          prerelease: false
-          args: --bundles appimage
