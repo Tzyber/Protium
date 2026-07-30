@@ -11,6 +11,7 @@ import { useConfigStore } from "../stores/configStore";
 import { useScanStore } from "../stores/scanStore";
 import { useUiStore } from "../stores/uiStore";
 import PlayButton from "./PlayButton.vue";
+import SelectBox from "./SelectBox.vue";
 import TierBadge from "./TierBadge.vue";
 
 const ui = useUiStore();
@@ -140,6 +141,8 @@ const compatOptions = computed(() => {
   const current = game.value?.compatTool ?? "";
   const list: { value: string; label: string }[] = [];
 
+  list.push({ value: "__default__", label: t("drawer.compatDefault") });
+
   for (const t of builtIns) {
     list.push({ value: t.internalName, label: t.displayName });
   }
@@ -251,10 +254,7 @@ watch(errorMessage, (msg) => {
         <div class="field">
           <label class="k" for="compat-tool">{{ t("drawer.compatToolLabel") }}</label>
           <div class="field-row">
-            <select id="compat-tool" v-model="compatSelected" class="control mono">
-              <option value="__default__">{{ t("drawer.compatDefault") }}</option>
-              <option v-for="o in compatOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
-            </select>
+            <SelectBox id="compat-tool" v-model="compatSelected" :options="compatOptions" />
             <button
               class="save"
               type="button"
@@ -377,8 +377,6 @@ watch(errorMessage, (msg) => {
   font-size: 0.8125rem;
 }
 .control:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; border-color: var(--signal-dim); }
-select.control { cursor: pointer; }
-select.control option { background: var(--bg-1); color: var(--fg-0); }
 
 .save {
   flex-shrink: 0;

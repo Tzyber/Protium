@@ -168,6 +168,7 @@ nav { display: flex; flex-direction: column; gap: 2px; }
 .readout .val { color: var(--fg-1); font-size: 0.8125rem; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .content {
+  min-height: 0;
   overflow-y: scroll;
   overflow-x: auto;
   scrollbar-gutter: stable;
