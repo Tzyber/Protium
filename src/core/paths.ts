@@ -7,6 +7,7 @@ const ROOT_CANDIDATES = [
   ".steam/steam", // symlink → meist .local/share/Steam
   ".steam/root",
   ".var/app/com.valvesoftware.Steam/.local/share/Steam", // flatpak
+  "snap/steam/common/.local/share/Steam", // snap (canonical)
 ] as const;
 
 function join(...parts: string[]): string {

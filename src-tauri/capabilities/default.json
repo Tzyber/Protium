@@ -25,6 +25,8 @@
         { "path": "$HOME/.steam/**" },
         { "path": "$HOME/.var/app/com.valvesoftware.Steam" },
         { "path": "$HOME/.var/app/com.valvesoftware.Steam/**" },
+        { "path": "$HOME/snap/steam" },
+        { "path": "$HOME/snap/steam/**" },
         { "path": "$APPCACHE" },
         { "path": "$APPCACHE/**" },
         { "path": "$APPCONFIG" },
