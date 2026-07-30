@@ -742,6 +742,7 @@ const tabLabel = (id: Tab) =>
    papierkorb die zeile aus dem viewport. beide listen nutzen dieselben
    spaltenbreiten, damit sie identisch aussehen. */
 .row {
+position: relative;
   display: grid;
   /* rem statt px: skaliert mit root-schriftgröße (text-only-zoom). ch wäre hier
      falsch — .row erbt Inter vom body, nicht Space Mono. ch in Inter (14px) ≈ 7px,

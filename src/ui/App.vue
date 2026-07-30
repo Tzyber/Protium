@@ -107,9 +107,11 @@ const rootShort = computed(() => {
   top: 8px;
 }
 
-.shell { display: grid; grid-template-columns: 216px 1fr; height: 100%; }
+.shell { display: grid; grid-template-columns: 216px 1fr; grid-template-rows: minmax(0, 1fr); height: 100%; }
 
 .sidebar {
+  min-height: 0;
+  overflow-y: auto;
   background: var(--bg-1);
   border-right: 1px solid var(--line);
   display: flex;
