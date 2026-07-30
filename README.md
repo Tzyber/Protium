@@ -74,7 +74,7 @@ dann:
 ```sh
 npm install
 npm test              # vitest — core headless gegen fixtures
-npm run check         # biome (lint + format) + vue-tsc --noEmit
+npm run check         # biome (194 lint-regeln, 0 warnings) + vue-tsc --noEmit
 (cd src-tauri && cargo test)   # rust: download-pfade, pfad-validierung, tarball-extraktion, cleanup/papierkorb
 npm run tauri dev     # app starten (erster build kompiliert rust, dauert etwas)
 ```
@@ -115,6 +115,7 @@ für die implementierung gelten folgende regeln: schreibende zugriffe auf steam-
 - [x] spiele starten (via steam-protokoll, kein eigener launcher)
 - [x] i18n (deutsch/englisch)
 - [x] CI: lint, typecheck und tests bei jedem push
+- [x] play-button zentralisiert + biome-preset evaluiert (194 regeln, 0 warnings)
 - [ ] phase 6: release — AppImage-build in der CI, danach AUR-paket
 
 ## bekannte kleinfunde
@@ -125,7 +126,7 @@ keine sicherheitsprobleme, eher wartung und ehrlichkeit. abarbeitung bei gelegen
 - [ ] binary-VDF-skip-tabelle ans kanonische layout angleichen (`shortcuts.ts`); heute unkritisch, weil reale dateien nur die typen 0x00/01/02 nutzen, aber eine wartungsfalle
 - [ ] papierkorb-status: immer eine zeile pro library ausgeben (`trash.ts`), bei zwei libraries mit gleichem realpath bekommt die zweite aktuell keine
 - [ ] fehlgeschlagenen sha512-asset-fetch von fehlendem asset unterscheiden und in der UI warnen (`geproton.ts`), aktuell läuft die installation dann still ohne prüfsumme durch
-- [ ] opener-fehler nicht lautlos schlucken (`GameDetailDrawer.vue`, `GameCard.vue`), zumindest `console.warn`
+- [x] opener-fehler nicht lautlos schlucken (`GameDetailDrawer.vue`, `GameCard.vue`), zumindest `console.warn` — gefixt via zentraler `PlayButton.vue`
 - [ ] `batchDirSizes` über den `System`-port statt per rohem `invoke` aufrufen (`cleanupStore.ts`), das macht mocking in tests leichter
 - [ ] `scanLibrary` aufteilen (`scan.ts`, 164 zeilen, 7 concerns), als eigener zyklus und nicht im vorbeigehen
 
