@@ -6,7 +6,7 @@
 
 > ein proton. ein elektron. das simpelste atom im universum, und ungefähr so viel overhead soll auch dieses tool haben.
 
-> Claude — Contributor: spirituell. Commits: nicht nachweisbar.
+> Claude Contributor: spirituell. Commits: nicht nachweisbar.
 
 protium ist eine linux-desktop-app für steam/proton-housekeeping. sie zeigt dir, was auf deinem system wirklich los ist: welche spiele über welche proton-version laufen, wie die auf protondb bewertet sind, welche GE-proton-versionen ungenutzt platz fressen und welche verwaisten prefixes von längst deinstallierten spielen noch gigabytes belegen.
 
