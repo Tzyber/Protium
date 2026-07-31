@@ -38,8 +38,14 @@ export class ProtonDbClient {
       const cached = await this.cache.get(key);
       if (cached) {
         const entry = JSON.parse(cached) as CacheEntry;
+        // M4.2: cache-pfad validiert wie der fresh-pfad (tier normalisiert,
+        // confidence-typ geprüft) — ein vergifteter cache darf keine fremden
+        // tier-werte durchreichen
         if (this.now() - entry.fetchedAt < TTL_MS) {
-          return { tier: entry.tier, confidence: entry.confidence };
+          return {
+            tier: normalizeTier(entry.tier),
+            confidence: typeof entry.confidence === "string" ? entry.confidence : "unknown",
+          };
         }
       }
     } catch {

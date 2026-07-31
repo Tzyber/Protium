@@ -41,6 +41,27 @@ describe("ProtonDbClient", () => {
     expect(calls).toBe(1);
   });
 
+  it("vergifteter cache (tier evil) → normalizeTier → unknown (M4.2)", async () => {
+    let calls = 0;
+    const http = {
+      async get() {
+        calls++;
+        return summary("platinum");
+      },
+    };
+    const cache = memCache();
+    await cache.set(
+      "protondb:620",
+      JSON.stringify({ tier: "evil", confidence: "x", fetchedAt: 0 }),
+    );
+    const c = new ProtonDbClient(http, cache, () => 0); // TTL frisch
+
+    const res = await c.getSummary(620);
+
+    expect(res?.tier).toBe("unknown");
+    expect(calls).toBe(0); // cache-hit — aber validiert
+  });
+
   it("abgelaufener cache-eintrag → refetch", async () => {
     let calls = 0;
     const http = {

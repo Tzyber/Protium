@@ -22,6 +22,7 @@ import type {
   PathIdentity,
   System,
 } from "../../src/core/ports.js";
+import { ensureSizeLimit } from "../../src/core/ports.js";
 
 // ---- fixtures als inhalt (fake-steam wächst pro phase, §6) ----
 
@@ -266,8 +267,17 @@ export function nodeFs(): FileSystem {
         return false;
       }
     },
-    readTextFile: (p) => readFile(p, "utf8"),
-    readFile: (p) => readFile(p),
+    // M4.3-spiegel: größen-precheck wie im tauri-adapter (stat → limit → read)
+    async readTextFile(p) {
+      const st = await stat(p).catch(() => null);
+      if (st) ensureSizeLimit(st.size);
+      return readFile(p, "utf8");
+    },
+    async readFile(p) {
+      const st = await stat(p).catch(() => null);
+      if (st) ensureSizeLimit(st.size);
+      return readFile(p);
+    },
     async readDir(p) {
       const entries = await readdir(p, { withFileTypes: true });
       return entries.map(
@@ -323,6 +333,26 @@ export function fakeSystem(opts?: { failScope?: Set<string> }): System & { scope
     },
     async cancelDownload() {},
     async extractTarball() {},
+    async removeCompatTool() {},
+    // M3.1-spiegel: bildet das rust-write-gate nach (steam-läuft → abbruch,
+    // fail-closed bei fehlender datei, backup + atomarer temp+rename), damit
+    // die integrations-tests gegen disk-zustand weiter funktionieren.
+    async writeSteamConfigFile(file, original, content, backup) {
+      if (await this.isProcessRunning("steam")) {
+        throw new Error("steam is running — write refused");
+      }
+      try {
+        await lstat(file);
+      } catch {
+        throw new Error("write target canonicalize: not found");
+      }
+      const backupParent = backup.slice(0, backup.lastIndexOf("/"));
+      if (backupParent) await mkdir(backupParent, { recursive: true });
+      await writeFile(backup, original, "utf8");
+      const tmp = `${file}.protium-tmp`;
+      await writeFile(tmp, content, "utf8");
+      await rename(tmp, file);
+    },
   };
 }
 

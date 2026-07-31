@@ -33,12 +33,10 @@ fn is_safe_path(canonical: &str) -> bool {
     !blocked.iter().any(|b| canonical == *b || canonical.starts_with(&format!("{b}/")))
 }
 
-const ALLOWED_DOWNLOAD_HOSTS: &[&str] = &[
-    "github.com",
-    "objects.githubusercontent.com",
-    "release-assets.githubusercontent.com"
-];
-
+/// initiale download-URL: https + github.com + pfad-pinning auf das GE-repo.
+/// ohne das pinning wäre jede github.com-url ein download-ziel (cache-poisoning
+/// → beliebiger payload → extraktion → code-execution). redirect-ziele prüft
+/// `validate_redirect_url` — ein github.com-redirect wäre ein offener umweg.
 fn validate_download_url(url: &str) -> Result<(), String> {
     let parsed = reqwest::Url::parse(url).map_err(|e| format!("invalid download URL: {e}"))?;
     if parsed.scheme() != "https" {
@@ -48,11 +46,40 @@ fn validate_download_url(url: &str) -> Result<(), String> {
         return Err("URL must not contain credentials".into());
     }
     let host = parsed.host_str().ok_or_else(|| "download URL has no host".to_string())?;
-    let host = host.to_ascii_lowercase();
-    if !ALLOWED_DOWNLOAD_HOSTS.iter().any(|h| host == *h) {
+    if host.to_ascii_lowercase() != "github.com" {
         return Err(format!("download URL host not allowed: {host}"));
     }
+
+    // pfad-pinning: GE hostet seine assets selbst; ein anderer github-pfad ist
+    // für protium nie legitim (browser_download_url ist immer diese form)
+    const GE_PREFIX: [&str; 4] = ["GloriousEggroll", "proton-ge-custom", "releases", "download"];
+    let mut comps = parsed.path().split('/').filter(|c| !c.is_empty());
+    for expected in GE_PREFIX {
+        match comps.next() {
+            Some(c) if c == expected => {}
+            _ => {
+                return Err(
+                    "download URL outside GloriousEggroll/proton-ge-custom/releases/download"
+                        .into(),
+                )
+            }
+        }
+    }
     Ok(())
+}
+
+/// redirect-ziele: nur die zwei asset-CDN-hosts, host-only (redirect-pfade sind
+/// nicht steuerbar). github.com als redirect-ziel ausgeschlossen — sonst wäre
+/// das pfad-pinning über einen redirect umgehbar.
+fn validate_redirect_url(url: &str) -> Result<(), String> {
+    let parsed = reqwest::Url::parse(url).map_err(|e| format!("invalid redirect URL: {e}"))?;
+    let host = parsed.host_str().ok_or_else(|| "redirect URL has no host".to_string())?;
+    let host = host.to_ascii_lowercase();
+    if host == "objects.githubusercontent.com" || host == "release-assets.githubusercontent.com" {
+        Ok(())
+    } else {
+        Err(format!("redirect target host not allowed: {host}"))
+    }
 }
 
 /// komponentenbasierter nachfahren-check: jedes component des ancestor muss
@@ -159,13 +186,25 @@ struct DownloadProgress {
 }
 
 /// R-1: .tar.gz entpacken. temp im ziel-fs (EXDEV-safe), dann rename ins ziel.
+/// dest-allowlist (M1.3): der scope-check läuft VOR create_dir_all und prüft
+/// den nächsten existierenden vorfahren — der einzige legitime dest ist
+/// `compatibilitytools.d` unter einem session-bestätigten steam-root.
 #[tauri::command]
-pub async fn extract_tarball(src: String, dest: String) -> Result<(), String> {
+pub async fn extract_tarball(
+    app: tauri::AppHandle,
+    src: String,
+    dest: String,
+) -> Result<(), String> {
     sanitize_path(&src, "extract source")?;
     sanitize_path(&dest, "extract destination")?;
-    tokio::task::spawn_blocking(move || extract_blocking(&src, &dest))
-        .await
-        .map_err(|e| e.to_string())?
+    let app2 = app.clone();
+    tokio::task::spawn_blocking(move || {
+        extract_blocking(&src, &dest, MAX_EXTRACT_BYTES, &|p: &Path| {
+            app2.fs_scope().is_allowed(p)
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// prueft, ob `target`, relativ zu `base_dir` aufgeloest, innerhalb der archiv-wurzel bleibt.
@@ -199,12 +238,26 @@ fn link_target_stays_inside(base_dir: &Path, target: &Path) -> bool {
     depth > 0
 }
 
-fn extract_blocking(src: &str, dest_dir: &str) -> Result<(), String> {
+fn extract_blocking(
+    src: &str,
+    dest_dir: &str,
+    max_unpack_bytes: u64,
+    scope_ok: &dyn Fn(&Path) -> bool,
+) -> Result<(), String> {
     use flate2::read::GzDecoder;
     use std::io::Seek;
     use tar::Archive;
 
     let dest = Path::new(dest_dir);
+    // scope-check VOR create_dir_all — kein mkdir vor der ablehnung. für
+    // nicht-existierende dests prüft der nächste existierende vorfahre.
+    let dest_ancestor = next_existing_ancestor(dest)
+        .ok_or_else(|| "no existing ancestor for extract dest".to_string())?;
+    let dest_ancestor_canon =
+        fs::canonicalize(&dest_ancestor).map_err(|e| format!("extract dest ancestor: {e}"))?;
+    if !scope_ok(&dest_ancestor_canon) {
+        return Err("extract destination outside allowed scope".into());
+    }
     fs::create_dir_all(dest).map_err(|e| e.to_string())?;
     let canon = fs::canonicalize(dest).map_err(|e| e.to_string())?;
     if !canon.is_dir() || !is_safe_path(&canon.to_string_lossy()) {
@@ -326,10 +379,23 @@ fn extract_blocking(src: &str, dest_dir: &str) -> Result<(), String> {
             }
         }
         // try_clone teilt den file-offset mit dem original — vor dem zweiten
-        // durchlauf explizit zurücksetzen
+        // durchlauf explizit zurücksetzen. unpack läuft manuell statt
+        // ar.unpack: nur so lässt sich ein größenlimit über die deklarierten
+        // entry-größen summiert durchsetzen (gzip-bomb-schutz, M1.4).
         f2.seek(std::io::SeekFrom::Start(0)).map_err(|e| e.to_string())?;
         let mut ar = Archive::new(GzDecoder::new(f2));
-        ar.unpack(&tmp).map_err(|e| e.to_string())?;
+        let mut total: u64 = 0;
+        for entry in ar.entries().map_err(|e| e.to_string())? {
+            let mut entry = entry.map_err(|e| e.to_string())?;
+            let entry_size = entry.header().size().map_err(|e| e.to_string())?;
+            total += entry_size;
+            if total > max_unpack_bytes {
+                return Err(format!(
+                    "extracted size limit exceeded ({total} bytes)"
+                ));
+            }
+            entry.unpack_in(&tmp).map_err(|e| e.to_string())?;
+        }
         for entry in fs::read_dir(&tmp).map_err(|e| e.to_string())? {
             let entry = entry.map_err(|e| e.to_string())?;
             let ft = entry.file_type().map_err(|e| e.to_string())?;
@@ -462,10 +528,18 @@ const TRASH_DIR_NAME: &str = ".protium-trash";
 /// darf den main-thread nicht blockieren.
 #[tauri::command]
 pub async fn remove_orphan_dir(app: AppHandle, path: String) -> Result<String, String> {
+    let app2 = app.clone();
     tokio::task::spawn_blocking(move || {
         let (library, canonical) = validate_and_prepare(&path)?;
+        // scope-gate VOR dem grant (S5): ohne diesen check würde der grant
+        // unten das library-root selbst in den scope heben und der is_allowed-
+        // check in inner wäre trivial true — löschung außerhalb bestätigter
+        // libraries wäre möglich.
+        if !app.fs_scope().is_allowed(&library) {
+            return Err("library outside allowed scope".into());
+        }
         allow_library_scope_inner(app, &library)?;
-        remove_orphan_dir_inner(&canonical, &library)
+        remove_orphan_dir_inner(&canonical, &library, &|p| app2.fs_scope().is_allowed(p))
     })
     .await
     .map_err(|e| e.to_string())?
@@ -498,7 +572,17 @@ fn validate_and_prepare(path_str: &str) -> Result<(std::path::PathBuf, std::path
 /// muster, appid) + tatsächliches löschen/trash. `library` wird vom
 /// command-wrapper durchgereicht (nicht erneut abgeleitet) — guard-reihenfolge
 /// bleibt unverändert: erst sicherheit, dann parsing, dann delete.
-fn remove_orphan_dir_inner(canonical: &Path, library: &Path) -> Result<String, String> {
+fn remove_orphan_dir_inner(
+    canonical: &Path,
+    library: &Path,
+    scope_ok: &dyn Fn(&Path) -> bool,
+) -> Result<String, String> {
+    // scope-gate auf das library-root (nicht den zielpfad — der trash-pfad
+    // liegt in einem punkt-verzeichnis, das der glob nicht erfasst). der
+    // command prüft zusätzlich VOR dem scope-grant.
+    if !scope_ok(library) {
+        return Err("library outside allowed scope".into());
+    }
     let canon_str = canonical.to_string_lossy();
     if !is_safe_path(&canon_str) {
         return Err("blocked path".into());
@@ -565,13 +649,16 @@ fn remove_orphan_dir_inner(canonical: &Path, library: &Path) -> Result<String, S
 /// keine steam-datei, löschen kann nichts korrumpieren.
 /// async + spawn_blocking (remove_dir_all auf GB-bäumen).
 #[tauri::command]
-pub async fn remove_trash_entry(path: String) -> Result<String, String> {
-    tokio::task::spawn_blocking(move || remove_trash_entry_inner(&path))
-        .await
-        .map_err(|e| e.to_string())?
+pub async fn remove_trash_entry(app: tauri::AppHandle, path: String) -> Result<String, String> {
+    let app2 = app.clone();
+    tokio::task::spawn_blocking(move || {
+        remove_trash_entry_inner(&path, &|p| app2.fs_scope().is_allowed(p))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
-fn remove_trash_entry_inner(path: &str) -> Result<String, String> {
+fn remove_trash_entry_inner(path: &str, scope_ok: &dyn Fn(&Path) -> bool) -> Result<String, String> {
     sanitize_path(&path, "remove_trash_entry")?;
 
     // symlink-guard auf roh-input VOR canonicalize — canonicalize folgt symlinks,
@@ -596,6 +683,14 @@ fn remove_trash_entry_inner(path: &str) -> Result<String, String> {
     let canon_str = canonical.to_string_lossy();
     if !is_safe_path(&canon_str) {
         return Err("blocked path".into());
+    }
+
+    // scope-gate auf das library-root (nicht den trash-pfad — punkt-verzeichnis,
+    // nicht vom glob erfasst). der papierkorb bleibt damit nur innerhalb
+    // session-bestätigter libraries leerbar.
+    let lib_str = library_of(&canon_str)?;
+    if !scope_ok(Path::new(lib_str)) {
+        return Err("library outside allowed scope".into());
     }
 
     let suffix = suffix_after_steamapps(&canon_str)?;
@@ -677,6 +772,7 @@ fn allow_library_scope_inner(app: AppHandle, path: &Path) -> Result<(), String> 
 
 /// maximale download-grösse (GE-tarballs ~1 GB, 8 GiB ist reichlich luft).
 const MAX_DOWNLOAD_BYTES: u64 = 8 * 1024 * 1024 * 1024;
+const MAX_EXTRACT_BYTES: u64 = 8 * 1024 * 1024 * 1024;
 
 /// download-kern ohne tauri-typen (cargo-testbar). crash-fest: jeder fehlerausgang
 /// (cancel, netzabbruch, schreibfehler) löscht die partielle datei vor return.
@@ -803,7 +899,7 @@ pub async fn download_file(
     let result = download_stream(
         &url,
         &dest,
-        |u| validate_download_url(u).is_ok(),
+        |u| validate_redirect_url(u).is_ok(),
         move || cancel_flag_clone.load(std::sync::atomic::Ordering::Relaxed),
         |downloaded, total| {
             let done = total.map(|t| downloaded >= t).unwrap_or(false);
@@ -832,20 +928,211 @@ pub async fn download_file(
     result
 }
 
-/// R-5: verzeichnis zur laufzeit in den fs-scope aufnehmen.
-/// zwingend: canonicalize + sicherheitscheck — keine systemverzeichnisse.
-#[tauri::command]
-pub fn allow_library_scope(app: tauri::AppHandle, path: String) -> Result<(), String> {
-    sanitize_path(&path, "library path")?;
-    let real = fs::canonicalize(&path).map_err(|e| format!("cannot resolve library path: {e}"))?;
+/// bekannte system-compat-dirs (distro-protonen, z. b. proton-cachyos).
+/// ausnahme im library-kandidat-zwang, sonst verschwänden sie aus der UI.
+const SYSTEM_COMPAT_DIRS: [&str; 2] = [
+    "/usr/share/steam/compatibilitytools.d",
+    "/usr/local/share/steam/compatibilitytools.d",
+];
+
+fn is_system_compat_dir(real: &Path) -> bool {
+    SYSTEM_COMPAT_DIRS.iter().any(|d| {
+        // input ist canonicalisiert — die konstante selbst kann ein symlink
+        // sein (distros linken /usr/local/share/steam → /usr/share/steam)
+        real == Path::new(d)
+            || fs::canonicalize(d).map(|c| real == c.as_path()).unwrap_or(false)
+    })
+}
+
+/// validierung + canonicalize für scope-erteilung (testbar, AppHandle-frei).
+/// verlangt einen steam-library-kandidaten (`steamapps` existiert) oder ein
+/// system-compat-dir — sonst scopt die webview beliebige verzeichnisse (/home).
+fn validate_library_scope(path_str: &str) -> Result<std::path::PathBuf, String> {
+    sanitize_path(path_str, "library path")?;
+    let real = fs::canonicalize(path_str)
+        .map_err(|e| format!("cannot resolve library path: {e}"))?;
     if !real.is_dir() {
         return Err("library path is not a directory".into());
     }
     if !is_safe_path(&real.to_string_lossy()) {
         return Err("library path in blocked system directory rejected".into());
     }
+    if !real.join("steamapps").is_dir() && !is_system_compat_dir(&real) {
+        return Err("library path is not a steam library or system compat dir".into());
+    }
+    Ok(real)
+}
+
+/// R-5: verzeichnis zur laufzeit in den fs-scope aufnehmen.
+/// zwingend: canonicalize + sicherheitscheck + library-kandidat-zwang.
+#[tauri::command]
+pub fn allow_library_scope(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    let real = validate_library_scope(&path)?;
     let _ = app.fs_scope().allow_directory(real.to_string_lossy().as_ref(), true);
     Ok(())
+}
+
+/// M3.1: INV-1-write-gate in rust. prüft, ob ein canonicalisierter pfad eine
+/// der legitimen steam-config-dateien ist: drei canonicalisierte root-
+/// varianten (nativ/flatpak/snap — `.steam/steam` und `.steam/root` sind
+/// symlinks und kollabieren per canonicalize auf die native variante) ×
+/// `config/config.vdf` und `userdata/<digits>/config/localconfig.vdf`.
+fn is_steam_config_path(file: &Path, home: &Path) -> bool {
+    let roots = [
+        home.join(".local/share/Steam"),
+        home.join(".var/app/com.valvesoftware.Steam/.local/share/Steam"),
+        home.join("snap/steam/common/.local/share/Steam"),
+    ];
+    for root in &roots {
+        if file == &root.join("config").join("config.vdf") {
+            return true;
+        }
+        if let Ok(rel) = file.strip_prefix(root.join("userdata")) {
+            let comps: Vec<_> = rel.components().collect();
+            if comps.len() == 3
+                && comps[0].as_os_str().to_string_lossy().chars().all(|c| c.is_ascii_digit())
+                && comps[1].as_os_str() == "config"
+                && comps[2].as_os_str() == "localconfig.vdf"
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// testbare kette für den write-gate-command (AppHandle-frei): sanitize →
+/// steam-läuft → canonicalize (fail-closed bei fehlender zieldatei) →
+/// blocklist → muster → backup (descendant von app-cache) → backup schreiben
+/// → atomar temp+rename. TOCTOU wie gehabt: der original-text kommt vom
+/// aufrufer, es wird nie von disk nachgelesen.
+fn write_steam_file_inner(
+    file: &str,
+    original: &str,
+    content: &str,
+    backup: &str,
+    backup_dir: &Path,
+    home: &Path,
+    running: bool,
+) -> Result<(), String> {
+    sanitize_path(file, "write target")?;
+    if running {
+        return Err("steam is running — write refused".into());
+    }
+    let canon = fs::canonicalize(file).map_err(|e| format!("write target canonicalize: {e}"))?;
+    if !is_safe_path(&canon.to_string_lossy()) {
+        return Err("write target in blocked location".into());
+    }
+    if !is_steam_config_path(&canon, home) {
+        return Err("write target is not a steam config file".into());
+    }
+
+    // backup ist ein zweites write-ziel — es muss zwingend innerhalb des
+    // app-cache liegen (allowlist statt blocklist, muster validate_download_dest)
+    let backup_path = Path::new(backup);
+    if !is_descendant_of(backup_path, backup_dir) {
+        return Err("backup outside app cache".into());
+    }
+    fs::create_dir_all(backup_dir).map_err(|e| format!("backup dir: {e}"))?;
+    let backup_dir_canon =
+        fs::canonicalize(backup_dir).map_err(|e| format!("backup dir canonicalize: {e}"))?;
+    let backup_ancestor = next_existing_ancestor(backup_path)
+        .ok_or_else(|| "no existing ancestor for backup".to_string())?;
+    let backup_ancestor_canon = fs::canonicalize(&backup_ancestor)
+        .map_err(|e| format!("backup ancestor: {e}"))?;
+    if !is_descendant_of(&backup_ancestor_canon, &backup_dir_canon) {
+        return Err("backup outside app cache (canonical)".into());
+    }
+
+    if let Some(parent) = backup_path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    fs::write(backup_path, original).map_err(|e| format!("backup write: {e}"))?;
+
+    // atomar: temp im ziel-verzeichnis + rename; temp-cleanup bei fehler
+    let parent = canon.parent().ok_or_else(|| "no parent dir".to_string())?;
+    let name = canon.file_name().ok_or_else(|| "no file name".to_string())?;
+    let tmp = parent.join(format!(".{}.{}.tmp", name.to_string_lossy(), random_suffix()));
+    let write_result = fs::write(&tmp, content).and_then(|()| fs::rename(&tmp, &canon));
+    if let Err(e) = write_result {
+        let _ = fs::remove_file(&tmp);
+        return Err(format!("atomic write: {e}"));
+    }
+    Ok(())
+}
+
+/// M3.1: schreibt eine steam-config-datei mit vollem INV-1-write-gate in
+/// rust: steam-läuft-check → backup → atomarer temp+rename. ersetzt die
+/// plugin-fs-writes des frontends auf steam-bäumen.
+/// M3.4: entfernt ein GE-tool aus `compatibilitytools.d`. ersetzt den
+/// plugin-fs-remove des frontends (M3.3 nimmt die remove-rechte im steam-baum)
+/// mit scope-check auf den steam-root und tool_name-validierung.
+fn remove_compat_tool_inner(
+    steam_root: &str,
+    tool_name: &str,
+    scope_ok: &dyn Fn(&Path) -> bool,
+) -> Result<(), String> {
+    sanitize_path(steam_root, "steam root")?;
+    if tool_name.is_empty()
+        || tool_name.contains('/')
+        || tool_name == "."
+        || tool_name == ".."
+    {
+        return Err("invalid tool name".into());
+    }
+    let root = Path::new(steam_root);
+    if !scope_ok(root) {
+        return Err("steam root outside allowed scope".into());
+    }
+    let target = root.join("compatibilitytools.d").join(tool_name);
+    // symlink-guard: ein tool, das ein symlink ist, wird nie gelöscht
+    let meta = fs::symlink_metadata(&target).map_err(|e| e.to_string())?;
+    if meta.file_type().is_symlink() {
+        return Err("tool is a symlink — rejected".into());
+    }
+    if !meta.is_dir() {
+        return Err("tool is not a directory".into());
+    }
+    fs::remove_dir_all(&target).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn remove_compat_tool(
+    app: tauri::AppHandle,
+    steam_root: String,
+    tool_name: String,
+) -> Result<(), String> {
+    let app2 = app.clone();
+    tokio::task::spawn_blocking(move || {
+        remove_compat_tool_inner(&steam_root, &tool_name, &|p| app2.fs_scope().is_allowed(p))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn write_steam_file(
+    app: tauri::AppHandle,
+    file: String,
+    original: String,
+    content: String,
+    backup: String,
+) -> Result<(), String> {
+    let home = app
+        .path()
+        .home_dir()
+        .map_err(|e| format!("cannot resolve home dir: {e}"))?;
+    let backup_dir = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| format!("cannot resolve app cache dir: {e}"))?;
+    let running = is_process_running("steam".to_string()).await?;
+    tokio::task::spawn_blocking(move || {
+        write_steam_file_inner(&file, &original, &content, &backup, &backup_dir, &home, running)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// symlink-auflösung (steam-root-discovery). `..` im input abgelehnt,
@@ -969,7 +1256,8 @@ pub fn path_identity(path: String) -> Result<PathIdentity, String> {
 mod tests {
     use super::download_stream;
     use super::{canonicalize_path, dir_size_inner, is_descendant_of, is_safe_path, path_identity,
-    sanitize_path, validate_download_dest, validate_download_url, MAX_DOWNLOAD_BYTES};
+    sanitize_path, validate_download_dest, validate_download_url, validate_library_scope,
+    validate_redirect_url, MAX_DOWNLOAD_BYTES};
     use std::io::{Read, Write};
     use std::net::TcpListener;
     use std::os::unix::fs as unixfs;
@@ -1196,20 +1484,37 @@ mod tests {
     }
 
     #[test]
-    fn download_url_allows_github_domains() {
-        assert!(validate_download_url("https://objects.githubusercontent.com/github-production-release-asset-2e/f.tar.gz").is_ok());
-        assert!(validate_download_url("https://github.com/GloriousEggroll/proton-ge-custom/releases/download/f.tar.gz").is_ok());
+    fn download_url_allows_ge_release_path() {
+        assert!(validate_download_url("https://github.com/GloriousEggroll/proton-ge-custom/releases/download/GE-Proton9-27/GE-Proton9-27.tar.gz").is_ok());
+        assert!(validate_download_url("https://github.com/GloriousEggroll/proton-ge-custom/releases/download/GE-Proton9-27/GE-Proton9-27.tar.gz?x=1").is_ok());
     }
 
     #[test]
-    fn download_url_allows_release_assets() {
-        assert!(validate_download_url("https://release-assets.githubusercontent.com/github-production-release-asset-2e/f.tar.gz?jwt=abc").is_ok());
+    fn download_url_pins_ge_repo_path() {
+        // cache-poisoning-kette: jede github.com-url wäre sonst ein download-ziel
+        assert!(validate_download_url("https://github.com/attacker/evil/releases/download/1/payload.tar.gz").is_err());
+        assert!(validate_download_url("https://github.com/GloriousEggroll/other/releases/download/1/f.tar.gz").is_err());
+        assert!(validate_download_url("https://github.com/GloriousEggroll/proton-ge-custom/archive/refs/tags/v1.tar.gz").is_err());
     }
 
     #[test]
-    fn download_url_allows_at_in_query() {
-        assert!(validate_download_url("https://github.com/x/y?token=abc@def").is_ok());
-        assert!(validate_download_url("https://release-assets.githubusercontent.com/x?jwt=abc@def&response-content-disposition=attachment").is_ok());
+    fn download_url_rejects_cdn_hosts_as_initial_url() {
+        // CDN-hosts sind nur redirect-ziele, nie initiale URLs
+        assert!(validate_download_url("https://objects.githubusercontent.com/github-production-release-asset-2e/f.tar.gz").is_err());
+        assert!(validate_download_url("https://release-assets.githubusercontent.com/github-production-release-asset-2e/f.tar.gz?jwt=abc").is_err());
+    }
+
+    #[test]
+    fn redirect_url_allows_cdn_hosts() {
+        assert!(validate_redirect_url("https://objects.githubusercontent.com/github-production-release-asset-2e/f.tar.gz").is_ok());
+        assert!(validate_redirect_url("https://release-assets.githubusercontent.com/x?jwt=abc@def").is_ok());
+    }
+
+    #[test]
+    fn redirect_url_rejects_github_and_others() {
+        // github.com als redirect-ziel wäre ein umweg um das pfad-pinning
+        assert!(validate_redirect_url("https://github.com/GloriousEggroll/proton-ge-custom/releases/download/1/f.tar.gz").is_err());
+        assert!(validate_redirect_url("https://evil.com/f").is_err());
     }
 
     #[test]
@@ -1714,7 +2019,7 @@ mod tests {
         let lib = std::path::PathBuf::from(
             library_of(&canonical.to_string_lossy()).map_err(|e| e.to_string())?,
         );
-        remove_orphan_dir_inner(canonical, &lib)
+        remove_orphan_dir_inner(canonical, &lib, &|_| true)
     }
 
     #[test]
@@ -1785,7 +2090,7 @@ mod tests {
         unixfs::symlink(&target, &link).unwrap();
 
         let lib_path = std::path::PathBuf::from(library_of(&link.to_string_lossy()).unwrap());
-        let res = remove_orphan_dir_inner(&link, &lib_path);
+        let res = remove_orphan_dir_inner(&link, &lib_path, &|_| true);
         assert!(res.is_err(), "symlink muss abgelehnt werden");
         assert!(res.as_ref().unwrap_err().contains("symlink"));
         assert!(link.exists(), "symlink selbst darf nicht angetastet werden");
@@ -1964,7 +2269,7 @@ mod tests {
         std::fs::create_dir_all(&entry).unwrap();
         std::fs::write(entry.join("marker"), b"x").unwrap();
 
-        let res = remove_trash_entry_inner(&entry.to_string_lossy());
+        let res = remove_trash_entry_inner(&entry.to_string_lossy(), &|_| true);
         assert_eq!(res.as_deref(), Ok("deleted"));
         assert!(!entry.exists(), "eintrag muss gelöscht sein");
         // trash-verzeichnis selbst darf stehen bleiben (enthält evtl. andere einträge)
@@ -1983,7 +2288,7 @@ mod tests {
 
         // konstruiere einen pfad mit .., der auf den eintrag zeigt
         let tricky = trash.join("../.protium-trash/compatdata_1_2");
-        let res = remove_trash_entry_inner(&tricky.to_string_lossy());
+        let res = remove_trash_entry_inner(&tricky.to_string_lossy(), &|_| true);
         assert!(res.is_err(), ".. muss abgelehnt werden");
         assert!(entry.exists(), "ziel darf nicht gelöscht worden sein");
 
@@ -2002,7 +2307,7 @@ mod tests {
         let link = trash.join("compatdata_42_100");
         unixfs::symlink(&target.join("42"), &link).unwrap();
 
-        let res = remove_trash_entry_inner(&link.to_string_lossy());
+        let res = remove_trash_entry_inner(&link.to_string_lossy(), &|_| true);
         assert!(res.is_err(), "symlink muss abgelehnt werden");
         assert!(res.as_ref().unwrap_err().contains("symlink"));
         assert!(link.exists(), "symlink selbst darf nicht angetastet werden");
@@ -2018,7 +2323,7 @@ mod tests {
         let dir = lib.join("steamapps/compatdata/42");
         std::fs::create_dir_all(&dir).unwrap();
 
-        let res = remove_trash_entry_inner(&dir.to_string_lossy());
+        let res = remove_trash_entry_inner(&dir.to_string_lossy(), &|_| true);
         assert!(res.is_err(), "pfad nicht in .protium-trash muss abgelehnt werden");
         assert!(res.as_ref().unwrap_err().contains(".protium-trash"));
         assert!(dir.exists());
@@ -2034,7 +2339,7 @@ mod tests {
         let entry = trash.join("compatdata_1091500");
         std::fs::create_dir_all(&entry).unwrap();
 
-        let res = remove_trash_entry_inner(&entry.to_string_lossy());
+        let res = remove_trash_entry_inner(&entry.to_string_lossy(), &|_| true);
         assert!(res.is_err(), "ohne timestamp muss abgelehnt werden");
         assert!(entry.exists());
 
@@ -2049,7 +2354,7 @@ mod tests {
         let entry = trash.join("compatdata_0_123");
         std::fs::create_dir_all(&entry).unwrap();
 
-        let res = remove_trash_entry_inner(&entry.to_string_lossy());
+        let res = remove_trash_entry_inner(&entry.to_string_lossy(), &|_| true);
         assert!(res.is_err(), "appId 0 muss abgelehnt werden");
         assert!(res.as_ref().unwrap_err().contains("appId 0"));
         assert!(entry.exists());
@@ -2065,7 +2370,7 @@ mod tests {
         let deep = trash.join("compatdata_1_2/pfx");
         std::fs::create_dir_all(&deep).unwrap();
 
-        let res = remove_trash_entry_inner(&deep.to_string_lossy());
+        let res = remove_trash_entry_inner(&deep.to_string_lossy(), &|_| true);
         assert!(res.is_err(), "tiefer pfad mit / muss abgelehnt werden");
         assert!(deep.exists());
 
@@ -2081,7 +2386,7 @@ mod tests {
         let entry = nested.join("compatdata_1_2");
         std::fs::create_dir_all(&entry).unwrap();
 
-        let res = remove_trash_entry_inner(&entry.to_string_lossy());
+        let res = remove_trash_entry_inner(&entry.to_string_lossy(), &|_| true);
         assert!(res.is_ok(), "rfind muss das letzte /steamapps/ nehmen: {res:?}");
         assert!(!entry.exists(), "eintrag muss gelöscht sein");
 
@@ -2199,7 +2504,7 @@ mod tests {
         });
         let dest = extract_dest("happy");
 
-        let res = extract_blocking(tarball.to_str().unwrap(), dest.to_str().unwrap());
+        let res = extract_blocking(tarball.to_str().unwrap(), dest.to_str().unwrap(), MAX_DOWNLOAD_BYTES, &|_| true);
         assert!(res.is_ok(), "extract sollte klappen: {res:?}");
         assert!(dest.join("file.txt").is_file(), "top-level-datei fehlt");
         assert_eq!(
@@ -2244,7 +2549,7 @@ mod tests {
         });
         let dest = extract_dest("symlink");
 
-        let res = extract_blocking(tarball.to_str().unwrap(), dest.to_str().unwrap());
+        let res = extract_blocking(tarball.to_str().unwrap(), dest.to_str().unwrap(), MAX_DOWNLOAD_BYTES, &|_| true);
         assert!(res.is_err(), "tar mit symlink muss abgelehnt werden");
         assert!(
             std::fs::symlink_metadata(dest.join("evil-link")).is_err(),
@@ -2294,7 +2599,7 @@ mod tests {
         });
         let dest = extract_dest("symlink-legit");
 
-        let res = extract_blocking(tarball.to_str().unwrap(), dest.to_str().unwrap());
+        let res = extract_blocking(tarball.to_str().unwrap(), dest.to_str().unwrap(), MAX_DOWNLOAD_BYTES, &|_| true);
         assert!(res.is_ok(), "legitimer symlink muss durchlaufen: {res:?}");
         assert!(
             dest.join("dir/lib/libfoo.so.1.2.3").is_file(),
@@ -2342,7 +2647,7 @@ mod tests {
         });
         let dest = extract_dest("symlink-traversal");
 
-        let res = extract_blocking(tarball.to_str().unwrap(), dest.to_str().unwrap());
+        let res = extract_blocking(tarball.to_str().unwrap(), dest.to_str().unwrap(), MAX_DOWNLOAD_BYTES, &|_| true);
         assert!(res.is_err(), "symlink mit traversal-target muss abgelehnt werden: {res:?}");
         assert!(
             !dest.join("dir").exists(),
@@ -2406,7 +2711,7 @@ mod tests {
         });
         let dest = extract_dest("symlink-parent");
 
-        let res = extract_blocking(tarball.to_str().unwrap(), dest.to_str().unwrap());
+        let res = extract_blocking(tarball.to_str().unwrap(), dest.to_str().unwrap(), MAX_DOWNLOAD_BYTES, &|_| true);
         assert!(res.is_ok(), "symlink mit legitimem parentdir muss durchlaufen: {res:?}");
         let md = std::fs::symlink_metadata(dest.join("dir/a/b/x")).unwrap();
         assert!(
@@ -2439,7 +2744,7 @@ mod tests {
         });
         let dest = extract_dest("blockdev");
 
-        let res = extract_blocking(tarball.to_str().unwrap(), dest.to_str().unwrap());
+        let res = extract_blocking(tarball.to_str().unwrap(), dest.to_str().unwrap(), MAX_DOWNLOAD_BYTES, &|_| true);
         assert!(res.is_err(), "tar mit block-device muss abgelehnt werden");
         assert!(
             std::fs::symlink_metadata(dest.join("blockdev")).is_err(),
@@ -2475,7 +2780,7 @@ mod tests {
         });
         let dest = extract_dest("fifo");
 
-        let res = extract_blocking(tarball.to_str().unwrap(), dest.to_str().unwrap());
+        let res = extract_blocking(tarball.to_str().unwrap(), dest.to_str().unwrap(), MAX_DOWNLOAD_BYTES, &|_| true);
         assert!(res.is_err(), "tar mit fifo muss abgelehnt werden");
         assert!(
             std::fs::symlink_metadata(dest.join("fifo")).is_err(),
@@ -2526,7 +2831,7 @@ mod tests {
         });
         let dest = extract_dest("traversal");
 
-        let _ = extract_blocking(tarball.to_str().unwrap(), dest.to_str().unwrap());
+        let _ = extract_blocking(tarball.to_str().unwrap(), dest.to_str().unwrap(), MAX_DOWNLOAD_BYTES, &|_| true);
 
         assert!(
             !escaped_path.exists(),
@@ -2572,7 +2877,7 @@ mod tests {
         });
         let dest = extract_dest("hardlink");
 
-        let res = extract_blocking(tarball.to_str().unwrap(), dest.to_str().unwrap());
+        let res = extract_blocking(tarball.to_str().unwrap(), dest.to_str().unwrap(), MAX_DOWNLOAD_BYTES, &|_| true);
         assert!(res.is_ok(), "hardlink sollte extrahiert werden: {res:?}");
         assert!(dest.join("original.txt").is_file(), "original.txt fehlt");
         // hardlink landet im ziel als reguläre datei mit gleichem inhalt
@@ -2635,7 +2940,7 @@ mod tests {
         });
         let dest = extract_dest("subdir-hardlink");
 
-        let res = extract_blocking(tarball.to_str().unwrap(), dest.to_str().unwrap());
+        let res = extract_blocking(tarball.to_str().unwrap(), dest.to_str().unwrap(), MAX_DOWNLOAD_BYTES, &|_| true);
         assert!(
             res.is_err(),
             "hardlink mit ..-target muss abgelehnt werden: {res:?}"
@@ -2694,7 +2999,7 @@ mod tests {
         std::fs::write(&p, &truncated).unwrap();
         let dest = extract_dest("truncated");
 
-        let res = extract_blocking(p.to_str().unwrap(), dest.to_str().unwrap());
+        let res = extract_blocking(p.to_str().unwrap(), dest.to_str().unwrap(), MAX_DOWNLOAD_BYTES, &|_| true);
         assert!(res.is_err(), "korrupter tarball muss Err liefern: {res:?}");
 
         // KRITISCH: kein halbes verzeichnis im ziel. (das ziel-dir selbst
@@ -2724,12 +3029,424 @@ mod tests {
     fn blockierte_pfade_als_src_werden_abgelehnt() {
         // S-H-02: src muss canonicalize + is_safe_path durchlaufen,
         // nicht nur sanitize_path. /etc als tarball-source ist blockiert.
-        let res = extract_blocking("/etc", "/tmp/protium-extract-blocked-src-test");
+        let res = extract_blocking("/etc", "/tmp/protium-extract-blocked-src-test", MAX_DOWNLOAD_BYTES, &|_| true);
         assert!(res.is_err(), "/etc darf nicht als tarball-source akzeptiert werden: {res:?}");
         assert!(
             res.as_ref().unwrap_err().contains("blocked"),
             "fehlermeldung soll blockiert nennen: {:?}",
             res
         );
+    }
+
+    #[test]
+    fn entpack_größenlimit_bricht_ab_und_räumt_auf() {
+        let tarball = extract_tarball("limit", |b| {
+            b.append_data(
+                &mut make_data_header("big.bin", &[0u8; 512]),
+                "big.bin",
+                &[0u8; 512][..],
+            )
+            .unwrap();
+        });
+        let dest = extract_dest("limit");
+
+        // cap kleiner als die deklarierte größe → abbruch vor dem unpack
+        let res = extract_blocking(tarball.to_str().unwrap(), dest.to_str().unwrap(), 100, &|_| true);
+        assert!(res.is_err(), "limit muss abbrechen: {res:?}");
+        assert!(
+            res.unwrap_err().contains("limit exceeded"),
+            "fehlermeldung soll limit nennen"
+        );
+
+        // kein halbes ziel, kein temp-dir-rest
+        let entries: Vec<String> = std::fs::read_dir(&dest)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .collect();
+        assert!(
+            entries.iter().all(|n| !n.starts_with(".protium-extract-")),
+            "temp-dir nicht aufgeräumt: {entries:?}"
+        );
+
+        extract_cleanup(&tarball, &dest);
+    }
+
+    // ---- scope-erteilung (S4: library-kandidat-zwang) ----
+
+    #[test]
+    fn allow_scope_lehnt_home_ab() {
+        // /home ist kein steam-library-kandidat und kein system-compat-dir
+        let res = validate_library_scope("/home");
+        assert!(res.is_err(), "/home darf nicht gescopt werden: {res:?}");
+        assert!(res.unwrap_err().contains("steam library"));
+    }
+
+    #[test]
+    fn allow_scope_akzeptiert_steamapps_kandidat() {
+        let mut lib = std::env::temp_dir();
+        lib.push(format!("protium-lib-scope-{}", std::process::id()));
+        std::fs::create_dir_all(lib.join("steamapps")).unwrap();
+
+        let res = validate_library_scope(lib.to_str().unwrap());
+        assert!(res.is_ok(), "steamapps-kandidat muss akzeptiert werden: {res:?}");
+
+        let _ = std::fs::remove_dir_all(&lib);
+    }
+
+    #[test]
+    fn allow_scope_akzeptiert_system_compat_dir() {
+        // systemabhängig: nur prüfen, wenn der distro-pfad existiert
+        let d = Path::new("/usr/share/steam/compatibilitytools.d");
+        if !d.exists() {
+            return;
+        }
+        let res = validate_library_scope(d.to_str().unwrap());
+        assert!(res.is_ok(), "system-compat-dir muss akzeptiert werden: {res:?}");
+    }
+
+    // ---- extract-dest-scope (S2: allowlist statt blocklist) ----
+
+    #[test]
+    fn extract_dest_ausserhalb_scope_abgelehnt_ohne_mkdir() {
+        let mut dest = std::env::temp_dir();
+        dest.push(format!("protium-extract-noscope-{}", std::process::id()));
+
+        let res = extract_blocking("/etc", dest.to_str().unwrap(), MAX_DOWNLOAD_BYTES, &|_| false);
+        assert!(res.is_err(), "unscoped dest muss abgelehnt werden: {res:?}");
+        assert!(
+            res.unwrap_err().contains("outside allowed scope"),
+            "fehlermeldung soll scope nennen"
+        );
+        assert!(
+            !dest.exists(),
+            "kein mkdir vor der ablehnung — dest darf nicht entstehen"
+        );
+    }
+
+    #[test]
+    fn extract_dest_ancestor_im_scope_ok() {
+        // dest existiert nicht, der parent ist im scope → der check greift auf
+        // den nächsten existierenden vorfahren. der src-check (/etc, blockiert)
+        // muss danach greifen — beweist, dass der dest-check bestanden wurde.
+        let mut dest = std::env::temp_dir();
+        dest.push(format!("protium-extract-ancestor-{}", std::process::id()));
+        let canon = std::fs::canonicalize(std::env::temp_dir()).unwrap();
+
+        let res = extract_blocking("/etc", dest.to_str().unwrap(), MAX_DOWNLOAD_BYTES, &|p| p == canon);
+        assert!(res.is_err());
+        assert!(
+            res.unwrap_err().contains("blocked"),
+            "src-check muss greifen (dest-check hat bestanden)"
+        );
+        let _ = std::fs::remove_dir_all(&dest);
+    }
+
+    #[test]
+    fn allow_scope_lehnt_steam_root_ohne_suffix_ab() {
+        // /usr/share/steam (ohne compatibilitytools.d) ist kein kandidat
+        let d = Path::new("/usr/share/steam");
+        if !d.exists() {
+            return;
+        }
+        let res = validate_library_scope(d.to_str().unwrap());
+        assert!(res.is_err(), "/usr/share/steam ohne suffix darf nicht gescopt werden: {res:?}");
+    }
+
+    // ---- lösch-scope-gates (S5: nur session-bestätigte libraries) ----
+
+    #[test]
+    fn remove_orphan_unscoped_library_abgelehnt() {
+        let root = orphan_fixture("orphan-noscope");
+        let lib = root.join("lib");
+        let target = lib.join("steamapps").join("shadercache").join("12345");
+        touch(&target);
+
+        let canonical = std::fs::canonicalize(&target).unwrap();
+        let res = remove_orphan_dir_inner(&canonical, &lib, &|_| false);
+        assert!(res.is_err(), "unscoped library muss abgelehnt werden: {res:?}");
+        assert!(
+            res.unwrap_err().contains("outside allowed scope"),
+            "fehlermeldung soll scope nennen"
+        );
+        assert!(target.join("marker").is_file(), "nichts darf gelöscht sein");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn remove_trash_unscoped_library_abgelehnt() {
+        let root = orphan_fixture("trash-noscope");
+        let lib = root.join("lib");
+        let entry = lib
+            .join("steamapps")
+            .join(".protium-trash")
+            .join("compatdata_12345_1700000000000");
+        touch(&entry);
+
+        let res = remove_trash_entry_inner(&entry.to_string_lossy(), &|_| false);
+        assert!(res.is_err(), "unscoped library muss abgelehnt werden: {res:?}");
+        assert!(
+            res.unwrap_err().contains("outside allowed scope"),
+            "fehlermeldung soll scope nennen"
+        );
+        assert!(entry.join("marker").is_file(), "nichts darf gelöscht sein");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // ---- write-gate (M3.1: INV-1 in rust) ----
+
+    use super::{is_steam_config_path, write_steam_file_inner};
+
+    fn wsg_fixture(tag: &str) -> std::path::PathBuf {
+        let mut p = std::env::temp_dir();
+        p.push(format!("protium-wsg-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&p);
+        std::fs::create_dir_all(&p).unwrap();
+        p
+    }
+
+    // baut $TMP/fakehome/.local/share/Steam/... und $TMP/cache (backup-dir)
+    fn wsg_env(tag: &str) -> (std::path::PathBuf, std::path::PathBuf, std::path::PathBuf) {
+        let root = wsg_fixture(tag);
+        let home = root.join("fakehome");
+        let steam = home.join(".local/share/Steam");
+        std::fs::create_dir_all(steam.join("config")).unwrap();
+        std::fs::create_dir_all(steam.join("userdata/123/config")).unwrap();
+        std::fs::write(steam.join("config/config.vdf"), "alt-config").unwrap();
+        std::fs::write(steam.join("userdata/123/config/localconfig.vdf"), "alt-local").unwrap();
+        let cache = root.join("cache");
+        std::fs::create_dir_all(&cache).unwrap();
+        (home, cache, steam)
+    }
+
+    #[test]
+    fn write_gate_steam_laeuft_abgelehnt() {
+        let (home, cache, steam) = wsg_env("running");
+        let target = steam.join("config/config.vdf");
+        let backup = cache.join("backups/1.vdf");
+        let res = write_steam_file_inner(
+            target.to_str().unwrap(),
+            "alt-config",
+            "neu",
+            backup.to_str().unwrap(),
+            &cache,
+            &home,
+            true,
+        );
+        assert!(res.is_err());
+        assert!(res.unwrap_err().contains("steam is running"));
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "alt-config");
+        let _ = std::fs::remove_dir_all(&home.parent().unwrap());
+    }
+
+    #[test]
+    fn write_gate_happy_backup_und_atomarer_write() {
+        let (home, cache, steam) = wsg_env("happy");
+        let target = steam.join("config/config.vdf");
+        let backup = cache.join("backups/1.vdf");
+        let res = write_steam_file_inner(
+            target.to_str().unwrap(),
+            "alt-config",
+            "neu",
+            backup.to_str().unwrap(),
+            &cache,
+            &home,
+            false,
+        );
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "neu");
+        assert_eq!(std::fs::read_to_string(&backup).unwrap(), "alt-config");
+        // kein temp-rest im ziel-verzeichnis
+        let rest: Vec<_> = std::fs::read_dir(steam.join("config"))
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .filter(|n| n.starts_with('.'))
+            .collect();
+        assert!(rest.is_empty(), "temp-rest: {rest:?}");
+        let _ = std::fs::remove_dir_all(&home.parent().unwrap());
+    }
+
+    #[test]
+    fn write_gate_userdata_localconfig_ok() {
+        let (home, cache, steam) = wsg_env("userdata");
+        let target = steam.join("userdata/123/config/localconfig.vdf");
+        let backup = cache.join("backups/2.vdf");
+        let res = write_steam_file_inner(
+            target.to_str().unwrap(),
+            "alt-local",
+            "neu-local",
+            backup.to_str().unwrap(),
+            &cache,
+            &home,
+            false,
+        );
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(
+            std::fs::read_to_string(&target).unwrap(),
+            "neu-local"
+        );
+        let _ = std::fs::remove_dir_all(&home.parent().unwrap());
+    }
+
+    #[test]
+    fn write_gate_fremde_datei_abgelehnt() {
+        let (home, cache, steam) = wsg_env("fremd");
+        let target = steam.join("config/fremd.vdf");
+        std::fs::write(&target, "x").unwrap();
+        let backup = cache.join("b.vdf");
+        let res = write_steam_file_inner(
+            target.to_str().unwrap(),
+            "x",
+            "y",
+            backup.to_str().unwrap(),
+            &cache,
+            &home,
+            false,
+        );
+        assert!(res.is_err());
+        assert!(res.unwrap_err().contains("not a steam config file"));
+        let _ = std::fs::remove_dir_all(&home.parent().unwrap());
+    }
+
+    #[test]
+    fn write_gate_fremder_root_abgelehnt() {
+        let (home, cache, _steam) = wsg_env("fremdroot");
+        let target = home.join(".local/share/Other/config/config.vdf");
+        std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+        std::fs::write(&target, "x").unwrap();
+        let backup = cache.join("b.vdf");
+        let res = write_steam_file_inner(
+            target.to_str().unwrap(),
+            "x",
+            "y",
+            backup.to_str().unwrap(),
+            &cache,
+            &home,
+            false,
+        );
+        assert!(res.is_err());
+        assert!(res.unwrap_err().contains("not a steam config file"));
+        let _ = std::fs::remove_dir_all(&home.parent().unwrap());
+    }
+
+    #[test]
+    fn write_gate_fehlende_zieldatei_abgelehnt() {
+        let (home, cache, steam) = wsg_env("fehlt");
+        let target = steam.join("config/config.vdf"); // existiert nicht (fixture schreibt sie — hier: löschen)
+        std::fs::remove_file(&target).unwrap();
+        let backup = cache.join("b.vdf");
+        let res = write_steam_file_inner(
+            target.to_str().unwrap(),
+            "x",
+            "y",
+            backup.to_str().unwrap(),
+            &cache,
+            &home,
+            false,
+        );
+        assert!(res.is_err(), "fail-closed bei fehlender zieldatei: {res:?}");
+        let _ = std::fs::remove_dir_all(&home.parent().unwrap());
+    }
+
+    #[test]
+    fn write_gate_backup_ausserhalb_appcache_abgelehnt() {
+        let (home, cache, steam) = wsg_env("backupweg");
+        let target = steam.join("config/config.vdf");
+        let backup = home.join("böse-backup.vdf"); // außerhalb cache
+        let res = write_steam_file_inner(
+            target.to_str().unwrap(),
+            "alt-config",
+            "neu",
+            backup.to_str().unwrap(),
+            &cache,
+            &home,
+            false,
+        );
+        assert!(res.is_err());
+        assert!(res.unwrap_err().contains("backup outside app cache"));
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "alt-config");
+        let _ = std::fs::remove_dir_all(&home.parent().unwrap());
+    }
+
+    // ---- remove_compat_tool (M3.4) ----
+
+    use super::remove_compat_tool_inner;
+
+    #[test]
+    fn remove_tool_happy_löscht_tool_dir() {
+        let root = wsg_fixture("rmtool-happy");
+        let steam = root.join("steam");
+        let tool = steam.join("compatibilitytools.d/GE-Proton9-27");
+        std::fs::create_dir_all(&tool).unwrap();
+        std::fs::write(tool.join("file"), "x").unwrap();
+
+        let res = remove_compat_tool_inner(steam.to_str().unwrap(), "GE-Proton9-27", &|_| true);
+        assert!(res.is_ok(), "{res:?}");
+        assert!(!tool.exists(), "tool muss gelöscht sein");
+        assert!(steam.join("compatibilitytools.d").is_dir(), "basis bleibt");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn remove_tool_invalid_name_abgelehnt() {
+        let root = wsg_fixture("rmtool-invalid");
+        let steam = root.join("steam");
+        std::fs::create_dir_all(&steam).unwrap();
+
+        for bad in ["a/b", "..", ".", ""] {
+            let res = remove_compat_tool_inner(steam.to_str().unwrap(), bad, &|_| true);
+            assert!(res.is_err(), "tool_name {bad:?} muss abgelehnt werden");
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn remove_tool_symlink_abgelehnt() {
+        let root = wsg_fixture("rmtool-symlink");
+        let steam = root.join("steam");
+        let tools = steam.join("compatibilitytools.d");
+        std::fs::create_dir_all(&tools).unwrap();
+        let real = root.join("echt");
+        std::fs::create_dir_all(&real).unwrap();
+        std::os::unix::fs::symlink(&real, tools.join("evil")).unwrap();
+
+        let res = remove_compat_tool_inner(steam.to_str().unwrap(), "evil", &|_| true);
+        assert!(res.is_err(), "symlink-tool muss abgelehnt werden: {res:?}");
+        assert!(real.is_dir(), "ziel des symlinks bleibt");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn remove_tool_unscoped_root_abgelehnt() {
+        let root = wsg_fixture("rmtool-noscope");
+        let steam = root.join("steam");
+        let tool = steam.join("compatibilitytools.d/GE-Proton9-27");
+        std::fs::create_dir_all(&tool).unwrap();
+
+        let res = remove_compat_tool_inner(steam.to_str().unwrap(), "GE-Proton9-27", &|_| false);
+        assert!(res.is_err(), "unscoped root muss abgelehnt werden: {res:?}");
+        assert!(tool.is_dir(), "nichts gelöscht");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn write_gate_muster_erkennung_flatpak_und_snap() {
+        let root = wsg_fixture("muster");
+        let home = root.join("fakehome");
+        let flatpak = home.join(".var/app/com.valvesoftware.Steam/.local/share/Steam/config/config.vdf");
+        let snap = home.join("snap/steam/common/.local/share/Steam/config/config.vdf");
+        assert!(is_steam_config_path(&flatpak, &home));
+        assert!(is_steam_config_path(&snap, &home));
+        assert!(!is_steam_config_path(&home.join("etc/evil"), &home));
+        // userdata mit nicht-numerischem ordner → abgelehnt
+        assert!(!is_steam_config_path(
+            &home.join(".local/share/Steam/userdata/abc/config/localconfig.vdf"),
+            &home
+        ));
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

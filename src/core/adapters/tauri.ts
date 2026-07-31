@@ -7,6 +7,7 @@ import {
   exists as fsExists,
   readFile as fsReadFile,
   remove as fsRemove,
+  stat as fsStat,
   mkdir,
   readDir,
   readTextFile,
@@ -16,11 +17,21 @@ import {
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { Cache, DirEntry, FileSystem, Http, HttpResponse, Ports, System } from "../ports.js";
+import { ensureSizeLimit } from "../ports.js";
+
+// M4.3: größen-precheck vor jedem read — ein stat-fehler (nicht existent)
+// lässt den read wie bisher laufen (die aufrufer behandeln das); über-limit
+// wirft und der fehler wird wie ein unlesbarer pfad behandelt (INV-2).
+async function withSizeLimit<T>(path: string, read: () => Promise<T>): Promise<T> {
+  const st = await fsStat(path).catch(() => null);
+  if (st) ensureSizeLimit(st.size);
+  return read();
+}
 
 const fs: FileSystem = {
   exists: (path) => fsExists(path).catch(() => false),
-  readTextFile: (path) => readTextFile(path),
-  readFile: (path) => fsReadFile(path),
+  readTextFile: (path) => withSizeLimit(path, () => readTextFile(path)),
+  readFile: (path) => withSizeLimit(path, () => fsReadFile(path)),
   async readDir(path) {
     const entries = await readDir(path);
     return entries.map(
@@ -64,6 +75,10 @@ const system: System = {
     invoke<string>("download_file", { url, dest, downloadId }),
   cancelDownload: (downloadId) => invoke<void>("cancel_download", { downloadId }),
   extractTarball: (src, dest) => invoke<void>("extract_tarball", { src, dest }),
+  writeSteamConfigFile: (file, original, content, backup) =>
+    invoke<void>("write_steam_file", { file, original, content, backup }),
+  removeCompatTool: (steamRoot, toolName) =>
+    invoke<void>("remove_compat_tool", { steamRoot, toolName }),
 };
 
 // cache als json-dateien unter dem app-cache-dir

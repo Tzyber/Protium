@@ -1,73 +1,38 @@
-import { mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { SteamRunningError, writeSteamFile } from "../../src/core/configwrite.js";
-import { fakeSystem, nodeFs } from "../support/fakeSteam.js";
+import { fakeSystem } from "../support/fakeSteam.js";
 
-const tmp = () => mkdtemp(join(tmpdir(), "protium-writegate-"));
+// M3.1: das INV-1-write-gate selbst (steam-läuft → backup → atomarer write)
+// liegt in rust (`write_steam_file`, cargo-getestet). diese schicht baut den
+// backup-pfad und reicht den originalstand durch — hier wird der kontrakt
+// getestet, nicht die disk-logik.
 
-describe("writeSteamFile (INV-1 write-gate)", () => {
-  it("blockt bei laufendem steam — datei unangetastet, kein backup", async () => {
-    const dir = await tmp();
-    const target = join(dir, "localconfig.vdf");
-    await writeFile(target, "ORIGINAL", "utf8");
+describe("writeSteamFile (INV-1 write-gate, kontrakt)", () => {
+  it("blockt bei laufendem steam — writeSteamConfigFile nie aufgerufen", async () => {
     const system = { ...fakeSystem(), isProcessRunning: async () => true };
+    const spy = vi.fn(system.writeSteamConfigFile);
+    system.writeSteamConfigFile = spy;
 
     await expect(
-      writeSteamFile(nodeFs(), system, target, "NEU", join(dir, "backups"), "IRRELEVANT"),
+      writeSteamFile(system, "/steam/config/config.vdf", "NEU", "/backups", "IRRELEVANT"),
     ).rejects.toBeInstanceOf(SteamRunningError);
-    expect(await readFile(target, "utf8")).toBe("ORIGINAL");
-    expect(await readdir(dir)).toEqual(["localconfig.vdf"]); // weder backup-dir noch temp
+    expect(spy).not.toHaveBeenCalled();
   });
 
-  it("schreibt atomar: backup mit altstand, temp weg, ziel neu", async () => {
-    const dir = await tmp();
-    const target = join(dir, "localconfig.vdf");
-    await writeFile(target, "ORIGINAL", "utf8");
-    const backupDir = join(dir, "tief", "verschachtelt", "backups"); // mkdir muss rekursiv können
+  it("reicht (file, original, content, backup-pfad) an den rust-command durch", async () => {
+    const system = fakeSystem();
+    const spy = vi.fn(); // reiner mock — kein disk-zustand im kontrakt-test
+    system.writeSteamConfigFile = spy;
 
-    await writeSteamFile(nodeFs(), fakeSystem(), target, "NEU", backupDir, "ORIGINAL");
+    await writeSteamFile(system, "/steam/config/config.vdf", "NEU", "/cache/backups", "ORIGINAL");
 
-    expect(await readFile(target, "utf8")).toBe("NEU");
-    const backups = await readdir(backupDir);
-    expect(backups).toHaveLength(1);
-    expect(backups[0]).toMatch(/^localconfig\.vdf\.\d{4}-\d{2}-\d{2}T/);
-    const backupFile = backups[0];
-    if (!backupFile) throw new Error("backup fehlt");
-    expect(await readFile(join(backupDir, backupFile), "utf8")).toBe("ORIGINAL");
-    expect(await readdir(dir)).not.toContain("localconfig.vdf.protium-tmp");
-  });
-
-  it("ohne bestehende zieldatei: schreibt ohne backup", async () => {
-    const dir = await tmp();
-    const target = join(dir, "neu.vdf");
-    const backupDir = join(dir, "backups");
-
-    await writeSteamFile(nodeFs(), fakeSystem(), target, "INHALT", backupDir, "IRRELEVANT");
-
-    expect(await readFile(target, "utf8")).toBe("INHALT");
-    expect(await readdir(dir)).toEqual(["neu.vdf"]); // kein backup-dir angelegt
-  });
-
-  it("backupText-parameter: backup = übergebener text, NICHT disk-re-read (TOCTOU-schutz)", async () => {
-    const dir = await tmp();
-    const target = join(dir, "localconfig.vdf");
-    await writeFile(target, "ORIGINAL", "utf8");
-    const backupDir = join(dir, "backups");
-
-    // simuliere: zwischen dem read des callers und writeSteamFile wurde die datei
-    // extern auf "FREMD" geändert. mit backupText="ORIGINAL" muss das backup
-    // trotzdem "ORIGINAL" enthalten (nicht "FREMD" von der disk).
-    await writeSteamFile(nodeFs(), fakeSystem(), target, "NEU", backupDir, "ORIGINAL");
-    // jetzt die disk auf "FREMD" ändern — wird ignoriert weil backupText gegeben
-    await writeFile(target, "FREMD", "utf8");
-    // backup sollte "ORIGINAL" sein
-
-    const backups = await readdir(backupDir);
-    expect(backups).toHaveLength(1);
-    const backupFile = backups[0];
-    if (!backupFile) throw new Error("backup fehlt");
-    expect(await readFile(join(backupDir, backupFile), "utf8")).toBe("ORIGINAL");
+    expect(spy).toHaveBeenCalledTimes(1);
+    const [file, original, content, backup] = spy.mock.calls[0] ?? [];
+    expect(file).toBe("/steam/config/config.vdf");
+    // backupText wird unverändert als original durchgereicht (TOCTOU-basis:
+    // das backup ist der übergebene stand, nie ein disk-reread)
+    expect(original).toBe("ORIGINAL");
+    expect(content).toBe("NEU");
+    expect(backup).toMatch(/^\/cache\/backups\/config\.vdf\.\d{4}-\d{2}-\d{2}T/);
   });
 });

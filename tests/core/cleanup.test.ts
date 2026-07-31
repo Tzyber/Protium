@@ -41,6 +41,17 @@ describe("findOrphans", () => {
     expect(paths.every((p) => !p.includes("not_a_dir"))).toBe(true);
   });
 
+  it("parseInt-overflow (254 ziffern, NAME_MAX) → kein orphan (M4.1)", async () => {
+    const { lib2, fs, installedAppIds } = await setup();
+    const huge = "9".repeat(254); // max möglicher verzeichnisname
+    await fs.mkdir(`${lib2}/compatdata`);
+    await fs.mkdir(`${lib2}/compatdata/${huge}`);
+
+    const orphans = await findOrphans([lib2], installedAppIds, fs);
+
+    expect(orphans).toEqual([]);
+  });
+
   it("basis-ordner fehlt → kein throw, leeres teilergebnis", async () => {
     const { fs, libraries, installedAppIds } = await setup();
     // lib2 hat keine compatdata/shadercache dirs — sollte nicht crashen

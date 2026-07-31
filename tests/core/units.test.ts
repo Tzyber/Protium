@@ -5,6 +5,7 @@ import { errText } from "../../src/core/errtext.js";
 import { parseLibraryFolders } from "../../src/core/libraryfolders.js";
 import { parseManifest } from "../../src/core/manifest.js";
 import { joinPath } from "../../src/core/paths.js";
+import { ensureSizeLimit, MAX_FILE_BYTES } from "../../src/core/ports.js";
 import { isFullyInstalled } from "../../src/core/types.js";
 
 const acf = (flags: number) => `"AppState"
@@ -169,5 +170,16 @@ describe("joinPath (path-traversal-rejection)", () => {
   it("erlaubt externe mount-pfade", () => {
     expect(joinPath("/run/media/user", "SteamLibrary")).toBe("/run/media/user/SteamLibrary");
     expect(joinPath("/mnt", "games")).toBe("/mnt/games");
+  });
+});
+
+describe("ensureSizeLimit (M4.3, größen-cap für reads)", () => {
+  it("unter dem limit → kein throw", () => {
+    expect(() => ensureSizeLimit(1024)).not.toThrow();
+    expect(() => ensureSizeLimit(MAX_FILE_BYTES)).not.toThrow();
+  });
+
+  it("über dem limit → wirft", () => {
+    expect(() => ensureSizeLimit(MAX_FILE_BYTES + 1)).toThrow(/zu groß/);
   });
 });

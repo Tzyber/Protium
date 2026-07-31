@@ -1,5 +1,18 @@
 // einzige schnittstelle von core zur außenwelt: adapter implementieren, tests mocken.
 
+/** M4.3 (audit-befund core-A-05): größen-limit für datei-reads. eine 2-GB-vdf
+ *  würde die webview oomen; steam-dateien sind nie größer (cache-reads werden
+ *  mitgecappt — konsistent, schadet nicht). */
+export const MAX_FILE_BYTES = 16 * 1024 * 1024;
+
+/** wirft, wenn die datei-größe das limit überschreitet — aufrufer (adapter)
+ *  behandeln den fehler wie einen unlesbaren pfad (INV-2: skip + warning). */
+export function ensureSizeLimit(size: number): void {
+  if (size > MAX_FILE_BYTES) {
+    throw new Error(`datei zu groß (${size} bytes) — übersprungen`);
+  }
+}
+
 export interface DirEntry {
   name: string;
   isDirectory: boolean;
@@ -65,6 +78,19 @@ export interface System {
   cancelDownload(downloadId: string): Promise<void>;
   /** R-1 .tar.gz nach dest entpacken (temp im ziel-fs, EXDEV-safe). */
   extractTarball(src: string, dest: string): Promise<void>;
+  /** M3.4: entfernt ein GE-tool aus compatibilitytools.d (scope-check auf den
+   *  steam-root, tool_name-validierung, symlink-guard — in rust). */
+  removeCompatTool(steamRoot: string, toolName: string): Promise<void>;
+  /** M3.1: steam-config-datei mit vollem INV-1-write-gate in rust (steam-läuft-
+   *  check → backup → atomarer temp+rename). `original` = der vor dem patch
+   *  gelesene stand (backup-inhalt, TOCTOU-basis); `backup` = vom JS gebauter
+   *  backup-pfad im app-cache. */
+  writeSteamConfigFile(
+    file: string,
+    original: string,
+    content: string,
+    backup: string,
+  ): Promise<void>;
   /** listet <library>/steamapps/.protium-trash. in rust, weil der webview-fs-scope
    *  verzeichnisse mit führendem punkt nicht zuverlässig erfasst. */
   listTrashEntries(library: string): Promise<TrashListing>;

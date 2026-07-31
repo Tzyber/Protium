@@ -28,7 +28,11 @@ export async function findOrphans(
         if (!entry.isDirectory || entry.isSymlink) continue;
         if (!NUMERIC_RE.test(entry.name)) continue;
         const appId = parseInt(entry.name, 10);
-        if (appId === 0) continue;
+        // M4.1 (audit-befund): riesige ziffernfolgen parsen jenseits der
+        // JS-präzision (NAME_MAX erlaubt 254 ziffern → 1.8e254). solche
+        // appIds sind nie legitim (steam: ≤ 10 stellen) und würden das
+        // rust-backend (u64-parse) beim löschen ratlos lassen.
+        if (appId === 0 || !Number.isFinite(appId) || appId > Number.MAX_SAFE_INTEGER) continue;
         if (installedAppIds.has(appId)) continue;
 
         const orphanPath =

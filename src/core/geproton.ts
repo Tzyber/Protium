@@ -97,6 +97,9 @@ export async function fetchReleases(
   try {
     const raw = await cache.get(CACHE_KEY);
     if (raw) cached = JSON.parse(raw) as CacheEntry;
+    // M4.2: cache-schema-validierung — ein vergifteter/fehlerhafter cache
+    // (releases: null/objekt) wird wie ein miss behandelt statt durchgereicht
+    if (cached && !Array.isArray(cached.releases)) cached = null;
   } catch {
     cached = null;
   }
@@ -230,9 +233,9 @@ export async function installRelease(
 
 // NUR für GE-tools aufrufen (distro-tools gehören dem paketmanager).
 export async function removeTool(
-  fs: FileSystem,
+  system: System,
   steamRoot: string,
   toolDirName: string,
 ): Promise<void> {
-  await fs.remove(joinPath(paths.compatToolsDir(steamRoot), toolDirName), { recursive: true });
+  await system.removeCompatTool(steamRoot, toolDirName);
 }

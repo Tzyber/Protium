@@ -15,20 +15,22 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # M4.5: action-tags auf commit-SHAs gepinnt (2026-07-31) — mutable
+      # tags sind supply-chain-risiko, SHAs sind immutabel.
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
 
       - name: Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # stable=v1
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           workspaces: src-tauri
 
@@ -52,6 +54,10 @@ jobs:
           npm test
           cargo test --manifest-path src-tauri/Cargo.toml
 
+      # appimagetool aus dem continuous-kanal: upstream bietet KEIN
+      # versioniertes AppImage-asset (verifiziert 2026-07-31) — sha-pinning
+      # des artefacts ist damit unmöglich. bekanntes residuum, dokumentiert
+      # in PROTIUM_STATUS (security-härtung 2026-07-31, M4.5).
       - name: Install appimagetool
         run: |
           wget -q "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage" -O /tmp/appimagetool
@@ -84,7 +90,7 @@ jobs:
           echo "Gepatchtes AppImage: ${APPIMAGE}"
 
       - name: Create release and upload assets
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: ${{ github.ref_name }}
           name: "Protium ${{ github.ref_name }}"

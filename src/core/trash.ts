@@ -101,7 +101,15 @@ export async function findTrashEntries(
       const appId = Number.parseInt(appIdRaw, 10);
       const trashedAt = Number.parseInt(msRaw, 10);
 
-      if (appId === 0 || !Number.isFinite(trashedAt) || trashedAt <= 0) {
+      // M4.1 (audit-befund): riesige ziffernfolgen parsen jenseits der
+      // JS-präzision — nie legitime appIds (steam: ≤ 10 stellen)
+      if (
+        appId === 0 ||
+        !Number.isFinite(appId) ||
+        appId > Number.MAX_SAFE_INTEGER ||
+        !Number.isFinite(trashedAt) ||
+        trashedAt <= 0
+      ) {
         unknown.push(fullPath);
         continue;
       }

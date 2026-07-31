@@ -195,7 +195,7 @@ export const useProtonStore = defineStore("proton", {
       if (!steamRoot || tool.source !== "user") return;
       this.busyRemove = tool.name;
       try {
-        await removeTool(tauriPorts.fs, steamRoot, tool.name);
+        await removeTool(tauriPorts.system, steamRoot, tool.name);
         await scan.runScan();
       } catch (e) {
         this.loadError = t("proton.removeFailed", { msg: errMsg(e) });

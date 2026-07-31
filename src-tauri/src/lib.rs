@@ -20,6 +20,8 @@ pub fn run() {
             commands::remove_orphan_dir,
             commands::remove_trash_entry,
             commands::list_trash_entries,
+            commands::write_steam_file,
+            commands::remove_compat_tool,
         ])
         .run(tauri::generate_context!())
         .expect("error while running protium");

@@ -35,7 +35,7 @@ export async function writeCompatTool(
   patched = setVdfValue(patched, [...appIdPath(appId), "config"], "");
   patched = setVdfValue(patched, [...appIdPath(appId), "priority"], "250");
 
-  await writeSteamFile(ports.fs, ports.system, path, patched, backupDir, text);
+  await writeSteamFile(ports.system, path, patched, backupDir, text);
   return "written";
 }
 
@@ -52,6 +52,6 @@ export async function removeCompatTool(
   if (getVdfValue(text, [...appIdPath(appId), "name"]) === undefined) return "unchanged";
 
   const patched = removeVdfEntry(text, appIdPath(appId));
-  await writeSteamFile(ports.fs, ports.system, path, patched, backupDir, text);
+  await writeSteamFile(ports.system, path, patched, backupDir, text);
   return "written";
 }

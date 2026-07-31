@@ -50,6 +50,8 @@ describe("listCompatTools", () => {
       downloadFile: vi.fn(async () => "hash"),
       cancelDownload: vi.fn(async () => {}),
       extractTarball: vi.fn(async () => {}),
+      writeSteamConfigFile: vi.fn(async () => {}),
+      removeCompatTool: vi.fn(async () => {}),
     };
 
     const warnings: string[] = [];

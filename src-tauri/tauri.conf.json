@@ -23,6 +23,11 @@
     "security": {
       "csp": {
         "default-src": "'self'",
+        "base-uri": "'none'",
+        "object-src": "'none'",
+        "frame-src": "'none'",
+        "form-action": "'self'",
+        "frame-ancestors": "'self'",
         "img-src": "'self' data: asset: http://asset.localhost https://cdn.cloudflare.steamstatic.com",
         "connect-src": "'self' ipc: http://ipc.localhost asset: http://asset.localhost",
         "style-src": "'self' 'unsafe-inline'"

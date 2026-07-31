@@ -256,7 +256,17 @@ function removeInScope(
     end = closeToken.end;
   }
 
-  const lineStart = text.lastIndexOf("\n", entry.key.start - 1) + 1;
+  // präfix-fraß-schutz: bei nicht-zeilenformatierter datei (kein \n vor dem
+  // key) wäre lineStart = 0 und der splice fräße den gesamten präfix bis zum
+  // block-ende. wirf nur, wenn zwischen zeilenbeginn und key nicht-nur-
+  // whitespace liegt (indent-tabs sind legitim, echter content ist es nicht);
+  // ein key bei offset 0 bleibt ebenfalls legitim.
+  const rawLineStart = text.lastIndexOf("\n", entry.key.start - 1) + 1;
+  const between = text.slice(rawLineStart, entry.key.start);
+  if (/[^ \t]/.test(between)) {
+    throw new VdfPatchError(`"${key}" beginnt nicht auf eigener zeile — strukturbruch`);
+  }
+  const lineStart = Math.max(rawLineStart, entry.key.start);
   let trailEnd = end;
   while (trailEnd < text.length && " \t\r".includes(text.charAt(trailEnd))) trailEnd++;
   if (trailEnd < text.length && text.charAt(trailEnd) === "\n") trailEnd++;

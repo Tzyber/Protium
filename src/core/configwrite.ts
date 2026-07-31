@@ -1,6 +1,11 @@
-// INV-1 write-gate für steam-dateien: steam-läuft-check → backup → atomares temp+rename.
+// INV-1 write-gate für steam-dateien. M3.1: die sicherung selbst (steam-läuft-
+// check → backup → atomarer temp+rename) liegt im rust-command
+// `write_steam_file`; diese schicht baut nur den backup-pfad und reicht den
+// gelesenen originalstand (TOCTOU-basis) durch. der steam-check hier bleibt
+// als UX-schicht (SteamRunningError mit übersetzbarer meldung) — rust prüft
+// zusätzlich und lehnt sonst ab.
 import { joinPath } from "./paths.js";
-import type { FileSystem, System } from "./ports.js";
+import type { System } from "./ports.js";
 
 export class SteamRunningError extends Error {
   constructor() {
@@ -15,16 +20,10 @@ export class SteamRunningError extends Error {
  * schreibt `content` nach `path` mit write-gate (INV-1).
  * der steam-check ist doppelt wichtig: steam schreibt vdf-dateien beim beenden zurück
  * → ein write bei laufendem steam würde still revertiert.
- * backup nur wenn die zieldatei existiert; temp+rename im selben verzeichnis
- * (gleiches dateisystem → atomar, kein EXDEV-problem).
  * `backupText`: der vor dem patch gelesene originalstand — so haben backup und patch
  * dieselbe basis (backup-TOCTOU vermieden).
- * NICHT abgedeckt: startet steam im schmalen fenster zwischen check und rename, wird der
- * write nicht verhindert (steam überschreibt ihn dann beim beenden). desktop-seitig nicht
- * atomar lösbar; risiko ist klein und die folge nur ein verworfener write, kein datenverlust.
  */
 export async function writeSteamFile(
-  fs: FileSystem,
   system: System,
   path: string,
   content: string,
@@ -34,19 +33,8 @@ export async function writeSteamFile(
   // "steam" matcht per substring auch steamwebhelper — im zweifel lieber blockieren (sichere richtung)
   if (await system.isProcessRunning("steam")) throw new SteamRunningError();
 
-  if (await fs.exists(path)) {
-    await fs.mkdir(backupDir);
-    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const base = path.split("/").pop() ?? "steam-datei";
-    await fs.writeTextFile(joinPath(backupDir, `${base}.${stamp}`), backupText);
-  }
-
-  const tmp = `${path}.protium-tmp`;
-  try {
-    await fs.writeTextFile(tmp, content);
-    await fs.rename(tmp, path);
-  } catch (e) {
-    await fs.remove(tmp).catch(() => {});
-    throw e;
-  }
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const base = path.split("/").pop() ?? "steam-datei";
+  const backup = joinPath(backupDir, `${base}.${stamp}`);
+  await system.writeSteamConfigFile(path, backupText, content, backup);
 }

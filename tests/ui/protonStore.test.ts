@@ -1,7 +1,7 @@
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GeRelease } from "../../src/core/geproton";
-import { setLocale, t } from "../../src/ui/i18n";
+import { setLocale } from "../../src/ui/i18n";
 
 const { mockAppCacheDir, mockDownloadFile, mockExtractTarball, mockHttpGet, mockListen } =
   vi.hoisted(() => ({
@@ -28,6 +28,7 @@ vi.mock("../../src/core/adapters/tauri", async () => {
       system: {
         downloadFile: mockDownloadFile,
         extractTarball: mockExtractTarball,
+        removeCompatTool: vi.fn(async () => {}),
         cancelDownload: vi.fn(async () => {}),
       },
       cache: {},

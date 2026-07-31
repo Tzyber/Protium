@@ -285,6 +285,30 @@ describe("removeVdfEntry", () => {
     const removed = removeVdfEntry(patched, [...LAUNCH_228980, "LaunchOptions"]);
     expect(parse(removed)).toEqual(parse(LOCALCONFIG));
   });
+
+  it("minifizierte datei → wirft statt präfix zu fressen", () => {
+    // einzeilige vdf, kein \n vor dem key — der alte code fräße ab offset 0
+    // den gesamten InstallConfigStore-präfix inkl. globalem default-mapping
+    const minified =
+      `"InstallConfigStore"{"Software"{"Valve"{"Steam"{` +
+      `"CompatToolMapping"{"620"{"name" "x"}}}}}}`;
+    expect(() =>
+      removeVdfEntry(minified, [
+        "InstallConfigStore",
+        "Software",
+        "Valve",
+        "Steam",
+        "CompatToolMapping",
+        "620",
+      ]),
+    ).toThrow(VdfPatchError);
+  });
+
+  it("key bei offset 0 → bleibt legitim (kein false-positives werfen)", () => {
+    const single = `"620"\n{\n\t"name"\t\t"x"\n}\n`;
+    // datei beginnt mit dem zu entfernenden key — lineStart == key.start, kein fehler
+    expect(removeVdfEntry(single, ["620"])).toBe("");
+  });
 });
 
 // drift-wächter (PROTIUM_STATUS phase 4): dokumentiert, dass die lib semantisch

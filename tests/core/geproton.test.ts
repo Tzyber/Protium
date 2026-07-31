@@ -112,6 +112,21 @@ describe("fetchReleases", () => {
     expect(rels).toHaveLength(1); // cache statt leer
   });
 
+  it("cache mit releases:null → wie miss behandelt, nicht durchgereicht (M4.2)", async () => {
+    const cache = memCache();
+    await cache.set("gh:ge-releases", JSON.stringify({ etag: null, fetchedAt: 0, releases: null }));
+    const http: Http = {
+      get() {
+        return Promise.reject(new Error("offline"));
+      },
+    };
+
+    const result = await fetchReleases(http, cache);
+
+    expect(result.source).toBe("offline"); // cache wurde verworfen
+    expect(result.releases).toEqual([]);
+  });
+
   it("offline ohne cache → [] statt throw", async () => {
     const http: Http = {
       get() {

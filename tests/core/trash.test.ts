@@ -13,6 +13,8 @@ function fakeSystem(impl: (library: string) => Promise<TrashListing>): System {
     downloadFile: async () => "",
     cancelDownload: async () => {},
     extractTarball: async () => {},
+    writeSteamConfigFile: async () => {},
+    removeCompatTool: async () => {},
   };
 }
 
@@ -130,6 +132,17 @@ describe("findTrashEntries", () => {
 
     expect(r.entries).toHaveLength(0);
     expect(r.unknown).toHaveLength(5);
+  });
+
+  it("parseInt-overflow im namen → unknown statt riesen-appId (M4.1)", async () => {
+    const sys = fakeSystem(async () =>
+      listing("/lib/steamapps/.protium-trash", [`compatdata_${"9".repeat(254)}_1700000000000`]),
+    );
+
+    const r = await findTrashEntries(["/lib"], sys);
+
+    expect(r.entries).toEqual([]);
+    expect(r.unknown).toHaveLength(1);
   });
 
   it("zwei libraries mit identischem papierkorb-pfad zählen nur einmal", async () => {

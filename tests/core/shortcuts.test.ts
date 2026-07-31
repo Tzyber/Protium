@@ -1,3 +1,5 @@
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   BinVdfError,
@@ -217,6 +219,19 @@ describe("readAllShortcutAppIds", () => {
     // use lib2 (no userdata dir)
     const result = await readAllShortcutAppIds(nodeFs(), root);
     expect(result.status).toBe("ok"); // buildFakeSteam HAS userdata
+  });
+
+  it("über-limit große shortcuts.vdf → status unreadable statt oom (M4.3)", async () => {
+    // 16-MiB-cap: eine 17-MB-shortcuts.vdf darf nicht in den speicher geladen
+    // werden — der größen-precheck wirft, die stelle degradiert auf unreadable
+    // (INV-2, gleicher pfad wie korrupte dateien).
+    const { root, userId } = await buildFakeSteam();
+    const scPath = join(root, "userdata", userId, "config", "shortcuts.vdf");
+    await writeFile(scPath, Buffer.alloc(17 * 1024 * 1024, 0));
+
+    const result = await readAllShortcutAppIds(nodeFs(), root);
+
+    expect(result.status).toBe("unreadable");
   });
 
   it("korruptes shortcuts.vdf → status unreadable", async () => {
