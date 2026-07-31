@@ -160,7 +160,15 @@ describe("installRelease", () => {
 
   it("checksum ok → entpackt + räumt tarball auf", async () => {
     const m = installMocks(goodHash, `${goodHash}  GE-Proton9-27.tar.gz`);
-    await installRelease(m, { steamRoot: "/root", cacheDir: "/cache", release, downloadId: "1" });
+    const warnings: string[] = [];
+    await installRelease(m, {
+      steamRoot: "/root",
+      cacheDir: "/cache",
+      release,
+      downloadId: "1",
+      onWarning: () => warnings.push("w"),
+    });
+    expect(warnings).toHaveLength(0); // erfolgsfall darf nie warnen
     expect(m.extracted).toHaveLength(1);
     expect(m.extracted[0]?.[1]).toBe("/root/compatibilitytools.d");
     expect(m.removed).toContain("/cache/GE-Proton9-27.tar.gz"); // cleanup
@@ -233,5 +241,88 @@ describe("installRelease", () => {
       ),
     ).rejects.toThrow(/cancel/i);
     expect(m.system.downloadFile).not.toHaveBeenCalled();
+  });
+
+  it("hash-fetch wirft → onWarning 1×, install ohne prüfung, kein verifying", async () => {
+    const m = installMocks(goodHash, `${goodHash}  GE-Proton9-27.tar.gz`);
+    const http: Http = {
+      async get() {
+        throw new Error("netz weg");
+      },
+    };
+    const warnings: string[] = [];
+    const phases: InstallPhase[] = [];
+    await installRelease(
+      { ...m, http },
+      {
+        steamRoot: "/root",
+        cacheDir: "/cache",
+        release,
+        downloadId: "1",
+        onWarning: () => warnings.push("w"),
+        onPhase: (p) => phases.push(p),
+      },
+    );
+    expect(warnings).toHaveLength(1);
+    expect(m.extracted).toHaveLength(1);
+    expect(phases).toEqual(["downloading", "extracting"]);
+  });
+
+  it("hash-fetch !ok → onWarning, install läuft", async () => {
+    const m = installMocks(goodHash, `${goodHash}  GE-Proton9-27.tar.gz`);
+    const http: Http = {
+      async get() {
+        return { status: 500, ok: false, text: "", headers: {} };
+      },
+    };
+    const warnings: string[] = [];
+    await installRelease(
+      { ...m, http },
+      {
+        steamRoot: "/root",
+        cacheDir: "/cache",
+        release,
+        downloadId: "1",
+        onWarning: () => warnings.push("w"),
+      },
+    );
+    expect(warnings).toHaveLength(1);
+    expect(m.extracted).toHaveLength(1);
+  });
+
+  it("hash-fetch ok, aber text ohne validen hash → onWarning, install läuft", async () => {
+    const m = installMocks(goodHash, `${goodHash}  GE-Proton9-27.tar.gz`);
+    const http: Http = {
+      async get() {
+        return { status: 200, ok: true, text: "kein hash hier", headers: {} };
+      },
+    };
+    const warnings: string[] = [];
+    await installRelease(
+      { ...m, http },
+      {
+        steamRoot: "/root",
+        cacheDir: "/cache",
+        release,
+        downloadId: "1",
+        onWarning: () => warnings.push("w"),
+      },
+    );
+    expect(warnings).toHaveLength(1);
+    expect(m.extracted).toHaveLength(1);
+  });
+
+  it("kein sha512-asset → kein onWarning, install läuft ohne prüfung", async () => {
+    const m = installMocks(goodHash, `${goodHash}  GE-Proton9-27.tar.gz`);
+    const warnings: string[] = [];
+    await installRelease(m, {
+      steamRoot: "/root",
+      cacheDir: "/cache",
+      release: { ...release, sha512Url: null },
+      downloadId: "1",
+      onWarning: () => warnings.push("w"),
+    });
+    expect(warnings).toHaveLength(0);
+    expect(m.extracted).toHaveLength(1);
   });
 });

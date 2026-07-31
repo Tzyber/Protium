@@ -163,6 +163,9 @@ interface InstallOpts {
   release: GeRelease;
   downloadId: string; // korreliert die progress-events
   onPhase?: (phase: InstallPhase) => void;
+  /** hash-asset vorhanden, aber nicht lesbar — installation läuft ohne verifikation.
+   *  kein text-parameter: core hat kein i18n (INV-5), es gibt genau einen meldegrund. */
+  onWarning?: () => void;
   /** abbruch-abfrage für das fenster VOR dem rust-download. cancel_download kann
    *  nur einen laufenden download treffen (die cancel-registry im backend kennt
    *  eine id erst, wenn download_file sie registriert hat). alles davor — das
@@ -196,6 +199,7 @@ export async function installRelease(
     } catch {
       expected = null;
     }
+    if (!expected) opts.onWarning?.(); // asset da, aber unlesbar → ohne verifikation
   }
 
   try {

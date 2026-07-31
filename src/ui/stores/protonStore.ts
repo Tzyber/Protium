@@ -38,6 +38,9 @@ interface State {
   activeTag: string | null;
   busyRemove: string | null;
   listenerReady: boolean;
+  /** warnung an den installierten release gebunden, nicht an den job — der job
+   *  wird nach erfolgreichem install gelöscht. überschreiben statt reset. */
+  warning: { tag: string; msg: string } | null;
 }
 
 export const useProtonStore = defineStore("proton", {
@@ -52,6 +55,7 @@ export const useProtonStore = defineStore("proton", {
     activeTag: null,
     busyRemove: null,
     listenerReady: false,
+    warning: null,
   }),
   getters: {
     installedTools(): CompatTool[] {
@@ -147,6 +151,10 @@ export const useProtonStore = defineStore("proton", {
       this.activeTag = tag;
       const scan = useScanStore();
       const steamRoot = scan.result?.steamRoot;
+      // warnung erst nach erfolgreichem install publizieren — eine abgebrochene
+      // oder fehlgeschlagene installation hat nichts installiert und dürfte
+      // sonst „ohne verifikation installiert" neben der fehlermeldung zeigen.
+      let warned = false;
       try {
         if (!steamRoot) throw new Error(t("proton.noScanResult"));
         const cacheDir = `${await appCacheDir()}/downloads`;
@@ -158,9 +166,18 @@ export const useProtonStore = defineStore("proton", {
           onPhase: (p) => {
             job.phase = p;
           },
+          onWarning: () => {
+            warned = true;
+          },
           isCancelled: () => this.jobs[tag]?.cancelRequested === true,
         });
         await scan.runScan(); // frische compatToolsInstalled + usedBy
+        this.loadError = null; // stale fehlermeldung eines früheren fehlschlags
+        if (warned) {
+          this.warning = { tag, msg: t("proton.checksumUnavailable", { tag }) };
+        } else if (this.warning?.tag === tag) {
+          this.warning = null; // verifizierter reinstall desselben tags räumt die alte warnung
+        }
         delete this.jobs[tag];
       } catch (e) {
         const msg = errMsg(e);

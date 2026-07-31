@@ -1,14 +1,21 @@
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GeRelease } from "../../src/core/geproton";
-import { setLocale } from "../../src/ui/i18n";
+import { setLocale, t } from "../../src/ui/i18n";
 
-const { mockAppCacheDir, mockDownloadFile, mockExtractTarball, mockListen } = vi.hoisted(() => ({
-  mockAppCacheDir: vi.fn(async () => "/tmp/cache"),
-  mockDownloadFile: vi.fn(async () => "a".repeat(128)),
-  mockExtractTarball: vi.fn<() => Promise<void>>(),
-  mockListen: vi.fn(async () => () => {}),
-}));
+const { mockAppCacheDir, mockDownloadFile, mockExtractTarball, mockHttpGet, mockListen } =
+  vi.hoisted(() => ({
+    mockAppCacheDir: vi.fn(async () => "/tmp/cache"),
+    mockDownloadFile: vi.fn(async () => "a".repeat(128)),
+    mockExtractTarball: vi.fn<() => Promise<void>>(),
+    mockHttpGet: vi.fn(async () => ({
+      status: 200,
+      ok: true,
+      text: `${"a".repeat(128)}  x.tar.gz`,
+      headers: {},
+    })),
+    mockListen: vi.fn(async () => () => {}),
+  }));
 
 vi.mock("../../src/core/adapters/tauri", async () => {
   return {
@@ -16,12 +23,7 @@ vi.mock("../../src/core/adapters/tauri", async () => {
     tauriPorts: {
       fs: { remove: vi.fn(async () => {}) },
       http: {
-        get: async () => ({
-          status: 200,
-          ok: true,
-          text: `${"a".repeat(128)}  x.tar.gz`,
-          headers: {},
-        }),
+        get: mockHttpGet,
       },
       system: {
         downloadFile: mockDownloadFile,
@@ -71,6 +73,7 @@ describe("protonStore init + pump-robustheit", () => {
     mockListen.mockResolvedValue(() => {});
     mockDownloadFile.mockClear();
     mockExtractTarball.mockClear();
+    mockHttpGet.mockClear();
     mockAppCacheDir.mockClear();
     mockAppCacheDir.mockResolvedValue("/tmp/cache");
     mockExtractTarball.mockImplementation(() => new Promise(() => {})); // blockiert
@@ -128,6 +131,7 @@ describe("protonStore pump-phasen", () => {
     // job stehen, sonst zählen dessen aufrufe hier mit
     mockDownloadFile.mockClear();
     mockExtractTarball.mockClear();
+    mockHttpGet.mockClear();
     mockAppCacheDir.mockClear();
     mockDownloadFile.mockResolvedValue("a".repeat(128));
     mockExtractTarball.mockImplementation(() => new Promise(() => {})); // blockiert
@@ -201,5 +205,85 @@ describe("protonStore pump-phasen", () => {
     });
     expect(mockDownloadFile).not.toHaveBeenCalled();
     expect(store.loadError).toBeNull(); // abbruch ist kein fehler
+  });
+});
+
+describe("protonStore warnung (sha512-fetch-fehler)", () => {
+  const withSha = { ...release, sha512Url: "https://dl/ge.sha512sum" };
+
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    setLocale("de");
+    mockDownloadFile.mockClear();
+    mockExtractTarball.mockClear();
+    mockAppCacheDir.mockClear();
+    mockHttpGet.mockReset(); // once-queue aus abgebrochenen tests leeren
+    mockHttpGet.mockResolvedValue({
+      status: 200,
+      ok: true,
+      text: `${"a".repeat(128)}  x.tar.gz`,
+      headers: {},
+    });
+    mockDownloadFile.mockResolvedValue("a".repeat(128));
+    mockExtractTarball.mockImplementation(() => new Promise(() => {})); // blockiert
+    mockAppCacheDir.mockResolvedValue("/tmp/cache");
+  });
+
+  function installWithSha() {
+    const scanStore = useScanStore();
+    scanStore.result = fakeScanResult();
+    // läuft in pump echt und importiert getHome von der gemockten datei →
+    // ungemockt wirft runScan intern (getHome undefined). explizit stubben.
+    scanStore.runScan = vi.fn(async () => {});
+    const store = useProtonStore();
+    store.releases = [withSha];
+    return store;
+  }
+
+  it("fetch-fail + install erfolgreich → warning mit tag gesetzt", async () => {
+    mockHttpGet.mockRejectedValueOnce(new Error("netz weg"));
+    mockExtractTarball.mockResolvedValue(undefined); // install läuft durch
+    const store = installWithSha();
+
+    store.queueInstall(withSha);
+
+    await vi.waitFor(() => {
+      expect(store.jobs[withSha.tag]).toBeUndefined();
+    });
+    // literal gepinnt statt t()-vergleich: würde der key oder {tag}-parameter
+    // wegfallen (fallback = key-literal), muss der test rot werden
+    expect(store.warning).toEqual({
+      tag: withSha.tag,
+      msg: "GE-Proton9-27 ohne Verifikation installiert (Prüfsumme nicht abrufbar)",
+    });
+  });
+
+  it("verifizierter reinstall desselben tags räumt alte warnung + loadError", async () => {
+    mockExtractTarball.mockResolvedValue(undefined); // install läuft durch
+    const store = installWithSha();
+    store.warning = { tag: withSha.tag, msg: "alte warnung" };
+    store.loadError = "alter fehler";
+
+    store.queueInstall(withSha);
+
+    await vi.waitFor(() => {
+      expect(store.jobs[withSha.tag]).toBeUndefined();
+    });
+    expect(store.warning).toBeNull(); // verifiziert → keine warnung mehr
+    expect(store.loadError).toBeNull(); // stale fehlermeldung weg
+  });
+
+  it("fetch-fail + download-fail → keine warning neben loadError", async () => {
+    mockHttpGet.mockRejectedValueOnce(new Error("netz weg"));
+    mockDownloadFile.mockRejectedValueOnce(new Error("download kaputt"));
+    const store = installWithSha();
+
+    store.queueInstall(withSha);
+
+    await vi.waitFor(() => {
+      expect(store.jobs[withSha.tag]).toBeUndefined();
+    });
+    expect(store.warning).toBeNull();
+    expect(store.loadError).not.toBeNull();
   });
 });

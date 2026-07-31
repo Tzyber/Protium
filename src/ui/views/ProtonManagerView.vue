@@ -165,6 +165,7 @@ const statusLine = computed(() => {
     <!-- verfügbar -->
     <h3 class="section">{{ t("proton.geReleases") }}</h3>
     <div v-if="proton.loadError" class="hint" role="alert">{{ proton.loadError }}</div>
+    <div v-if="proton.warning" class="hint hint--warning" role="status">{{ proton.warning.msg }}</div>
     <ul class="list" :aria-busy="proton.loading">
       <li v-for="r in proton.releases" :key="r.tag">
         <div class="row">
@@ -319,6 +320,7 @@ const statusLine = computed(() => {
 }
 
 .hint { color: var(--tier-gold); font-family: var(--font-body); font-size: 0.75rem; margin-bottom: 10px; }
+.hint--warning { color: var(--tier-bronze); } /* bronze statt gold — von fehlermeldung unterscheidbar */
 .games { margin: 8px 0 0; padding-left: 18px; color: var(--fg-1); }
 .games li { margin: 2px 0; }
 </style>

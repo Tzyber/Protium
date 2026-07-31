@@ -133,6 +133,7 @@ export const de = {
     appId: "app {id}",
     noReleases: "keine releases (offline oder rate-limit?)",
     installFailed: "install {tag} fehlgeschlagen: {msg}",
+    checksumUnavailable: "{tag} ohne Verifikation installiert (Prüfsumme nicht abrufbar)",
     removeFailed: "löschen fehlgeschlagen: {msg}",
     noScanResult: "kein scan-ergebnis — erst library scannen",
     statusUpdated: "aktualisiert · {n} releases · gerade eben",
