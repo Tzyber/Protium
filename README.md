@@ -134,7 +134,7 @@ keine sicherheitsprobleme, eher wartung und ehrlichkeit. abarbeitung bei gelegen
 - [ ] `cache.set` in ein eigenes try hinter den rückgabewert ziehen (`geproton.ts`, `protondb.ts`), damit ein cache-schreibfehler nicht frisch geladene netz-daten verwirft
 - [ ] binary-VDF-skip-tabelle ans kanonische layout angleichen (`shortcuts.ts`); heute unkritisch, weil reale dateien nur die typen 0x00/01/02 nutzen, aber eine wartungsfalle
 - [ ] papierkorb-status: immer eine zeile pro library ausgeben (`trash.ts`), bei zwei libraries mit gleichem realpath bekommt die zweite aktuell keine
-- [ ] fehlgeschlagenen sha512-asset-fetch von fehlendem asset unterscheiden und in der UI warnen (`geproton.ts`), aktuell läuft die installation dann still ohne prüfsumme durch
+- [x] fehlgeschlagenen sha512-asset-fetch von fehlendem asset unterscheiden und in der UI warnen (`geproton.ts`), konnte die installation sonst still ohne prüfsumme durchlaufen — gefixt (2026-07-31, `sha512-fetch-spec.md`/`sha512-fetch-plan.md`)
 - [x] opener-fehler nicht lautlos schlucken (`GameDetailDrawer.vue`, `GameCard.vue`), zumindest `console.warn` — gefixt via zentraler `PlayButton.vue`
 - [ ] `batchDirSizes` über den `System`-port statt per rohem `invoke` aufrufen (`cleanupStore.ts`), das macht mocking in tests leichter
 - [ ] `scanLibrary` aufteilen (`scan.ts`, 164 zeilen, 7 concerns), als eigener zyklus und nicht im vorbeigehen
