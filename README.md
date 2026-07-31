@@ -131,6 +131,8 @@ für die implementierung gelten folgende regeln: schreibende zugriffe auf steam-
 
 keine sicherheitsprobleme, eher wartung und ehrlichkeit. abarbeitung bei gelegenheit, reihenfolge ≠ priorität.
 
+fixes dieser liste wandern direkt auf main und sind noch in keiner version. 0.1.6 enthält die snap-unterstützung; der sha512-fix und andere zwischenstände sind dort nicht enthalten und kommen mit einer späteren version.
+
 - [ ] `cache.set` in ein eigenes try hinter den rückgabewert ziehen (`geproton.ts`, `protondb.ts`), damit ein cache-schreibfehler nicht frisch geladene netz-daten verwirft
 - [ ] binary-VDF-skip-tabelle ans kanonische layout angleichen (`shortcuts.ts`); heute unkritisch, weil reale dateien nur die typen 0x00/01/02 nutzen, aber eine wartungsfalle
 - [ ] papierkorb-status: immer eine zeile pro library ausgeben (`trash.ts`), bei zwei libraries mit gleichem realpath bekommt die zweite aktuell keine
