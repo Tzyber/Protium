@@ -120,7 +120,14 @@ export async function fetchReleases(
 
     if (res.status === 304 && cached) {
       const at = now();
-      await cache.set(CACHE_KEY, JSON.stringify({ ...cached, fetchedAt: at } satisfies CacheEntry));
+      try {
+        await cache.set(
+          CACHE_KEY,
+          JSON.stringify({ ...cached, fetchedAt: at } satisfies CacheEntry),
+        );
+      } catch {
+        // cache-schreibfehler darf frische daten nicht verwerfen
+      }
       return { releases: cached.releases, fetchedAt: at, source: "not-modified" };
     }
     if (!res.ok) {
@@ -134,14 +141,18 @@ export async function fetchReleases(
 
     const at = now();
     const releases = parseReleases(res.text);
-    await cache.set(
-      CACHE_KEY,
-      JSON.stringify({
-        etag: res.headers.etag ?? null,
-        fetchedAt: at,
-        releases,
-      } satisfies CacheEntry),
-    );
+    try {
+      await cache.set(
+        CACHE_KEY,
+        JSON.stringify({
+          etag: res.headers.etag ?? null,
+          fetchedAt: at,
+          releases,
+        } satisfies CacheEntry),
+      );
+    } catch {
+      // cache-schreibfehler darf frische daten nicht verwerfen
+    }
     return { releases, fetchedAt: at, source: "fresh" };
   } catch {
     return {

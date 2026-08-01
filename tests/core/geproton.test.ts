@@ -91,6 +91,45 @@ describe("fetchReleases", () => {
     expect(calls).toBe(2);
   });
 
+  it("cache-schreibfehler verwirft frische releases nicht", async () => {
+    const cache = memCache();
+    cache.set = async () => {
+      throw new Error("disk voll");
+    };
+    const res = await fetchReleases(
+      httpOnce({ text: ghBody(), headers: { etag: '"abc"' } }),
+      cache,
+      () => 0,
+    );
+    expect(res.source).toBe("fresh");
+    expect(res.releases).toHaveLength(1);
+    expect(res.fetchedAt).toBe(0);
+  });
+
+  it("304 mit cache-schreibfehler → trotzdem not-modified + fetchedAt", async () => {
+    const cache = memCache();
+    await cache.set(
+      "gh:ge-releases",
+      JSON.stringify({ etag: '"v1"', fetchedAt: 0, releases: [release] }),
+    );
+    cache.set = async () => {
+      throw new Error("disk voll");
+    };
+    const t = TTL_OVER;
+    let calls = 0;
+    const http: Http = {
+      async get() {
+        calls++;
+        return { status: 304, ok: false, text: "", headers: {} };
+      },
+    };
+    const res = await fetchReleases(http, cache, () => t);
+    expect(res.source).toBe("not-modified");
+    expect(res.releases).toHaveLength(1);
+    expect(res.fetchedAt).toBe(TTL_OVER);
+    expect(calls).toBe(1);
+  });
+
   it("403 rate-limit → letzter cache-stand (INV-3)", async () => {
     const cache = memCache();
     let t = 0;

@@ -61,7 +61,11 @@ export class ProtonDbClient {
         confidence: typeof body.confidence === "string" ? body.confidence : "unknown",
       };
       const entry: CacheEntry = { ...result, fetchedAt: this.now() };
-      await this.cache.set(key, JSON.stringify(entry));
+      try {
+        await this.cache.set(key, JSON.stringify(entry));
+      } catch {
+        // cache-schreibfehler darf frische daten nicht verwerfen
+      }
       return result;
     } catch {
       return null; // netzwerkfehler → degradieren

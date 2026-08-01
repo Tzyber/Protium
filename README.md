@@ -133,7 +133,7 @@ keine sicherheitsprobleme, eher wartung und ehrlichkeit. abarbeitung bei gelegen
 
 fixes dieser liste wandern direkt auf main und sind noch in keiner version. 0.1.6 enthält die snap-unterstützung; der sha512-fix und andere zwischenstände sind dort nicht enthalten und kommen mit einer späteren version.
 
-- [ ] `cache.set` in ein eigenes try hinter den rückgabewert ziehen (`geproton.ts`, `protondb.ts`), damit ein cache-schreibfehler nicht frisch geladene netz-daten verwirft
+- [x] `cache.set` in ein eigenes try hinter den rückgabewert ziehen (`geproton.ts`, `protondb.ts`), damit ein cache-schreibfehler nicht frisch geladene netz-daten verwirft — gefixt (2026-08-01, `cache-write-spec.md`/`cache-write-plan.md`)
 - [ ] binary-VDF-skip-tabelle ans kanonische layout angleichen (`shortcuts.ts`); heute unkritisch, weil reale dateien nur die typen 0x00/01/02 nutzen, aber eine wartungsfalle
 - [ ] papierkorb-status: immer eine zeile pro library ausgeben (`trash.ts`), bei zwei libraries mit gleichem realpath bekommt die zweite aktuell keine
 - [x] fehlgeschlagenen sha512-asset-fetch von fehlendem asset unterscheiden und in der UI warnen (`geproton.ts`), konnte die installation sonst still ohne prüfsumme durchlaufen — gefixt (2026-07-31, `sha512-fetch-spec.md`/`sha512-fetch-plan.md`)

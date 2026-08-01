@@ -17,6 +17,15 @@ describe("ProtonDbClient", () => {
     expect(await c.getSummary(620)).toEqual({ tier: "gold", confidence: "strong" });
   });
 
+  it("cache-schreibfehler verwirft frischen report nicht", async () => {
+    const cache = memCache();
+    cache.set = async () => {
+      throw new Error("disk voll");
+    };
+    const c = new ProtonDbClient(fakeHttp({ [url(620)]: summary("gold") }), cache);
+    expect(await c.getSummary(620)).toEqual({ tier: "gold", confidence: "strong" });
+  });
+
   it("404 → null (→ aufrufer setzt unknown, INV-3)", async () => {
     const c = new ProtonDbClient(fakeHttp(), memCache());
     expect(await c.getSummary(1)).toBeNull();
