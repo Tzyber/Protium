@@ -41,7 +41,7 @@ protium erkennt steam automatisch in diesen installationsarten:
 - **flatpak** — `~/.var/app/com.valvesoftware.Steam/.local/share/Steam`
 - **symlinks und custom-pfade** — `discoverSteamRoot` löst symlinks via `realpath` auf
 
-snap-unterstützung (`~/snap/steam/`) — ab 0.1.6 enthalten, aber nur gegen fixtures getestet, noch kein echtes snap-system verifiziert.
+snap-unterstützung (`~/snap/steam/`) — ab 0.1.7 enthalten, aber nur gegen fixtures getestet, noch kein echtes snap-system verifiziert.
 
 ### prefix aus dem papierkorb zurückholen
 
@@ -132,7 +132,7 @@ für die implementierung gelten folgende regeln: schreibende zugriffe auf steam-
 
 keine sicherheitsprobleme, eher wartung und ehrlichkeit. abarbeitung bei gelegenheit, reihenfolge ≠ priorität.
 
-fixes dieser liste wandern direkt auf main. 0.1.6 enthält die snap-unterstützung sowie die inzwischen behobenen punkte dieser liste (sha512-warnung, cache-write-schutz, batchDirSizes, settings-andeutung entfernt); die offenen punkte kommen mit späteren versionen.
+fixes dieser liste wandern direkt auf main. 0.1.7 enthält die snap-unterstützung sowie die inzwischen behobenen punkte dieser liste (sha512-warnung, cache-write-schutz, batchDirSizes, settings-andeutung entfernt); die offenen punkte kommen mit späteren versionen.
 
 - [x] `cache.set` in ein eigenes try hinter den rückgabewert ziehen (`geproton.ts`, `protondb.ts`), damit ein cache-schreibfehler nicht frisch geladene netz-daten verwirft - gefixt
 - [ ] binary-VDF-skip-tabelle ans kanonische layout angleichen (`shortcuts.ts`); heute unkritisch, weil reale dateien nur die typen 0x00/01/02 nutzen, aber eine wartungsfalle

@@ -95,7 +95,7 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: "Protium ${{ github.ref_name }}"
           body: |
-            Siehe README und Changelog für Details.
+            Siehe README für Details.
 
             **Hinweis für Wayland-Nutzer:** Das AppImage lädt automatisch die system-eigene `libwayland-client.so`,
             falls vorhanden. Kein manuelles `LD_PRELOAD` mehr nötig.
