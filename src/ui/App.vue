@@ -31,11 +31,10 @@ watch(
   },
 );
 
-const nav: { id: ViewId | "settings"; label: string; active: boolean }[] = [
-  { id: "library", label: t("app.navLibrary"), active: true },
-  { id: "proton", label: t("app.navProton"), active: true },
-  { id: "cleanup", label: t("app.navCleanup"), active: true },
-  { id: "settings", label: t("app.navSettings"), active: false },
+const nav: { id: ViewId; label: string }[] = [
+  { id: "library", label: t("app.navLibrary") },
+  { id: "proton", label: t("app.navProton") },
+  { id: "cleanup", label: t("app.navCleanup") },
 ];
 
 const rootShort = computed(() => {
@@ -61,14 +60,12 @@ const rootShort = computed(() => {
           v-for="item in nav"
           :key="item.id"
           class="nav-item"
-          :class="{ active: item.active && ui.activeView === item.id }"
-          :disabled="!item.active"
+          :class="{ active: ui.activeView === item.id }"
           type="button"
-          :aria-current="item.active && ui.activeView === item.id ? 'page' : undefined"
-          @click="item.active && ui.go(item.id as ViewId)"
+          :aria-current="ui.activeView === item.id ? 'page' : undefined"
+          @click="ui.go(item.id)"
         >
           {{ item.label }}
-          <span v-if="!item.active" class="soon">{{ t("app.phaseUpcoming") }}</span>
         </button>
       </nav>
 
@@ -154,9 +151,6 @@ nav { display: flex; flex-direction: column; gap: 2px; }
   color: var(--signal-bright);
   box-shadow: inset 2px 0 0 var(--signal);
 }
-.nav-item:disabled { color: var(--fg-2); cursor: default; }
-.soon { font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: 0.1em; opacity: 0.85; }
-
 .readout {
   margin-top: auto;
   display: grid;

@@ -19,8 +19,6 @@ export const en = {
     navLibrary: "Library",
     navProton: "Proton",
     navCleanup: "Cleanup",
-    navSettings: "Settings",
-    phaseUpcoming: "phase 5+",
     skipToContent: "skip to content",
     brandTagline: "steam · proton",
     root: "root",

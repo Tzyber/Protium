@@ -41,7 +41,7 @@ protium erkennt steam automatisch in diesen installationsarten:
 - **flatpak** — `~/.var/app/com.valvesoftware.Steam/.local/share/Steam`
 - **symlinks und custom-pfade** — `discoverSteamRoot` löst symlinks via `realpath` auf
 
-snap-unterstützung (`~/snap/steam/`) folgt in 0.1.6.
+snap-unterstützung (`~/snap/steam/`) — ab 0.1.6 enthalten, aber nur gegen fixtures getestet, noch kein echtes snap-system verifiziert.
 
 ### prefix aus dem papierkorb zurückholen
 
@@ -125,13 +125,14 @@ für die implementierung gelten folgende regeln: schreibende zugriffe auf steam-
 - [x] i18n (deutsch/englisch)
 - [x] CI: lint, typecheck und tests bei jedem push
 - [x] play-button zentralisiert + biome-preset evaluiert (194 regeln, 0 warnings)
-- [ ] phase 6: release — AppImage-build in der CI, danach AUR-paket
+- [x] phase 6 (teil 1): AppImage-build in der CI (releases v0.1.x)
+- [ ] phase 6 (teil 2): AUR-paket
 
 ## bekannte kleinfunde
 
 keine sicherheitsprobleme, eher wartung und ehrlichkeit. abarbeitung bei gelegenheit, reihenfolge ≠ priorität.
 
-fixes dieser liste wandern direkt auf main und sind noch in keiner version. 0.1.6 enthält die snap-unterstützung; der sha512-fix und andere zwischenstände sind dort nicht enthalten und kommen mit einer späteren version.
+fixes dieser liste wandern direkt auf main. 0.1.6 enthält die snap-unterstützung sowie die inzwischen behobenen punkte dieser liste (sha512-warnung, cache-write-schutz, batchDirSizes, settings-andeutung entfernt); die offenen punkte kommen mit späteren versionen.
 
 - [x] `cache.set` in ein eigenes try hinter den rückgabewert ziehen (`geproton.ts`, `protondb.ts`), damit ein cache-schreibfehler nicht frisch geladene netz-daten verwirft - gefixt
 - [ ] binary-VDF-skip-tabelle ans kanonische layout angleichen (`shortcuts.ts`); heute unkritisch, weil reale dateien nur die typen 0x00/01/02 nutzen, aber eine wartungsfalle
@@ -143,4 +144,4 @@ fixes dieser liste wandern direkt auf main und sind noch in keiner version. 0.1.
 
 ## status
 
-in aktiver entwicklung. api und UI ändern sich ohne vorwarnung. wer das liest, bevor version 0.1 existiert: Die Roadmap beschreibt den aktuellen Stand; sie ist keine Zusage für kommende Versionen.
+in aktiver entwicklung. api und UI ändern sich ohne vorwarnung. die roadmap beschreibt den aktuellen stand; sie ist keine zusage für kommende versionen.

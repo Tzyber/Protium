@@ -41,7 +41,7 @@ protium auto-detects steam in these installation types:
 - **flatpak** — `~/.var/app/com.valvesoftware.Steam/.local/share/Steam`
 - **symlinks and custom paths** — `discoverSteamRoot` resolves symlinks via `realpath`
 
-snap support (`~/snap/steam/`) coming in 0.1.6.
+snap support (`~/snap/steam/`) — included from 0.1.6, but only tested against fixtures, no real snap system verified yet.
 
 ### restoring a prefix from the trash
 
@@ -125,8 +125,9 @@ The implementation follows these rules: writes to steam files go through a write
 - [x] launching games (via the steam protocol, no launcher of its own)
 - [x] i18n (german/english)
 - [x] CI: lint, typecheck and tests on every push
-- [ ] phase 6: release — AppImage build in CI, then an AUR package
+- [x] phase 6 (part 1): AppImage build in CI (releases v0.1.x)
+- [ ] phase 6 (part 2): AUR package
 
 ## status
 
-under active development. api and UI change without notice. if you are reading this before version 0.1 exists: The roadmap describes the current state; it is not a promise of future versions.
+under active development. api and UI change without notice. the roadmap describes the current state; it is not a promise of future versions.

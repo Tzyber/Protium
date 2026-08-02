@@ -14,8 +14,6 @@ export const de = {
     navLibrary: "Library",
     navProton: "Proton",
     navCleanup: "Cleanup",
-    navSettings: "Settings",
-    phaseUpcoming: "phase 5+",
     skipToContent: "zum inhalt springen",
     brandTagline: "steam · proton",
     root: "root",
