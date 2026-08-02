@@ -7,23 +7,28 @@ import type { ScanResult } from "../../src/core/types";
 import { formatBytes } from "../../src/ui/format";
 import { setLocale } from "../../src/ui/i18n";
 
-const { mockFindOrphans, mockReadAllShortcutAppIds, mockFindTrashEntries, mockInvoke } = vi.hoisted(
-  () => ({
-    mockFindOrphans: vi.fn<typeof findOrphans>(async () => []),
-    mockReadAllShortcutAppIds: vi.fn<typeof readAllShortcutAppIds>(async () => ({
-      status: "none" as const,
-    })),
-    mockFindTrashEntries: vi.fn<typeof findTrashEntries>(async () => ({
-      entries: [],
-      unknown: [],
-      unreadable: [],
-      libraries: [],
-    })),
-    mockInvoke: vi.fn<(cmd: string, args?: unknown) => Promise<unknown>>(
-      async (_cmd: string, _args?: unknown) => "deleted",
-    ),
-  }),
-);
+const {
+  mockFindOrphans,
+  mockReadAllShortcutAppIds,
+  mockFindTrashEntries,
+  mockInvoke,
+  mockBatchDirSizes,
+} = vi.hoisted(() => ({
+  mockFindOrphans: vi.fn<typeof findOrphans>(async () => []),
+  mockReadAllShortcutAppIds: vi.fn<typeof readAllShortcutAppIds>(async () => ({
+    status: "none" as const,
+  })),
+  mockFindTrashEntries: vi.fn<typeof findTrashEntries>(async () => ({
+    entries: [],
+    unknown: [],
+    unreadable: [],
+    libraries: [],
+  })),
+  mockInvoke: vi.fn<(cmd: string, args?: unknown) => Promise<unknown>>(
+    async (_cmd: string, _args?: unknown) => "deleted",
+  ),
+  mockBatchDirSizes: vi.fn<(paths: string[]) => Promise<Record<string, number>>>(async () => ({})),
+}));
 
 vi.mock("../../src/core/cleanup", () => ({
   findOrphans: mockFindOrphans,
@@ -44,7 +49,7 @@ vi.mock("../../src/core/adapters/tauri", async () => {
   const tauriPorts = {
     fs: {},
     http: {},
-    system: { isProcessRunning: async () => false },
+    system: { isProcessRunning: async () => false, batchDirSizes: mockBatchDirSizes },
     cache: {
       get: async (k: string) => cacheStore.get(k) ?? null,
       set: async (k: string, v: string) => {
@@ -98,6 +103,8 @@ describe("cleanupStore gate logic", () => {
     mockFindTrashEntries.mockReset();
     mockInvoke.mockReset();
     mockInvoke.mockResolvedValue("deleted");
+    mockBatchDirSizes.mockReset();
+    mockBatchDirSizes.mockResolvedValue({});
     mockReadAllShortcutAppIds.mockResolvedValue({ status: "none" });
     mockFindTrashEntries.mockResolvedValue({
       entries: [],
@@ -260,6 +267,8 @@ describe("cleanupStore — S-05 + shortcuts", () => {
     mockReadAllShortcutAppIds.mockReset();
     mockInvoke.mockReset();
     mockInvoke.mockResolvedValue("deleted");
+    mockBatchDirSizes.mockReset();
+    mockBatchDirSizes.mockResolvedValue({});
     mockReadAllShortcutAppIds.mockResolvedValue({ status: "none" });
   });
 
@@ -376,6 +385,8 @@ describe("cleanupStore — batch_dir_sizes NotFound-Skip", () => {
     mockFindOrphans.mockReset();
     mockReadAllShortcutAppIds.mockReset();
     mockInvoke.mockReset();
+    mockBatchDirSizes.mockReset();
+    mockBatchDirSizes.mockResolvedValue({});
     mockReadAllShortcutAppIds.mockResolvedValue({ status: "none" });
   });
 
@@ -385,16 +396,19 @@ describe("cleanupStore — batch_dir_sizes NotFound-Skip", () => {
       { appId: 99999, type: "compatdata", path: "/lib/compatdata/99999_gone", library: "/lib" },
     ]);
     // batch_dir_sizes überspringt 99999_gone (NotFound) → kein map-eintrag
-    mockInvoke.mockImplementation(async (cmd: string) => {
-      if (cmd === "batch_dir_sizes") return { "/lib/compatdata/12345": 8192 };
-      return "deleted";
-    });
+    mockBatchDirSizes.mockResolvedValue({ "/lib/compatdata/12345": 8192 });
 
     const scanStore = useScanStore();
     scanStore.result = fakeScan([]);
     const store = useCleanupStore();
 
     await store.scanOrphans();
+
+    // wiring-assertion: der store hängt am system-port, nicht am rohen invoke
+    expect(mockBatchDirSizes).toHaveBeenCalledWith([
+      "/lib/compatdata/12345",
+      "/lib/compatdata/99999_gone",
+    ]);
 
     expect(store.orphans).toHaveLength(2);
     const real = store.orphans.find((o) => o.appId === 12345);
@@ -435,6 +449,8 @@ describe("cleanupStore — trash", () => {
     mockFindTrashEntries.mockReset();
     mockInvoke.mockReset();
     mockInvoke.mockResolvedValue("deleted");
+    mockBatchDirSizes.mockReset();
+    mockBatchDirSizes.mockResolvedValue({});
     mockFindTrashEntries.mockResolvedValue({
       entries: [],
       unknown: [],
@@ -462,10 +478,7 @@ describe("cleanupStore — trash", () => {
       unreadable: [],
       libraries: [],
     });
-    mockInvoke.mockImplementation(async (cmd: string) => {
-      if (cmd === "batch_dir_sizes") return { [entry.path]: 8192 };
-      return "deleted";
-    });
+    mockBatchDirSizes.mockResolvedValue({ [entry.path]: 8192 });
 
     const scanStore = useScanStore();
     scanStore.result = fakeScan([]);
@@ -604,6 +617,8 @@ describe("cleanupStore — papierkorb-refresh nach dem löschen", () => {
       libraries: [],
     });
     mockInvoke.mockResolvedValue("deleted");
+    mockBatchDirSizes.mockReset();
+    mockBatchDirSizes.mockResolvedValue({});
   });
 
   it("compatdata löschen lädt den papierkorb neu", async () => {

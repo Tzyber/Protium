@@ -45,6 +45,7 @@ describe("listCompatTools", () => {
       })),
       isProcessRunning: vi.fn(async () => false),
       dirSize: vi.fn(async () => 0),
+      batchDirSizes: vi.fn(async () => ({})),
       allowLibraryScope: vi.fn(async () => {}),
       pathIdentity: vi.fn(async () => pi),
       downloadFile: vi.fn(async () => "hash"),

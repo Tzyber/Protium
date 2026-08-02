@@ -315,6 +315,9 @@ export function fakeSystem(opts?: { failScope?: Set<string> }): System & { scope
     async dirSize() {
       return 4096;
     },
+    async batchDirSizes() {
+      return {};
+    },
     async allowLibraryScope(p) {
       if (failScope.has(p)) throw new Error("scope rejected");
       scopedPaths.push(p);

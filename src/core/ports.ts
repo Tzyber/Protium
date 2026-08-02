@@ -68,6 +68,9 @@ export interface PathIdentity {
 export interface System {
   /** R-2 */ isProcessRunning(name: string): Promise<boolean>;
   /** R-3 */ dirSize(path: string): Promise<number>;
+  /** R-3b — größen für viele pfade auf einmal; ein fehlender map-eintrag
+   *  bedeutet: pfad wurde übersprungen (z. b. NotFound-race), KEINE größe 0. */
+  batchDirSizes(paths: string[]): Promise<Record<string, number>>;
   /** R-5 — muss vor read auf externen pfaden laufen, sonst blockt der fs-scope (FR-1.3). */
   allowLibraryScope(path: string): Promise<void>;
   /** R-6 (dev,ino) zur library-dedup; null wenn nicht erreichbar. */

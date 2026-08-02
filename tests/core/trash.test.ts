@@ -8,6 +8,7 @@ function fakeSystem(impl: (library: string) => Promise<TrashListing>): System {
     listTrashEntries: impl,
     isProcessRunning: async () => false,
     dirSize: async () => 0,
+    batchDirSizes: async () => ({}),
     allowLibraryScope: async () => {},
     pathIdentity: async () => null,
     downloadFile: async () => "",

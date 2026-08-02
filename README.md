@@ -138,7 +138,7 @@ fixes dieser liste wandern direkt auf main und sind noch in keiner version. 0.1.
 - [ ] papierkorb-status: immer eine zeile pro library ausgeben (`trash.ts`), bei zwei libraries mit gleichem realpath bekommt die zweite aktuell keine
 - [x] fehlgeschlagenen sha512-asset-fetch von fehlendem asset unterscheiden und in der UI warnen (`geproton.ts`), konnte die installation sonst still ohne prüfsumme durchlaufen — gefixt
 - [x] opener-fehler nicht lautlos schlucken (`GameDetailDrawer.vue`, `GameCard.vue`), zumindest `console.warn` — gefixt via zentraler `PlayButton.vue`
-- [ ] `batchDirSizes` über den `System`-port statt per rohem `invoke` aufrufen (`cleanupStore.ts`), das macht mocking in tests leichter
+- [x] `batchDirSizes` über den `System`-port statt per rohem `invoke` aufrufen (`cleanupStore.ts`), das macht mocking in tests leichter — gefixt
 - [ ] `scanLibrary` aufteilen (`scan.ts`, 164 zeilen, 7 concerns), als eigener zyklus und nicht im vorbeigehen
 
 ## status

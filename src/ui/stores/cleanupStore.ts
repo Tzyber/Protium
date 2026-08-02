@@ -118,10 +118,10 @@ export const useCleanupStore = defineStore("cleanup", {
         if (this.orphans.length === 0) return;
 
         const paths = this.orphans.map((o) => o.path);
-        const sizes = await invoke<Record<string, number>>("batch_dir_sizes", { paths });
+        const sizes = await tauriPorts.system.batchDirSizes(paths);
         for (const o of this.orphans) {
           // KEIN default auf 0: ein fehlender map-eintrag bedeutet, dass
-          // batch_dir_sizes den pfad übersprungen hat (NotFound-race). das
+          // batchDirSizes den pfad übersprungen hat (NotFound-race). das
           // sizeBytes bleibt dann undefined → UI rendert "…", ein leeres
           // verzeichnis (real 0 byte) rendert "—" via formatBytes. die 0
           // für summen/sort gehört in die rechner (?? 0 dort), nicht in
@@ -267,7 +267,7 @@ export const useCleanupStore = defineStore("cleanup", {
         if (entries.length === 0) return;
 
         const paths = entries.map((e) => e.path);
-        const sizes = await invoke<Record<string, number>>("batch_dir_sizes", { paths });
+        const sizes = await tauriPorts.system.batchDirSizes(paths);
         for (const e of this.trash) {
           e.sizeBytes = sizes[e.path];
         }

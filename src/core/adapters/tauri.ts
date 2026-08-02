@@ -65,6 +65,7 @@ const http: Http = {
 const system: System = {
   isProcessRunning: (name) => invoke<boolean>("is_process_running", { name }),
   dirSize: (path) => invoke<number>("dir_size", { path }),
+  batchDirSizes: (paths) => invoke<Record<string, number>>("batch_dir_sizes", { paths }),
   allowLibraryScope: (path) => invoke<void>("allow_library_scope", { path }),
   listTrashEntries: (library) => invoke("list_trash_entries", { library }),
   pathIdentity: (path) =>

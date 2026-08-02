@@ -12,7 +12,7 @@ export interface TrashEntry {
   appId: number;
   /** unix-ms aus dem verzeichnisnamen */
   trashedAt: number;
-  /** größe in bytes (vom store via batch_dir_sizes gesetzt) */
+  /** größe in bytes (vom store via batchDirSizes gesetzt) */
   sizeBytes?: number;
 }
 
