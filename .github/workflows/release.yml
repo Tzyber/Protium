@@ -28,6 +28,8 @@ jobs:
 
       - name: Rust
         uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # stable=v1
+        with:
+          toolchain: stable
 
       - name: Rust cache
         uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
