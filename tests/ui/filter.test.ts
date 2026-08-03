@@ -6,7 +6,6 @@ function game(partial: Partial<Game> & { appId: number; name: string }): Game {
   return {
     library: "/lib",
     sizeBytes: 0,
-    installed: true,
     compatTool: "default",
     protonDb: { tier: "unknown", confidence: "unknown" },
     localHeader: null,

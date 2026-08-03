@@ -33,6 +33,29 @@ fn is_safe_path(canonical: &str) -> bool {
     !blocked.iter().any(|b| canonical == *b || canonical.starts_with(&format!("{b}/")))
 }
 
+/// sanitize → canonicalize → is_safe_path (blocklist). der gemeinsame
+/// prolog der read-only-validierungen (S-01/S-02/S-03/S-07-umstellung).
+fn canonicalize_safe(path: &str, label: &str) -> Result<PathBuf, String> {
+    sanitize_path(path, label)?;
+    let real = fs::canonicalize(path).map_err(|e| e.to_string())?;
+    if !is_safe_path(&real.to_string_lossy()) {
+        return Err(format!("blocked path: {path}"));
+    }
+    Ok(real)
+}
+
+/// canonicalize eines pfads, dessen roh-input kein symlink sein darf.
+/// der symlink_metadata-guard läuft auf dem roh-input VOR canonicalize —
+/// canonicalize folgt symlinks, ein guard auf dem gefolgten pfad wäre tot.
+/// nutzer: validate_and_prepare + remove_trash_entry_inner.
+fn canonicalize_no_symlink(path: &str) -> Result<PathBuf, String> {
+    let raw_meta = fs::symlink_metadata(path).map_err(|e| e.to_string())?;
+    if raw_meta.file_type().is_symlink() {
+        return Err("symlink rejected — will not recurse".into());
+    }
+    fs::canonicalize(path).map_err(|e| e.to_string())
+}
+
 /// initiale download-URL: https + github.com + pfad-pinning auf das GE-repo.
 /// ohne das pinning wäre jede github.com-url ein download-ziel (cache-poisoning
 /// → beliebiger payload → extraktion → code-execution). redirect-ziele prüft
@@ -108,40 +131,52 @@ fn next_existing_ancestor(path: &Path) -> Option<PathBuf> {
     }
 }
 
-/// validiert, dass ein download-ziel innerhalb des app-cache-verzeichnisses liegt
-/// (allowlist-statt-blocklist). prüft roh-pfad-nachfahrenschaft (komponentenbasiert),
-/// kanonisiert den nächsten existierenden vorfahren und prüft nachfahrenschaft
-/// auch auf den kanonischen pfaden. lehnt symlinks auf dem ziel selbst ab.
-fn validate_download_dest(dest: &str, cache_dir: &Path) -> Result<(), String> {
-    // cache-dir SELBST anlegen — kein ancestor-walk auf der allowlist-seite.
-    // sonst degradiert die prüfung auf einen gemeinsamen vorfahren (z.b.
-    // ~/.cache) und fremde apps im selben überbau rutschen durch.
-    fs::create_dir_all(cache_dir)
-        .map_err(|e| format!("cannot create cache dir: {e}"))?;
-    let cache_canon = fs::canonicalize(cache_dir)
-        .map_err(|e| format!("cache dir canonicalize: {e}"))?;
+/// nächsten existierenden vorfahren kanonisieren — für ziele, die
+/// (zwangsläufig) noch nicht existieren (download-dest, backup, extract-dest).
+fn canonicalize_nearest_ancestor(path: &Path, label: &str) -> Result<PathBuf, String> {
+    let ancestor = next_existing_ancestor(path)
+        .ok_or_else(|| format!("no existing ancestor for {label}"))?;
+    fs::canonicalize(&ancestor).map_err(|e| format!("{label} ancestor: {e}"))
+}
 
-    let dest_path = Path::new(dest);
+/// validiert, dass `dest` innerhalb von `dir` liegt (allowlist statt
+/// blocklist) — der gemeinsame kern von validate_download_dest und der
+/// backup-prüfung in write_steam_file_inner. create_dir_all-zuerst
+/// (test-erzwungen): ohne den create degradiert der ancestor-walk auf
+/// einen gemeinsamen vorfahren (fremde apps im selben überbau kämen
+/// durch). label für den fehler-prefix — die zwei stellen haben
+/// unterschiedliche meldungen („backup outside app cache" /
+/// download-fehlermeldung).
+fn ensure_dest_within_canon_dir(dest: &Path, dir: &Path, label: &str) -> Result<(), String> {
+    fs::create_dir_all(dir).map_err(|e| format!("cannot create {label}: {e}"))?;
+    let dir_canon = fs::canonicalize(dir).map_err(|e| format!("{label} canonicalize: {e}"))?;
 
-    // roh-pfad: muss nachfahre des cache-dir sein (fängt prefix-tricks wie
-    // "/pfad/cache-evil/x" gegen "/pfad/cache" ab)
-    if !is_descendant_of(dest_path, cache_dir) {
-        return Err("download dest outside app cache directory".into());
+    // roh-pfad: muss nachfahre von dir sein (fängt prefix-tricks wie
+    // "/pfad/dir-evil/x" gegen "/pfad/dir" ab)
+    if !is_descendant_of(dest, dir) {
+        return Err(format!("{label} outside app cache"));
     }
 
-    // nächsten existierenden vorfahren von dest kanonisieren (dest existiert
+    // nächsten existierenden vorfahren kanonisieren (dest existiert
     // zwangsläufig noch nicht, deshalb ancestor-walk)
-    let dest_ancestor = next_existing_ancestor(dest_path)
-        .ok_or_else(|| "no existing ancestor for download dest".to_string())?;
-    let dest_ancestor_canon = fs::canonicalize(&dest_ancestor)
-        .map_err(|e| format!("dest ancestor: {e}"))?;
+    let dest_ancestor_canon = canonicalize_nearest_ancestor(dest, label)?;
 
-    // kanonische nachfahren-prüfung: dest-ancestor muss im kanonischen cache-dir liegen
-    if !is_descendant_of(&dest_ancestor_canon, &cache_canon) {
-        return Err("download dest outside app cache directory (canonical)".into());
+    // kanonische nachfahren-prüfung: dest-ancestor muss im kanonischen dir liegen
+    if !is_descendant_of(&dest_ancestor_canon, &dir_canon) {
+        return Err(format!("{label} outside app cache (canonical)"));
     }
+    Ok(())
+}
+
+/// validiert, dass ein download-ziel innerhalb des app-cache-verzeichnisses
+/// liegt (allowlist-statt-blocklist). lehnt symlinks auf dem ziel selbst ab.
+fn validate_download_dest(dest: &str, cache_dir: &Path) -> Result<(), String> {
+    let dest_path = Path::new(dest);
+    ensure_dest_within_canon_dir(dest_path, cache_dir, "download dest")?;
 
     // symlink-check auf dem ziel selbst, falls es bereits existiert
+    // (plan-review 2026-08-03: bleibt inline — der backup-pfad in
+    // write_steam_file_inner darf diesen check nicht erben)
     if dest_path.exists() {
         let meta = fs::symlink_metadata(dest_path).map_err(|e| e.to_string())?;
         if meta.file_type().is_symlink() {
@@ -185,6 +220,17 @@ struct DownloadProgress {
     total: Option<u64>,
 }
 
+/// spawn_blocking + join-handle-fehler → String. die sync-commands laufen
+/// bei tauri v2 auf dem main-thread — blockierende IO gehört in den
+/// blocking-pool (batch C1).
+async fn spawn_blocking_io<T: Send + 'static>(
+    f: impl FnOnce() -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    tokio::task::spawn_blocking(f)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 /// R-1: .tar.gz entpacken. temp im ziel-fs (EXDEV-safe), dann rename ins ziel.
 /// dest-allowlist (M1.3): der scope-check läuft VOR create_dir_all und prüft
 /// den nächsten existierenden vorfahren — der einzige legitime dest ist
@@ -198,13 +244,12 @@ pub async fn extract_tarball(
     sanitize_path(&src, "extract source")?;
     sanitize_path(&dest, "extract destination")?;
     let app2 = app.clone();
-    tokio::task::spawn_blocking(move || {
+    spawn_blocking_io(move || {
         extract_blocking(&src, &dest, MAX_EXTRACT_BYTES, &|p: &Path| {
             app2.fs_scope().is_allowed(p)
         })
     })
     .await
-    .map_err(|e| e.to_string())?
 }
 
 /// prueft, ob `target`, relativ zu `base_dir` aufgeloest, innerhalb der archiv-wurzel bleibt.
@@ -251,10 +296,7 @@ fn extract_blocking(
     let dest = Path::new(dest_dir);
     // scope-check VOR create_dir_all — kein mkdir vor der ablehnung. für
     // nicht-existierende dests prüft der nächste existierende vorfahre.
-    let dest_ancestor = next_existing_ancestor(dest)
-        .ok_or_else(|| "no existing ancestor for extract dest".to_string())?;
-    let dest_ancestor_canon =
-        fs::canonicalize(&dest_ancestor).map_err(|e| format!("extract dest ancestor: {e}"))?;
+    let dest_ancestor_canon = canonicalize_nearest_ancestor(dest, "extract dest")?;
     if !scope_ok(&dest_ancestor_canon) {
         return Err("extract destination outside allowed scope".into());
     }
@@ -428,7 +470,7 @@ pub async fn is_process_running(name: String) -> Result<bool, String> {
     if name.to_lowercase() != "steam" {
         return Err("process check only allowed for steam".into());
     }
-    tokio::task::spawn_blocking(move || {
+    spawn_blocking_io(move || {
         // Substring-Match schließt absichtlich Steam-Helper wie steamwebhelper ein;
         // false-positive Blockade ist sicherer als false-negative während Writes.
         // nur die prozessliste refreshen — new_all() baute eine komplette
@@ -445,24 +487,17 @@ pub async fn is_process_running(name: String) -> Result<bool, String> {
             .any(|p| p.name().to_string_lossy().to_lowercase().contains(&target)))
     })
     .await
-    .map_err(|e| e.to_string())?
 }
 
 /// R-3 (S-01: validierung nach batch_dir_sizes-vorlage).
 /// async + spawn_blocking: der rekursive walk darf nicht auf dem main-thread laufen.
 #[tauri::command]
 pub async fn dir_size(path: String) -> Result<u64, String> {
-    tokio::task::spawn_blocking(move || dir_size_inner(&path))
-        .await
-        .map_err(|e| e.to_string())?
+    spawn_blocking_io(move || dir_size_inner(&path)).await
 }
 
 fn dir_size_inner(path: &str) -> Result<u64, String> {
-    sanitize_path(path, "dir_size")?;
-    let real = fs::canonicalize(path).map_err(|e| e.to_string())?;
-    if !is_safe_path(&real.to_string_lossy()) {
-        return Err(format!("blocked path: {path}"));
-    }
+    let real = canonicalize_safe(path, "dir_size")?;
     Ok(dir_size_impl(&real))
 }
 
@@ -488,9 +523,7 @@ fn dir_size_impl(path: &Path) -> u64 {
 /// async + spawn_blocking: walkt GB-große bäume, gehört nicht auf den main-thread.
 #[tauri::command]
 pub async fn batch_dir_sizes(paths: Vec<String>) -> Result<HashMap<String, u64>, String> {
-    tokio::task::spawn_blocking(move || batch_dir_sizes_inner(paths))
-        .await
-        .map_err(|e| e.to_string())?
+    spawn_blocking_io(move || batch_dir_sizes_inner(paths)).await
 }
 
 fn batch_dir_sizes_inner(paths: Vec<String>) -> Result<HashMap<String, u64>, String> {
@@ -529,7 +562,7 @@ const TRASH_DIR_NAME: &str = ".protium-trash";
 #[tauri::command]
 pub async fn remove_orphan_dir(app: AppHandle, path: String) -> Result<String, String> {
     let app2 = app.clone();
-    tokio::task::spawn_blocking(move || {
+    spawn_blocking_io(move || {
         let (library, canonical) = validate_and_prepare(&path)?;
         // scope-gate VOR dem grant (S5): ohne diesen check würde der grant
         // unten das library-root selbst in den scope heben und der is_allowed-
@@ -542,7 +575,6 @@ pub async fn remove_orphan_dir(app: AppHandle, path: String) -> Result<String, S
         remove_orphan_dir_inner(&canonical, &library, &|p| app2.fs_scope().is_allowed(p))
     })
     .await
-    .map_err(|e| e.to_string())?
 }
 
 /// testbare validierungskette für den command-wrapper: sanitized input
@@ -555,14 +587,9 @@ pub async fn remove_orphan_dir(app: AppHandle, path: String) -> Result<String, S
 fn validate_and_prepare(path_str: &str) -> Result<(std::path::PathBuf, std::path::PathBuf), String> {
     sanitize_path(path_str, "remove_orphan_dir")?;
     // symlink-guard auf roh-input: ein orphan-eintrag, der selbst ein symlink
-    // ist, ist nie ein legitimer löschkandidat (findOrphans skippt symlinks).
-    // ohne diesen check würde canonicalize dem symlink folgen, und der
-    // symlink_metadata-check in inner (auf dem gefolgten pfad) wäre tot.
-    let raw_meta = fs::symlink_metadata(path_str).map_err(|e| e.to_string())?;
-    if raw_meta.file_type().is_symlink() {
-        return Err("symlink rejected — will not recurse".into());
-    }
-    let canonical = fs::canonicalize(path_str).map_err(|e| e.to_string())?;
+    // ist, ist nie ein legitimer löschkandidat (findOrphans skippt symlinks) —
+    // siehe canonicalize_no_symlink für die begründung der reihenfolge.
+    let canonical = canonicalize_no_symlink(path_str)?;
     let binding = canonical.to_string_lossy();
     let lib_str = library_of(&binding)?;
     Ok((std::path::PathBuf::from(lib_str), canonical))
@@ -602,24 +629,11 @@ fn remove_orphan_dir_inner(
 
     let suffix = suffix_after_steamapps(&canon_str)?;
 
-    let (typ, app_id_str) = suffix
-        .split_once('/')
-        .ok_or_else(|| "invalid suffix structure".to_string())?;
-
-    if typ != "compatdata" && typ != "shadercache" {
-        return Err(format!("unexpected type: {typ}"));
-    }
-    if app_id_str.is_empty() || !app_id_str.chars().all(|c| c.is_ascii_digit()) {
-        return Err(format!("non-numeric appId: {app_id_str}"));
-    }
-    // defense-in-depth: das JS-seitige findOrphans filtert appId 0 bereits,
-    // aber ein direkter IPC-aufruf (oder zukünftiger code-pfad) darf nicht
-    // stillschweigend zum löschen / trash-renamen eines 0-verzeichnisses
-    // führen. 0 ist in steam reserviert (kein spiel) und darf nie ein
-    // löschkandidat sein.
-    if app_id_str == "0" {
-        return Err("appId 0 rejected".into());
-    }
+    let (typ, app_id_str) = parse_compat_id(
+        suffix
+            .split_once('/')
+            .ok_or_else(|| "invalid suffix structure".to_string())?,
+    )?;
 
     match typ {
         "shadercache" => {
@@ -651,25 +665,18 @@ fn remove_orphan_dir_inner(
 #[tauri::command]
 pub async fn remove_trash_entry(app: tauri::AppHandle, path: String) -> Result<String, String> {
     let app2 = app.clone();
-    tokio::task::spawn_blocking(move || {
+    spawn_blocking_io(move || {
         remove_trash_entry_inner(&path, &|p| app2.fs_scope().is_allowed(p))
     })
     .await
-    .map_err(|e| e.to_string())?
 }
 
 fn remove_trash_entry_inner(path: &str, scope_ok: &dyn Fn(&Path) -> bool) -> Result<String, String> {
     sanitize_path(&path, "remove_trash_entry")?;
 
-    // symlink-guard auf roh-input VOR canonicalize — canonicalize folgt symlinks,
-    // sonst wäre der check tot (gleiche begründung wie validate_and_prepare)
-    let raw_meta = fs::symlink_metadata(&path).map_err(|e| e.to_string())?;
-    if raw_meta.file_type().is_symlink() {
-        return Err("symlink rejected — will not recurse".into());
-    }
-
-    // canonicalize VOR allen weiteren prüfungen (sonst umgeht .. die musterprüfung)
-    let canonical = fs::canonicalize(&path).map_err(|e| e.to_string())?;
+    // canonicalize VOR allen weiteren prüfungen (sonst umgeht .. die
+    // musterprüfung) — symlink-guard auf roh-input in canonicalize_no_symlink
+    let canonical = canonicalize_no_symlink(&path)?;
 
     let meta = fs::symlink_metadata(&canonical).map_err(|e| e.to_string())?;
     // defense-in-depth: der roh-input-check oben hat symlinks bereits abgewiesen
@@ -719,21 +726,10 @@ fn remove_trash_entry_inner(path: &str, scope_ok: &dyn Fn(&Path) -> bool) -> Res
         return Err(format!("non-numeric timestamp: {ms_str}"));
     }
 
-    let (typ, app_id_str) = rest
-        .split_once('_')
-        .ok_or_else(|| "missing type/appId separator".to_string())?;
-
-    if typ != "compatdata" && typ != "shadercache" {
-        return Err(format!("unexpected type: {typ}"));
-    }
-
-    if app_id_str.is_empty() || !app_id_str.chars().all(|c| c.is_ascii_digit()) {
-        return Err(format!("non-numeric appId: {app_id_str}"));
-    }
-
-    if app_id_str == "0" {
-        return Err("appId 0 rejected".into());
-    }
+    parse_compat_id(
+        rest.split_once('_')
+            .ok_or_else(|| "missing type/appId separator".to_string())?,
+    )?;
 
     fs::remove_dir_all(&canonical).map_err(|e| e.to_string())?;
     Ok("deleted".into())
@@ -756,6 +752,29 @@ fn suffix_after_steamapps(canon_str: &str) -> Result<&str, String> {
         .rfind(marker)
         .ok_or_else(|| "path does not contain /steamapps/".to_string())?;
     Ok(&canon_str[idx + marker.len()..])
+}
+
+/// gemeinsame typ/appId-validierung der beiden lösch-pfade (orphan + trash):
+/// typ ∈ {compatdata, shadercache}, ascii-digits, appId ≠ 0. das split
+/// selbst bleibt an den stellen (orphan: '/', trash: '_' nach
+/// marker/timestamp-parse — unterschiedliche fehlermeldungen).
+fn parse_compat_id<'a>(pair: (&'a str, &'a str)) -> Result<(&'a str, &'a str), String> {
+    let (typ, app_id_str) = pair;
+    if typ != "compatdata" && typ != "shadercache" {
+        return Err(format!("unexpected type: {typ}"));
+    }
+    if app_id_str.is_empty() || !app_id_str.chars().all(|c| c.is_ascii_digit()) {
+        return Err(format!("non-numeric appId: {app_id_str}"));
+    }
+    // defense-in-depth: das JS-seitige findOrphans filtert appId 0 bereits,
+    // aber ein direkter IPC-aufruf (oder zukünftiger code-pfad) darf nicht
+    // stillschweigend zum löschen / trash-renamen eines 0-verzeichnisses
+    // führen. 0 ist in steam reserviert (kein spiel) und darf nie ein
+    // löschkandidat sein.
+    if app_id_str == "0" {
+        return Err("appId 0 rejected".into());
+    }
+    Ok((typ, app_id_str))
 }
 
 fn allow_library_scope_inner(app: AppHandle, path: &Path) -> Result<(), String> {
@@ -948,14 +967,12 @@ fn is_system_compat_dir(real: &Path) -> bool {
 /// verlangt einen steam-library-kandidaten (`steamapps` existiert) oder ein
 /// system-compat-dir — sonst scopt die webview beliebige verzeichnisse (/home).
 fn validate_library_scope(path_str: &str) -> Result<std::path::PathBuf, String> {
-    sanitize_path(path_str, "library path")?;
-    let real = fs::canonicalize(path_str)
-        .map_err(|e| format!("cannot resolve library path: {e}"))?;
+    // spec-review 2026-08-03: der helper verschiebt die fehler-präzedenz —
+    // blockierte nicht-dirs melden jetzt zuerst den blocklist-grund, dann
+    // „not a directory" (akzeptanz-menge bleibt gleich).
+    let real = canonicalize_safe(path_str, "library path")?;
     if !real.is_dir() {
         return Err("library path is not a directory".into());
-    }
-    if !is_safe_path(&real.to_string_lossy()) {
-        return Err("library path in blocked system directory rejected".into());
     }
     if !real.join("steamapps").is_dir() && !is_system_compat_dir(&real) {
         return Err("library path is not a steam library or system compat dir".into());
@@ -1028,21 +1045,12 @@ fn write_steam_file_inner(
     }
 
     // backup ist ein zweites write-ziel — es muss zwingend innerhalb des
-    // app-cache liegen (allowlist statt blocklist, muster validate_download_dest)
+    // app-cache liegen (allowlist statt blocklist, muster validate_download_dest).
+    // verhaltens-delta (spec 2026-08-03): der helper erstellt das app-cache-dir
+    // VOR der ablehnung — bei abgelehntem backup bleibt ein leerer
+    // verzeichnis-stamm (eigenes verzeichnis, harmlos, INV-konform).
     let backup_path = Path::new(backup);
-    if !is_descendant_of(backup_path, backup_dir) {
-        return Err("backup outside app cache".into());
-    }
-    fs::create_dir_all(backup_dir).map_err(|e| format!("backup dir: {e}"))?;
-    let backup_dir_canon =
-        fs::canonicalize(backup_dir).map_err(|e| format!("backup dir canonicalize: {e}"))?;
-    let backup_ancestor = next_existing_ancestor(backup_path)
-        .ok_or_else(|| "no existing ancestor for backup".to_string())?;
-    let backup_ancestor_canon = fs::canonicalize(&backup_ancestor)
-        .map_err(|e| format!("backup ancestor: {e}"))?;
-    if !is_descendant_of(&backup_ancestor_canon, &backup_dir_canon) {
-        return Err("backup outside app cache (canonical)".into());
-    }
+    ensure_dest_within_canon_dir(backup_path, backup_dir, "backup")?;
 
     if let Some(parent) = backup_path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -1104,11 +1112,10 @@ pub async fn remove_compat_tool(
     tool_name: String,
 ) -> Result<(), String> {
     let app2 = app.clone();
-    tokio::task::spawn_blocking(move || {
+    spawn_blocking_io(move || {
         remove_compat_tool_inner(&steam_root, &tool_name, &|p| app2.fs_scope().is_allowed(p))
     })
     .await
-    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -1128,11 +1135,10 @@ pub async fn write_steam_file(
         .app_cache_dir()
         .map_err(|e| format!("cannot resolve app cache dir: {e}"))?;
     let running = is_process_running("steam".to_string()).await?;
-    tokio::task::spawn_blocking(move || {
+    spawn_blocking_io(move || {
         write_steam_file_inner(&file, &original, &content, &backup, &backup_dir, &home, running)
     })
     .await
-    .map_err(|e| e.to_string())?
 }
 
 /// symlink-auflösung (steam-root-discovery). `..` im input abgelehnt,
@@ -1140,13 +1146,8 @@ pub async fn write_steam_file(
 /// S-07: nutzt is_safe_path() statt eigener blocklist (konsistenz).
 #[tauri::command]
 pub fn canonicalize_path(path: String) -> Result<String, String> {
-    sanitize_path(&path, "canonicalize")?;
-    let canonical = fs::canonicalize(&path).map_err(|e| e.to_string())?;
-    let s = canonical.to_string_lossy();
-    if !is_safe_path(&s) {
-        return Err("path resolution in blocked filesystem".into());
-    }
-    Ok(s.into_owned())
+    let canonical = canonicalize_safe(&path, "canonicalize")?;
+    Ok(canonical.to_string_lossy().into_owned())
 }
 
 /// ein verzeichniseintrag im papierkorb. is_symlink kommt aus file_type() des
@@ -1183,17 +1184,11 @@ pub struct TrashListing {
 /// async + spawn_blocking (verzeichnis-read auf dem main-thread vermeiden).
 #[tauri::command]
 pub async fn list_trash_entries(library: String) -> Result<TrashListing, String> {
-    tokio::task::spawn_blocking(move || list_trash_entries_inner(&library))
-        .await
-        .map_err(|e| e.to_string())?
+    spawn_blocking_io(move || list_trash_entries_inner(&library)).await
 }
 
 fn list_trash_entries_inner(library: &str) -> Result<TrashListing, String> {
-    sanitize_path(&library, "list_trash_entries")?;
-    let real = fs::canonicalize(&library).map_err(|e| e.to_string())?;
-    if !is_safe_path(&real.to_string_lossy()) {
-        return Err("blocked path".into());
-    }
+    let real = canonicalize_safe(library, "list_trash_entries")?;
 
     let trash_dir = real.join("steamapps").join(TRASH_DIR_NAME);
     let dir = trash_dir.to_string_lossy().into_owned();
@@ -1239,11 +1234,7 @@ pub struct PathIdentity {
 #[tauri::command]
 pub fn path_identity(path: String) -> Result<PathIdentity, String> {
     use std::os::unix::fs::MetadataExt;
-    sanitize_path(&path, "path_identity")?;
-    let real = fs::canonicalize(&path).map_err(|e| e.to_string())?;
-    if !is_safe_path(&real.to_string_lossy()) {
-        return Err("blocked path".into());
-    }
+    let real = canonicalize_safe(&path, "path_identity")?;
     let md = fs::metadata(&real).map_err(|e| e.to_string())?;
     Ok(PathIdentity {
         realpath: real.to_string_lossy().into_owned(),
@@ -2000,12 +1991,18 @@ mod tests {
 
     use super::{library_of, remove_orphan_dir_inner, validate_and_prepare};
 
-    fn orphan_fixture(tag: &str) -> std::path::PathBuf {
+    /// tempdir-fixture (tempdir + pid-tag + remove_dir_all) — der eine
+    /// fixture-helper für die drei fixture-prefixe orphan/trash/wsg.
+    fn fixture_dir(prefix: &str, tag: &str) -> std::path::PathBuf {
         let mut p = std::env::temp_dir();
-        p.push(format!("protium-orphan-{tag}-{}", std::process::id()));
+        p.push(format!("protium-{prefix}-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&p);
         std::fs::create_dir_all(&p).unwrap();
         p
+    }
+
+    fn orphan_fixture(tag: &str) -> std::path::PathBuf {
+        fixture_dir("orphan", tag)
     }
 
     fn touch(dir: &std::path::Path) {
@@ -2253,11 +2250,7 @@ mod tests {
     use super::remove_trash_entry_inner;
 
     fn trash_fixture(tag: &str) -> std::path::PathBuf {
-        let mut p = std::env::temp_dir();
-        p.push(format!("protium-trash-{tag}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&p);
-        std::fs::create_dir_all(&p).unwrap();
-        p
+        fixture_dir("trash", tag)
     }
 
     #[test]
@@ -3200,11 +3193,7 @@ mod tests {
     use super::{is_steam_config_path, write_steam_file_inner};
 
     fn wsg_fixture(tag: &str) -> std::path::PathBuf {
-        let mut p = std::env::temp_dir();
-        p.push(format!("protium-wsg-{tag}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&p);
-        std::fs::create_dir_all(&p).unwrap();
-        p
+        fixture_dir("wsg", tag)
     }
 
     // baut $TMP/fakehome/.local/share/Steam/... und $TMP/cache (backup-dir)

@@ -85,7 +85,6 @@ function fakeScanWithGames(gameIds: number[]): ScanResult {
       name: `Game ${appId}`,
       library: "/home/u/.steam",
       sizeBytes: 100,
-      installed: true,
       compatTool: "default",
       protonDb: null,
       localHeader: null,
@@ -514,7 +513,6 @@ describe("cleanupStore — trash", () => {
 
     await store.scanTrash();
 
-    expect(store.trashUnreadable).toEqual(["/lib"]);
     // darf NICHT als "papierkorb ist leer" durchgehen
     expect(store.error).toBeTruthy();
     expect(store.trashLibraries[0]?.error).toContain("EACCES");

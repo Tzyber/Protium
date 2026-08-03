@@ -46,7 +46,6 @@ describe("scanLibrary (integration — dominiks reales setup)", () => {
     expect(byId.get(730)?.compatTool).toBe("proton-cachyos-slr");
     expect(byId.get(570)?.compatTool).toBe("default");
     expect(byId.get(620)?.library).toBe(lib2);
-    expect(byId.get(570)?.installed).toBe(true);
     expect(byId.get(570)?.headerImage).toContain("/steam/apps/570/header.jpg");
     expect(byId.get(570)?.protonDb).toEqual({ tier: "unknown", confidence: "unknown" });
 

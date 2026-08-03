@@ -2,15 +2,29 @@ import { invoke } from "@tauri-apps/api/core";
 import { defineStore } from "pinia";
 import { tauriPorts } from "../../core/adapters/tauri";
 import { findOrphans } from "../../core/cleanup";
-import { readAllShortcutAppIds, SHORTCUT_ID_THRESHOLD } from "../../core/shortcuts";
+import {
+  readAllShortcutAppIds,
+  SHORTCUT_ID_THRESHOLD,
+  type ShortcutResult,
+} from "../../core/shortcuts";
 import { findTrashEntries, type TrashEntry, type TrashLibraryStatus } from "../../core/trash";
-import type { OrphanEntry } from "../../core/types";
+import type { OrphanEntry, ScanResult } from "../../core/types";
 import { errMsg } from "../format";
 import { t } from "../i18n";
 import { useScanStore } from "./scanStore";
 
 /** cache-key für die dauerhaft ignorierten toten library-pfade */
 const IGNORED_MISSING_KEY = "cleanup:ignored-missing-libs";
+
+// S-05: frischen installed-status bauen (games + shortcuts), statt auf einen
+// veralteten scan-stand zu vertrauen — der cleanup-race-schutz lebt hier.
+function collectInstalledAppIds(result: ScanResult, shortcutResult: ShortcutResult): Set<number> {
+  const installedAppIds = new Set(result.games.map((g) => g.appId));
+  if (shortcutResult.status === "ok") {
+    for (const id of shortcutResult.ids) installedAppIds.add(id);
+  }
+  return installedAppIds;
+}
 
 export const useCleanupStore = defineStore("cleanup", {
   state: () => ({
@@ -31,7 +45,6 @@ export const useCleanupStore = defineStore("cleanup", {
     shortcutUnreadableDetail: null as string | null,
     trash: [] as TrashEntry[],
     trashUnknown: [] as string[],
-    trashUnreadable: [] as string[],
     trashLibraries: [] as TrashLibraryStatus[],
     trashScanning: false,
   }),
@@ -94,10 +107,7 @@ export const useCleanupStore = defineStore("cleanup", {
           this.shortcutUnreadableDetail = null;
         }
 
-        const installedAppIds = new Set(result.games.map((g) => g.appId));
-        if (shortcutResult.status === "ok") {
-          for (const id of shortcutResult.ids) installedAppIds.add(id);
-        }
+        const installedAppIds = collectInstalledAppIds(result, shortcutResult);
 
         this.orphans = await findOrphans(result.libraries, installedAppIds, tauriPorts.fs);
 
@@ -142,7 +152,6 @@ export const useCleanupStore = defineStore("cleanup", {
         return;
       }
 
-      // S-05: frischen installed-status bauen (games + shortcuts)
       const scan = useScanStore();
       const result = scan.result;
       if (!result) {
@@ -150,12 +159,8 @@ export const useCleanupStore = defineStore("cleanup", {
         return;
       }
 
-      const installedAppIds = new Set(result.games.map((g) => g.appId));
-
       const shortcutResult = await readAllShortcutAppIds(tauriPorts.fs, result.steamRoot);
-      if (shortcutResult.status === "ok") {
-        for (const id of shortcutResult.ids) installedAppIds.add(id);
-      }
+      const installedAppIds = collectInstalledAppIds(result, shortcutResult);
 
       const errors: string[] = [];
       // compatdata wird nicht gelöscht, sondern in den papierkorb VERSCHOBEN.
@@ -256,7 +261,6 @@ export const useCleanupStore = defineStore("cleanup", {
         );
         this.trash = entries;
         this.trashUnknown = unknown;
-        this.trashUnreadable = unreadable;
         this.trashLibraries = libraries;
 
         // ein nicht lesbarer papierkorb darf nicht als "leer" durchgehen

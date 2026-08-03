@@ -28,7 +28,6 @@ function fakeScanResult(): ScanResult {
         name: "Test",
         library: "/home/u/.steam",
         sizeBytes: 0,
-        installed: true,
         compatTool: "OldTool",
         protonDb: { tier: "unknown", confidence: "unknown" },
         localHeader: null,

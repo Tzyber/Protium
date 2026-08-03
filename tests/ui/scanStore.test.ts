@@ -34,7 +34,6 @@ function fakeResult(): ScanResult {
         name: "Game 42",
         library: "/home/u/.steam",
         sizeBytes: 100,
-        installed: true,
         compatTool: "default",
         protonDb: null,
         localHeader: null,

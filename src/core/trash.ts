@@ -1,6 +1,7 @@
 import { errText } from "./errtext.js";
 import { joinPath } from "./paths.js";
 import type { System, TrashListing } from "./ports.js";
+import { parseSafeAppId } from "./types.js";
 
 export interface TrashEntry {
   /** voller pfad des papierkorb-eintrags */
@@ -98,18 +99,11 @@ export async function findTrashEntries(
         continue;
       }
 
-      const appId = Number.parseInt(appIdRaw, 10);
+      // M4.1 für den timestamp-teil: riesige ziffernfolgen und 0 sind
+      // nie gültige unix-ms (appId-guard steckt in parseSafeAppId)
+      const appId = parseSafeAppId(appIdRaw);
       const trashedAt = Number.parseInt(msRaw, 10);
-
-      // M4.1 (audit-befund): riesige ziffernfolgen parsen jenseits der
-      // JS-präzision — nie legitime appIds (steam: ≤ 10 stellen)
-      if (
-        appId === 0 ||
-        !Number.isFinite(appId) ||
-        appId > Number.MAX_SAFE_INTEGER ||
-        !Number.isFinite(trashedAt) ||
-        trashedAt <= 0
-      ) {
+      if (appId === null || !Number.isFinite(trashedAt) || trashedAt <= 0) {
         unknown.push(fullPath);
         continue;
       }

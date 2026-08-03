@@ -45,7 +45,7 @@ function readToolVdf(
 }
 
 // tools aus steam-root + systemweiten dirs (/usr/share/steam/…, z. B. proton-cachyos).
-// dedup dirs via (dev,ino) gegen symlinks, dedup tools via internem namen (erste quelle gewinnt).
+// dedup dirs via realpath gegen symlinks, dedup tools via internem namen (erste quelle gewinnt).
 // usedBy matcht den INTERNEN namen (so steht er im mapping), nicht den verzeichnisnamen.
 export async function listCompatTools(
   fs: FileSystem,

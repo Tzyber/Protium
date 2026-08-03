@@ -241,12 +241,3 @@ export async function installRelease(
     await fs.remove(dest).catch(() => {}); // tarball immer weg
   }
 }
-
-// NUR für GE-tools aufrufen (distro-tools gehören dem paketmanager).
-export async function removeTool(
-  system: System,
-  steamRoot: string,
-  toolDirName: string,
-): Promise<void> {
-  await system.removeCompatTool(steamRoot, toolDirName);
-}

@@ -158,7 +158,6 @@ export async function scanLibrary(ports: Ports, opts: ScanOptions): Promise<Scan
           name: data.name,
           library: lib,
           sizeBytes: data.sizeBytes,
-          installed: data.installed,
           compatTool: compatFor(data.appId),
           protonDb: null,
           localHeader: await resolveLocalHeader(fs, steamRoot, data.appId),
@@ -166,7 +165,6 @@ export async function scanLibrary(ports: Ports, opts: ScanOptions): Promise<Scan
           launchOptions: localConfigText
             ? readLaunchOptions(localConfigText, data.appId)
             : undefined,
-          prefixPath: paths.compatdataPath(lib, data.appId),
         });
       } catch (e) {
         warnings.push(`${entry.name} übersprungen: ${errText(e)}`);

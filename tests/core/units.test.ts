@@ -6,29 +6,19 @@ import { parseLibraryFolders } from "../../src/core/libraryfolders.js";
 import { parseManifest } from "../../src/core/manifest.js";
 import { joinPath } from "../../src/core/paths.js";
 import { ensureSizeLimit, MAX_FILE_BYTES } from "../../src/core/ports.js";
-import { isFullyInstalled } from "../../src/core/types.js";
 
-const acf = (flags: number) => `"AppState"
+const acf = () => `"AppState"
 {
 	"appid"		"620"
 	"name"		"Portal 2"
-	"StateFlags"		"${flags}"
+	"StateFlags"		"6"
 	"SizeOnDisk"		"12345678"
 }`;
 
-describe("StateFlags (S-2 bitfield)", () => {
-  it("wert 4 = installiert", () => expect(isFullyInstalled(4)).toBe(true));
-  it("wert 6 (installiert + update-pending) = installiert", () =>
-    expect(isFullyInstalled(6)).toBe(true));
-  it("wert 2 (nur update-pending) = nicht installiert", () =>
-    expect(isFullyInstalled(2)).toBe(false));
-  it("wert 0 = nicht installiert", () => expect(isFullyInstalled(0)).toBe(false));
-});
-
 describe("parseManifest", () => {
-  it("liest felder + installed aus flags 6", () => {
-    const m = parseManifest(acf(6));
-    expect(m).toEqual({ appId: 620, name: "Portal 2", sizeBytes: 12345678, installed: true });
+  it("liest felder", () => {
+    const m = parseManifest(acf());
+    expect(m).toEqual({ appId: 620, name: "Portal 2", sizeBytes: 12345678 });
   });
   it("wirft bei fehlender appid", () => {
     expect(() => parseManifest('"AppState" { "name" "x" }')).toThrow();

@@ -1,11 +1,9 @@
-import { isFullyInstalled } from "./types.js";
 import { asInt, asString, getKeyInsensitive, parseVdf } from "./vdf.js";
 
 interface ManifestData {
   appId: number;
   name: string;
   sizeBytes: number;
-  installed: boolean;
 }
 
 // wirft bei kaputtem inhalt/fehlender appid; scan fängt ab → skip+warning (INV-2).
@@ -20,7 +18,6 @@ export function parseManifest(text: string): ManifestData {
 
   const name = asString(getKeyInsensitive(app, "name")) ?? `app ${appId}`;
   const sizeBytes = asInt(getKeyInsensitive(app, "SizeOnDisk")) ?? 0;
-  const stateFlags = asInt(getKeyInsensitive(app, "StateFlags")) ?? 0;
 
-  return { appId, name, sizeBytes, installed: isFullyInstalled(stateFlags) };
+  return { appId, name, sizeBytes };
 }

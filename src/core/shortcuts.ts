@@ -56,13 +56,8 @@ function skipBinaryValue(buf: Uint8Array, pos: number, type: number): number {
           depth--;
           continue;
         }
-        if (pos >= buf.length) throw new BinVdfError("truncated in nested object");
         const childType = byteAt(buf, pos);
         pos++;
-        if (childType === 0x08) {
-          depth--;
-          continue;
-        }
         const key = readCString(buf, pos);
         pos = key.next;
         pos = skipBinaryValue(buf, pos, childType);
@@ -88,55 +83,53 @@ function skipBinaryValue(buf: Uint8Array, pos: number, type: number): number {
   }
 }
 
-/**
- * liest einen MAP-body. `pos` zeigt auf das erste child-typ-byte.
- * ruft `onEntry(appid)` für jeden eintrag mit numerischem key + appid.
- */
-function parseMapBody(buf: Uint8Array, pos: number, onEntry: (appId: number) => void): number {
-  while (pos < buf.length) {
-    if (buf[pos] === 0x08) return pos + 1; // MAP ende
-    const childType = byteAt(buf, pos);
-    pos++;
-    if (childType === 0x08) return pos;
-    const childKey = readCString(buf, pos);
-    pos = childKey.next;
+/** was der walker mit einem eintrag tut. */
+type WalkKind = "skip" | "extract" | "appid";
 
-    if (childType === 0x00 && NUMERIC_RE.test(childKey.str)) {
-      const { next } = parseEntryBody(buf, pos, onEntry);
-      pos = next;
-    } else {
-      pos = skipBinaryValue(buf, pos, childType);
-    }
-  }
-  throw new BinVdfError("unterminated map body");
-}
+/** regelwerk pro ebene: entscheidet anhand von (typ, key), wie der wert behandelt wird. */
+type WalkKindFn = (type: number, key: string) => WalkKind;
+
+/** root-ebene: nur maps mit numerischem key sind shortcut-einträge. */
+const rootKind: WalkKindFn = (type, key) =>
+  type === 0x00 && NUMERIC_RE.test(key) ? "extract" : "skip";
+
+/** eintrags-ebene: nur "appid" mit int32 zählt — case-insensitive, wie Valve schreibt. */
+const entryKind: WalkKindFn = (type, key) =>
+  key.toLowerCase() === "appid" && type === 0x02 ? "appid" : "skip";
 
 /**
- * liest den MAP-body eines eintrags (z. B. "0"). extrahiert appid.
- * `pos` zeigt auf das erste child-typ-byte im eintrag-body.
+ * walkt einen MAP-body (TYPE-KEY-VALUE). `pos` zeigt auf das erste
+ * child-typ-byte. "extract" steigt in einen MAP-wert ab — dort gilt das
+ * eintrags-regelwerk. "appid" liest einen u32 und meldet ihn über onEntry.
  */
-function parseEntryBody(
+function walkMapBody(
   buf: Uint8Array,
   pos: number,
+  kindOf: WalkKindFn,
   onEntry: (appId: number) => void,
-): { next: number } {
+): number {
   while (pos < buf.length) {
-    if (buf[pos] === 0x08) return { next: pos + 1 };
-    const valType = byteAt(buf, pos);
+    if (buf[pos] === 0x08) return pos + 1; // MAP-ende
+    const type = byteAt(buf, pos);
     pos++;
-    if (valType === 0x08) return { next: pos };
     const key = readCString(buf, pos);
     pos = key.next;
 
-    if (key.str.toLowerCase() === "appid" && valType === 0x02) {
-      const { value, next } = readU32(buf, pos);
-      if (value > 0) onEntry(value);
-      pos = next;
-    } else {
-      pos = skipBinaryValue(buf, pos, valType);
+    switch (kindOf(type, key.str)) {
+      case "extract":
+        pos = walkMapBody(buf, pos, entryKind, onEntry);
+        break;
+      case "appid": {
+        const { value, next } = readU32(buf, pos);
+        if (value > 0) onEntry(value); // appid 0 gibt es nicht — nie melden
+        pos = next;
+        break;
+      }
+      default:
+        pos = skipBinaryValue(buf, pos, type);
     }
   }
-  throw new BinVdfError("unterminated entry body");
+  throw new BinVdfError("unterminated map body");
 }
 
 /**
@@ -155,7 +148,7 @@ function parseBinaryShortcutIds(buf: Uint8Array): Set<number> {
     throw new BinVdfError(`unexpected root key: ${root.str}`);
 
   // root-body: TYPE-KEY-VALUE kinder. nur 0x00 (MAP) mit numerischem key interessiert uns.
-  parseMapBody(buf, pos, (appId) => ids.add(appId));
+  walkMapBody(buf, pos, rootKind, (appId) => ids.add(appId));
   return ids;
 }
 

@@ -6,7 +6,6 @@ import {
   fetchReleases,
   type GeRelease,
   installRelease,
-  removeTool,
 } from "../../core/geproton";
 import type { CompatTool } from "../../core/types";
 import { errMsg } from "../format";
@@ -195,7 +194,8 @@ export const useProtonStore = defineStore("proton", {
       if (!steamRoot || tool.source !== "user") return;
       this.busyRemove = tool.name;
       try {
-        await removeTool(tauriPorts.system, steamRoot, tool.name);
+        // NUR für GE-tools aufrufen (distro-tools gehören dem paketmanager)
+        await tauriPorts.system.removeCompatTool(steamRoot, tool.name);
         await scan.runScan();
       } catch (e) {
         this.loadError = t("proton.removeFailed", { msg: errMsg(e) });
