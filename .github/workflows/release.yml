@@ -97,10 +97,28 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: "Protium ${{ github.ref_name }}"
           body: |
-            Siehe README für Details.
+            ## 0.1.8 — overhead-abbau
 
-            **Hinweis für Wayland-Nutzer:** Das AppImage lädt automatisch die system-eigene `libwayland-client.so`,
-            falls vorhanden. Kein manuelles `LD_PRELOAD` mehr nötig.
+            cleanup-batch über core, ui und rust. motto bleibt: ein proton, ein elektron.
+
+            **refactoring (dedup + dead code):**
+            - rust: 6 helper statt ~25 duplikat-stellen in `commands.rs`
+              (pfad-validierung, spawn_blocking, compat-id-parse, dest-scope-check) —
+              validierungsketten 1:1 extrahiert, kein verhalten geändert, kein test angepasst
+            - `shortcuts.ts`: drei fast identische binary-VDF-walker → einer
+            - sicherheits-relevante doppelungen vereint: appId-präzisions-guard
+              (`parseSafeAppId`), cleanup-race-gate (`collectInstalledAppIds`),
+              backup-validierung
+            - dead code raus: `Game.prefixPath`, `Game.installed`-kette,
+              `trashUnreadable`-state, saira-500-schrift (nie genutzt), tote guards,
+              `removeTool`-passthrough, ungenutzte vdf-importe
+
+            **verifikation:** vitest 252/252 · cargo 100/100 · `npm run check` clean ·
+            `cargo build` grün. keine capability-änderung.
+
+            **hinweis für wayland-nutzer:** das AppImage lädt automatisch die
+            system-eigene `libwayland-client.so`, falls vorhanden. kein manuelles
+            `LD_PRELOAD` mehr nötig.
           draft: true
           prerelease: false
           files: |
