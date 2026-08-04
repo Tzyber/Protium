@@ -5,16 +5,21 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import PlayButton from "../../src/ui/components/PlayButton.vue";
 
 const mockLaunchGame = vi.hoisted(() => vi.fn(async () => {}));
+const mockShowNotification = vi.hoisted(() => vi.fn());
 vi.mock("../../src/core/adapters/tauri", () => ({
   launchGame: mockLaunchGame,
 }));
+vi.mock("../../src/ui/stores/uiStore", () => ({
+  useUiStore: vi.fn(() => ({ showNotification: mockShowNotification })),
+}));
 
-// i18n: minimale nachbildung — t() bildet key auf label ab
+// i18n: minimale nachbildung — t() bildet key auf label ab.
+// params werden angehängt, damit interpolation-argumente (z. b. {error})
+// im assert sichtbar bleiben statt zu verschwinden.
 vi.mock("../../src/ui/i18n", () => ({
-  t: vi.fn((key: string, params?: Record<string, string>) => {
-    if (params?.name) return key.replace("{name}", params.name);
-    return key;
-  }),
+  t: vi.fn((key: string, params?: Record<string, string>) =>
+    params ? `${key} ${JSON.stringify(params)}` : key,
+  ),
 }));
 
 afterEach(() => {
@@ -32,7 +37,9 @@ describe("PlayButton", () => {
     it("rendert button mit aria-label via card.launch", () => {
       const wrapper = mountCompact();
       const btn = wrapper.find("button");
-      expect(btn.attributes("aria-label")).toBe("card.launch");
+      expect(btn.attributes("aria-label")).toBe(
+        `card.launch ${JSON.stringify({ name: "Team Fortress 2" })}`,
+      );
     });
 
     it("hat klasse compact", () => {
@@ -61,7 +68,9 @@ describe("PlayButton", () => {
 
     it("rendert button mit aria-label via drawer.launch", () => {
       const wrapper = mountFull();
-      expect(wrapper.find("button").attributes("aria-label")).toBe("drawer.launch");
+      expect(wrapper.find("button").attributes("aria-label")).toBe(
+        `drawer.launch ${JSON.stringify({ name: "Counter-Strike 2" })}`,
+      );
     });
 
     it("hat klasse full", () => {
@@ -82,8 +91,7 @@ describe("PlayButton", () => {
   });
 
   describe("fehlerpfad", () => {
-    it("console.warn bei launchGame-fehler", async () => {
-      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    it("zeigt notification bei launchGame-fehler", async () => {
       mockLaunchGame.mockRejectedValueOnce(new Error("steam not found"));
       const wrapper = mount(PlayButton, {
         props: { appId: 1, name: "x", variant: "compact" },
@@ -91,8 +99,9 @@ describe("PlayButton", () => {
       await wrapper.find("button").trigger("click");
       // warten auf microtask (catch läuft async)
       await new Promise((r) => setTimeout(r, 0));
-      expect(warn).toHaveBeenCalledWith("launch failed", expect.any(Error));
-      warn.mockRestore();
+      const call = mockShowNotification.mock.calls[0]?.[0] ?? "";
+      expect(call).toContain("drawer.launchFailed");
+      expect(call).toContain("steam not found");
     });
   });
 });

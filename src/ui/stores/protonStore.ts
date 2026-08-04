@@ -11,6 +11,7 @@ import type { CompatTool } from "../../core/types";
 import { errMsg } from "../format";
 import { t } from "../i18n";
 import { useScanStore } from "./scanStore";
+import { useUiStore } from "./uiStore";
 
 export type Phase = "queued" | "downloading" | "verifying" | "extracting";
 
@@ -80,7 +81,7 @@ export const useProtonStore = defineStore("proton", {
         // ohne listener fehlt nur die fortschritts-anzeige — die view darf
         // deshalb nicht leer bleiben, und der nächste mount darf es erneut
         // versuchen (flag bleibt false).
-        console.warn("download-progress listener nicht verfügbar:", e);
+        useUiStore().showNotification(t("proton.listenerUnavailable", { error: errMsg(e) }));
       }
       if (!this.releases.length) void this.loadReleases();
     },

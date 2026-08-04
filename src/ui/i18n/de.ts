@@ -20,6 +20,9 @@ export const de = {
     libs: "libs",
     tools: "tools",
     scan: "scan",
+    copyError: "fehler kopieren",
+    copied: "kopiert",
+    dismissNotification: "meldung schließen",
   },
   status: {
     ready: "bereit",
@@ -27,6 +30,7 @@ export const de = {
     scanningLibrary: "scanne library…",
     noSteamInstallation: "keine steam-installation",
     error: "fehler",
+    scanFailed: "Scan fehlgeschlagen: {error}",
   },
   library: {
     label: "library",
@@ -132,6 +136,7 @@ export const de = {
     noReleases: "keine releases (offline oder rate-limit?)",
     installFailed: "install {tag} fehlgeschlagen: {msg}",
     checksumUnavailable: "{tag} ohne Verifikation installiert (Prüfsumme nicht abrufbar)",
+    listenerUnavailable: "Download-Fortschritt nicht verfügbar: {error}",
     removeFailed: "löschen fehlgeschlagen: {msg}",
     noScanResult: "kein scan-ergebnis — erst library scannen",
     statusUpdated: "aktualisiert · {n} releases · gerade eben",
@@ -163,6 +168,7 @@ export const de = {
     play: "spiel starten",
     launch: "{name} starten",
     notInstalled: "{name} (nicht installiert)",
+    launchFailed: "Start fehlgeschlagen: {error}",
   },
   card: {
     openDetails: "{name} details öffnen",

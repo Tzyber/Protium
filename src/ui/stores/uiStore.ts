@@ -14,6 +14,9 @@ export const useUiStore = defineStore("ui", {
     selectedAppId: null as number | null,
     /** modal/drawer offen → hauptinhalt + sidebar via inert stilllegen */
     inertMain: false,
+    /** globale notification-toast. neueste überschreibt, 30s auto-dismiss. */
+    notification: null as { message: string } | null,
+    notificationTimer: null as ReturnType<typeof setTimeout> | null,
   }),
   actions: {
     go(view: ViewId) {
@@ -31,6 +34,21 @@ export const useUiStore = defineStore("ui", {
       lib.reset();
       lib.compatTools = [internalName];
       this.activeView = "library";
+    },
+    /** fehler als kopierbare notification anzeigen. 30s auto-dismiss als fallback. */
+    showNotification(message: string) {
+      if (this.notificationTimer) clearTimeout(this.notificationTimer);
+      this.notification = { message };
+      this.notificationTimer = setTimeout(() => {
+        this.dismissNotification();
+      }, 30_000);
+    },
+    dismissNotification() {
+      if (this.notificationTimer) {
+        clearTimeout(this.notificationTimer);
+        this.notificationTimer = null;
+      }
+      this.notification = null;
     },
   },
 });

@@ -25,6 +25,9 @@ export const en = {
     libs: "libs",
     tools: "tools",
     scan: "scan",
+    copyError: "copy error",
+    copied: "copied",
+    dismissNotification: "dismiss message",
   },
   status: {
     ready: "ready",
@@ -32,6 +35,7 @@ export const en = {
     scanningLibrary: "scanning library…",
     noSteamInstallation: "no steam installation",
     error: "error",
+    scanFailed: "scan failed: {error}",
   },
   library: {
     label: "library",
@@ -135,6 +139,7 @@ export const en = {
     noReleases: "no releases (offline or rate-limit?)",
     installFailed: "install {tag} failed: {msg}",
     checksumUnavailable: "{tag} installed without verification (checksum unavailable)",
+    listenerUnavailable: "download progress unavailable: {error}",
     removeFailed: "delete failed: {msg}",
     noScanResult: "no scan result — scan the library first",
     statusUpdated: "updated · {n} releases · just now",
@@ -166,6 +171,7 @@ export const en = {
     play: "start game",
     launch: "start {name}",
     notInstalled: "{name} (not installed)",
+    launchFailed: "launch failed: {error}",
   },
   card: {
     openDetails: "open {name} details",

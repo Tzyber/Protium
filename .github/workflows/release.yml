@@ -97,28 +97,23 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: "Protium ${{ github.ref_name }}"
           body: |
-            ## 0.1.8 — overhead-abbau
+            ## 0.1.9 — kopierbare fehler-notifications
 
-            cleanup-batch über core, ui und rust. motto bleibt: ein proton, ein elektron.
+            fehler sind jetzt sichtbar und weiterreichbar statt stumm in der
+            devtools-console. motto bleibt: ein proton, ein elektron.
 
-            **refactoring (dedup + dead code):**
-            - rust: 6 helper statt ~25 duplikat-stellen in `commands.rs`
-              (pfad-validierung, spawn_blocking, compat-id-parse, dest-scope-check) —
-              validierungsketten 1:1 extrahiert, kein verhalten geändert, kein test angepasst
-            - `shortcuts.ts`: drei fast identische binary-VDF-walker → einer
-            - sicherheits-relevante doppelungen vereint: appId-präzisions-guard
-              (`parseSafeAppId`), cleanup-race-gate (`collectInstalledAppIds`),
-              backup-validierung
-            - dead code raus: `Game.prefixPath`, `Game.installed`-kette,
-              `trashUnreadable`-state, saira-500-schrift (nie genutzt), tote guards,
-              `removeTool`-passthrough, ungenutzte vdf-importe
+            **kopierbare fehler-toasts:**
+            - globaler notification-toast (oben fixiert, `role="alert"`): erscheint
+              bei jedem fehler, der vorher nur als `console.warn`/`console.error`
+              endete — spiel-start, library-scan, download-listener
+            - copy-button (📋) legt den fehlertext in die zwischenablage, mit
+              „kopiert"-feedback — für issues direkt verwertbar, keine
+              devtools-suche mehr
+            - dismiss (✕) + 30s auto-dismiss als fallback; neue meldung ersetzt alte
+            - screenreader-freundlich: ansage bei jeder neuen meldung
 
-            **verifikation:** vitest 252/252 · cargo 100/100 · `npm run check` clean ·
-            `cargo build` grün. keine capability-änderung.
-
-            **hinweis für wayland-nutzer:** das AppImage lädt automatisch die
-            system-eigene `libwayland-client.so`, falls vorhanden. kein manuelles
-            `LD_PRELOAD` mehr nötig.
+            **verifikation:** vitest 257/257 · `npm run check` clean ·
+            kein rust-änderung, keine capability-änderung.
           draft: true
           prerelease: false
           files: |

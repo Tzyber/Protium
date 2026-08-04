@@ -5,6 +5,7 @@ import { scanLibrary } from "../../core/scan";
 import { type ScanResult, SteamNotFoundError } from "../../core/types";
 import { errMsg } from "../format";
 import { t } from "../i18n";
+import { useUiStore } from "./uiStore";
 
 type Status = "idle" | "scanning" | "done" | "not-found" | "error";
 
@@ -47,10 +48,11 @@ export const useScanStore = defineStore("scan", {
           this.status = "not-found";
           this.statusText = t("status.noSteamInstallation");
         } else {
+          const msg = errMsg(e);
           this.status = "error";
           this.statusText = t("status.error");
-          this.error = errMsg(e);
-          console.error("scan failed:", e);
+          this.error = msg;
+          useUiStore().showNotification(t("status.scanFailed", { error: msg }));
         }
       } finally {
         this.elapsedMs = Math.round(performance.now() - t0);

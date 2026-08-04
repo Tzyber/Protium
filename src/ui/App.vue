@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, watch } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import ProtiumLogo from "./components/ProtiumLogo.vue";
 import { t } from "./i18n";
 import { useScanStore } from "./stores/scanStore";
@@ -41,6 +41,23 @@ const rootShort = computed(() => {
   const r = scan.result?.steamRoot;
   return r ? r.replace(/^\/home\/[^/]+/, "~") : "—";
 });
+
+const copied = ref(false);
+let copiedTimer: ReturnType<typeof setTimeout> | null = null;
+
+async function copyError() {
+  if (!ui.notification) return;
+  try {
+    await navigator.clipboard.writeText(ui.notification.message);
+    copied.value = true;
+    if (copiedTimer) clearTimeout(copiedTimer);
+    copiedTimer = setTimeout(() => {
+      copied.value = false;
+    }, 2000);
+  } catch {
+    // clipboard nicht verfügbar (unsicherer kontext, keine berechtigung) — ignorieren
+  }
+}
 </script>
 
 <template>
@@ -78,6 +95,14 @@ const rootShort = computed(() => {
     </aside>
 
     <main id="main-content" class="content">
+      <transition name="toast" mode="out-in">
+        <div v-if="ui.notification" :key="ui.notification.message" class="note toast" role="alert">
+          <span class="note-icon" aria-hidden="true">⚠</span>
+          <span class="note-msg">{{ ui.notification.message }}</span>
+          <button class="note-copy" type="button" :aria-label="copied ? t('app.copied') : t('app.copyError')" @click="copyError">{{ copied ? "✓" : "📋" }}</button>
+          <button class="note-close" type="button" :aria-label="t('app.dismissNotification')" @click="ui.dismissNotification()">✕</button>
+        </div>
+      </transition>
       <LibraryView v-if="ui.activeView === 'library'" />
       <ProtonManagerView v-else-if="ui.activeView === 'proton'" />
       <CleanupView v-else-if="ui.activeView === 'cleanup'" />
@@ -169,4 +194,37 @@ nav { display: flex; flex-direction: column; gap: 2px; }
   overflow-x: auto;
   scrollbar-gutter: stable;
 }
+
+/* notification-toast: sticky oben, copy-button, kein auto-dismiss (nur 30s fallback via store) */
+.note.toast {
+  position: sticky;
+  top: 8px;
+  z-index: 10;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  margin: 8px 12px 0;
+  background: color-mix(in srgb, var(--tier-borked) 8%, var(--bg-0));
+  border: 1px solid var(--tier-borked);
+  border-radius: var(--r-sm);
+  font-family: var(--font-body);
+}
+.note-icon { color: var(--tier-borked); font-size: 0.875rem; flex-shrink: 0; margin-top: 2px; }
+.note-msg { flex: 1; color: var(--fg-0); font-size: 0.84375rem; line-height: 1.5; word-break: break-word; }
+.note-copy, .note-close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.875rem;
+  padding: 2px 4px;
+  color: var(--fg-2);
+  border-radius: 4px;
+  font-family: var(--font-body);
+}
+.note-copy:hover, .note-close:hover { color: var(--fg-0); background: color-mix(in srgb, var(--fg-1) 10%, transparent); }
+
+.toast-enter-active, .toast-leave-active { transition: opacity 0.2s, transform 0.2s; }
+.toast-enter-from, .toast-leave-to { opacity: 0; transform: translateY(-6px); }
 </style>
