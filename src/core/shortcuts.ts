@@ -12,6 +12,11 @@ export type ShortcutResult =
 
 // ---- binär-VDF-minimalparser (nur appid-extraktion) ----
 // format: TYPE-KEY-VALUE (typ-byte VOR dem key-string)
+// typen nach kanonischer Valve-binary-VDF-tabelle (ValveKeyValue/SteamKit2,
+// wstring-layout nach VDC-wiki); 0x09 ist ein wiki-only-compiled-typ,
+// 0x0A/0x0B nur mit VBKV-magic-header — shortcuts.vdf hat keinen → alle
+// drei default-throw. echte dateien nutzen nur 0x00/0x01/0x02/0x08, aber
+// die tabelle muss stimmen: werte nicht raten.
 
 const td = new TextDecoder();
 
@@ -48,36 +53,32 @@ function readU32(buf: Uint8Array, pos: number): { value: number; next: number } 
  */
 function skipBinaryValue(buf: Uint8Array, pos: number, type: number): number {
   switch (type) {
-    case 0x00: {
-      let depth = 1;
-      while (pos < buf.length && depth > 0) {
-        if (buf[pos] === 0x08) {
-          pos++;
-          depth--;
-          continue;
-        }
-        const childType = byteAt(buf, pos);
-        pos++;
-        const key = readCString(buf, pos);
-        pos = key.next;
-        pos = skipBinaryValue(buf, pos, childType);
-      }
-      return pos;
-    }
+    case 0x00:
+      // map-body ohne regeln: alles überspringen — dieselbe iteration wie
+      // walkMapBody, damit die zwei map-body-schleifen nicht driften können
+      return walkMapBody(
+        buf,
+        pos,
+        () => "skip",
+        () => {},
+      );
     case 0x01:
       return readCString(buf, pos).next;
     case 0x02:
     case 0x03:
     case 0x04:
       return pos + 4;
-    case 0x05:
-      return pos + 8;
-    case 0x06:
-    case 0x07: {
-      const { value: len, next } = readU32(buf, pos);
-      const skip = type === 0x07 ? len + 4 : len;
-      return next + skip;
+    case 0x05: {
+      // WSTRING: u16-LE char-count (ohne null-terminator) + count × UTF-16LE
+      if (pos + 2 > buf.length) throw new BinVdfError("truncated wstring");
+      const count = new DataView(buf.buffer, buf.byteOffset + pos, 2).getUint16(0, true);
+      if (pos + 2 + count * 2 > buf.length) throw new BinVdfError("truncated wstring");
+      return pos + 2 + count * 2;
     }
+    case 0x06:
+      return pos + 4;
+    case 0x07:
+      return pos + 8;
     default:
       throw new BinVdfError(`unknown type 0x${type.toString(16)}`);
   }

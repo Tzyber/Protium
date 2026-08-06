@@ -61,6 +61,15 @@ function makeEmptyBinVdf(): Uint8Array {
   return new Uint8Array([0x00, ...new TextEncoder().encode("shortcuts"), 0x00, 0x08]);
 }
 
+function utf16leBytes(s: string): number[] {
+  const bytes: number[] = [];
+  for (const ch of s) {
+    const code = ch.charCodeAt(0);
+    bytes.push(code & 0xff, code >> 8);
+  }
+  return bytes;
+}
+
 describe("parseBinaryShortcutIds", () => {
   it("extrahiert appId aus gültigem binary-VDF", () => {
     const buf = makeBinVdf([{ appId: 3641016077, name: "Test" }]);
@@ -201,6 +210,196 @@ describe("parseBinaryShortcutIds", () => {
   it("entry ohne appid → leeres set, kein throw", () => {
     const buf = makeBinVdf([{ name: "just a name", hasTags: true }]);
     expect(parseBinaryShortcutIds(buf).size).toBe(0);
+  });
+
+  it("alle kanonischen typen in skip-subtrees (0x03-0x07)", () => {
+    // nicht-numerischer top-level "abc" → rootKind-skip, alle typen drin
+    // numerischer entry "0" → extract; nur appid (0x02) wird extrahiert
+    const parts = new Uint8Array([
+      0x00,
+      ...new TextEncoder().encode("shortcuts"),
+      0x00,
+      0x00, // type: MAP (top-level "abc")
+      ...new TextEncoder().encode("abc"),
+      0x00, // key
+      0x06, // type: color
+      ...new TextEncoder().encode("color"),
+      0x00, // key
+      0x01,
+      0x02,
+      0x03,
+      0x04, // value: RGBA 4 bytes
+      0x07, // type: uint64
+      ...new TextEncoder().encode("huge"),
+      0x00, // key
+      0x01,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00, // value: 8 bytes
+      0x08, // end "abc" MAP
+      0x00, // type: MAP (entry "0")
+      ...new TextEncoder().encode("0"),
+      0x00, // key
+      0x02, // type: int32
+      ...new TextEncoder().encode("appid"),
+      0x00, // key
+      0x0a,
+      0x00,
+      0x00,
+      0x00, // value: 10
+      0x03, // type: float32
+      ...new TextEncoder().encode("f"),
+      0x00, // key
+      0x00,
+      0x00,
+      0x80,
+      0x3f, // value: 1.0
+      0x04, // type: pointer
+      ...new TextEncoder().encode("p"),
+      0x00, // key
+      0x00,
+      0x00,
+      0x00,
+      0x00, // value: 4 bytes
+      0x05, // type: wstring
+      ...new TextEncoder().encode("w"),
+      0x00, // key
+      0x06,
+      0x00, // count: 6 code-units
+      ...utf16leBytes("Hälfte"), // 12 bytes UTF-16LE (nicht-ASCII, spec-test integriert)
+      0x01, // type: string
+      ...new TextEncoder().encode("s"),
+      0x00, // key
+      ...new TextEncoder().encode("rest"),
+      0x00, // value (muss nach dem wstring noch lesbar sein)
+      0x08, // end entry
+      0x08, // end root
+    ]);
+    const ids = parseBinaryShortcutIds(parts);
+    expect(ids.has(10)).toBe(true);
+    expect(ids.size).toBe(1);
+  });
+
+  it("wstring mit count 0 (leerer wstring) → kein throw", () => {
+    const parts = new Uint8Array([
+      0x00,
+      ...new TextEncoder().encode("shortcuts"),
+      0x00,
+      0x00, // type: MAP (entry "0")
+      ...new TextEncoder().encode("0"),
+      0x00, // key
+      0x02, // type: int32
+      ...new TextEncoder().encode("appid"),
+      0x00, // key
+      0x2a,
+      0x00,
+      0x00,
+      0x00, // value: 42
+      0x05, // type: wstring
+      ...new TextEncoder().encode("w"),
+      0x00, // key
+      0x00,
+      0x00, // count: 0, keine daten
+      0x08, // end entry
+      0x08, // end root
+    ]);
+    expect(parseBinaryShortcutIds(parts).has(42)).toBe(true);
+  });
+
+  it("truncated wstring → BinVdfError mit wstring-message", () => {
+    // count 5, aber nur 4 units daten — WICHTIG: kein 0x08-terminator
+    // danach, sonst füllen die terminator-bytes die fehlenden 2 units auf
+    // und der truncation-check greift nicht (gefunden im plan-review)
+    const parts = new Uint8Array([
+      0x00,
+      ...new TextEncoder().encode("shortcuts"),
+      0x00,
+      0x00, // type: MAP (entry "0")
+      ...new TextEncoder().encode("0"),
+      0x00, // key
+      0x05, // type: wstring
+      ...new TextEncoder().encode("w"),
+      0x00, // key
+      0x05,
+      0x00, // count: 5
+      ...utf16leBytes("Test"), // nur 4 units (8 bytes), 1 unit fehlt
+    ]);
+    expect(() => parseBinaryShortcutIds(parts)).toThrow("truncated wstring");
+  });
+
+  it("truncated color/uint64 → BinVdfError 'unterminated map body'", () => {
+    // datei endet mitten im 4-byte-color-wert — message gepinnt:
+    // der alte code wirft hier "truncated uint32" (readU32), der neue
+    // "unterminated map body" (walkMapBody-EOF) — mutations-verifizierend.
+    const parts = new Uint8Array([
+      0x00,
+      ...new TextEncoder().encode("shortcuts"),
+      0x00,
+      0x00, // type: MAP (entry "0")
+      ...new TextEncoder().encode("0"),
+      0x00, // key
+      0x06, // type: color
+      ...new TextEncoder().encode("c"),
+      0x00, // key
+      0x01,
+      0x02,
+      0x03, // nur 3 von 4 bytes
+    ]);
+    expect(() => parseBinaryShortcutIds(parts)).toThrow("unterminated map body");
+  });
+
+  it("0x09/0x0A/0x0B als werttyp → BinVdfError (kein VBKV-magic-handling)", () => {
+    // pinnt: default-throw bleibt — diese typen kommen in shortcuts.vdf
+    // (raw, ohne magic-header) nie vor, der parser rät nicht.
+    // dieser test ist im ALTEN code bereits grün (default-throw existiert) —
+    // er ist ein pin, kein rot-test.
+    for (const badType of [0x09, 0x0a, 0x0b]) {
+      const parts = new Uint8Array([
+        0x00,
+        ...new TextEncoder().encode("shortcuts"),
+        0x00,
+        0x00, // type: MAP (entry "0")
+        ...new TextEncoder().encode("0"),
+        0x00, // key
+        badType, // type: unbekannt
+        ...new TextEncoder().encode("x"),
+        0x00, // key
+      ]);
+      expect(() => parseBinaryShortcutIds(parts)).toThrow(BinVdfError);
+    }
+  });
+
+  it("wstring auf geslicetem buffer (byteOffset-pfad)", () => {
+    const full = new Uint8Array([
+      0x00,
+      ...new TextEncoder().encode("shortcuts"),
+      0x00,
+      0x00, // type: MAP (entry "0")
+      ...new TextEncoder().encode("0"),
+      0x00, // key
+      0x02, // type: int32
+      ...new TextEncoder().encode("appid"),
+      0x00, // key
+      0x2a,
+      0x00,
+      0x00,
+      0x00, // value: 42
+      0x05, // type: wstring
+      ...new TextEncoder().encode("w"),
+      0x00, // key
+      0x02,
+      0x00, // count: 2
+      ...utf16leBytes("Hi"),
+      0x08, // end entry
+      0x08, // end root
+    ]);
+    // zwei führende bytes voranstellen, dann slicen → byteOffset ≠ 0
+    const padded = new Uint8Array([0xff, 0xff, ...full]);
+    expect(parseBinaryShortcutIds(padded.subarray(2)).has(42)).toBe(true);
   });
 });
 
