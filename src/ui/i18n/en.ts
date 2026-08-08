@@ -165,6 +165,7 @@ export const en = {
     launchOptionsHint:
       "%command% = the actual start command; omit %command% to only append the options.",
     protondbLink: "view on protondb ↗",
+    protondbOpenFailed: "could not open protondb: {error}",
     protondbHint:
       "reports with operating system, proton version and notes from other players. data from protondb (ODbL).",
     dismissError: "dismiss message",

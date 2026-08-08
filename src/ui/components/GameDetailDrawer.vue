@@ -92,7 +92,12 @@ onBeforeUnmount(() => {
 });
 
 async function openProtonDb() {
-  if (game.value) await openExternal(protonDbAppUrl(game.value.appId)).catch(() => {});
+  if (game.value) {
+    await openExternal(protonDbAppUrl(game.value.appId)).catch((e: unknown) => {
+      // kein stilles scheitern: fehler als notification sichtbar machen
+      ui.showNotification(t("drawer.protondbOpenFailed", { error: errorText(e) }));
+    });
+  }
 }
 
 // startoptionen (phase 4): "idle" | "saving" | "saved" | fehlermeldung

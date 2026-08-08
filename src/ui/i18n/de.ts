@@ -162,6 +162,7 @@ export const de = {
     launchOptionsHint:
       "%command% = der eigentliche startbefehl; weglassen hängt die optionen nur an.",
     protondbLink: "auf protondb ansehen ↗",
+    protondbOpenFailed: "protondb konnte nicht geöffnet werden: {error}",
     protondbHint:
       "reports mit betriebssystem, proton-version und notizen anderer spieler. daten von protondb (ODbL).",
     dismissError: "meldung schließen",
