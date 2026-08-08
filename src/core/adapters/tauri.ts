@@ -15,7 +15,6 @@ import {
   writeTextFile,
 } from "@tauri-apps/plugin-fs";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import type { Cache, DirEntry, FileSystem, Http, HttpResponse, Ports, System } from "../ports.js";
 import { ensureSizeLimit } from "../ports.js";
 
@@ -130,12 +129,14 @@ export function assetUrl(path: string): string {
 
 export { appCacheDir };
 
-/** url im system-browser öffnen. */
+/** url im system-browser öffnen (eigener command: host-xdg-open, nicht
+ * plugin-opener — dessen PATH-lookup nimmt im appimage das gebündelte
+ * xdg-open, das auf kde-systemen lautlos scheitert). */
 export function openExternal(url: string): Promise<void> {
-  return openUrl(url);
+  return invoke("open_external", { url });
 }
 
 /** spiel über steam starten (steam:// handler). steam muss laufen bzw. startet dann. */
 export function launchGame(appId: number): Promise<void> {
-  return openUrl(`steam://rungameid/${appId}`);
+  return invoke("open_external", { url: `steam://rungameid/${appId}` });
 }

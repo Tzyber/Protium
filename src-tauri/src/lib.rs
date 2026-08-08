@@ -27,24 +27,15 @@ pub fn run() {
                         app_origin || !matches!(url.scheme(), "http" | "https" | "steam")
                     })
                     .build()?;
-
-                // appimage-wayland-fix: 01-wayland-fix.sh lädt die
-                // system-libwayland-client per LD_PRELOAD. erst NACH dem
-                // fenster-build entfernen: webkit spawnt seinen webprocess
-                // beim ersten load und braucht das preload (sonst lädt er die
-                // gebündelte lib und rendert nichts — blank screen). alle
-                // späteren kinder (xdg-open → browser/steam) erben die
-                // env-var sonst weiter und crashen lautlos.
-                std::env::remove_var("LD_PRELOAD");
             }
             Ok(())
         })
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_http::init())
-        .plugin(tauri_plugin_opener::init())
         .manage(commands::CancelRegistry::default())
         .invoke_handler(tauri::generate_handler![
             commands::is_process_running,
+            commands::open_external,
             commands::dir_size,
             commands::batch_dir_sizes,
             commands::allow_library_scope,
