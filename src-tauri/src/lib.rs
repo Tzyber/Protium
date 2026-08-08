@@ -2,12 +2,6 @@ mod commands;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // appimage-wayland-fix: 01-wayland-fix.sh lädt die system-libwayland-client
-    // per LD_PRELOAD — die lib ist beim prozess-start bereits geladen, die
-    // env-var wird danach nur noch an kind-prozesse vererbt. dort tötet sie
-    // externe aufrufer (xdg-open → firefox crasht lautlos, protondb-link und
-    // play-button wirken tot). entfernen nach dem start.
-    std::env::remove_var("LD_PRELOAD");
     tauri::Builder::default()
         .setup(|app| {
             #[cfg(not(mobile))]
@@ -33,6 +27,15 @@ pub fn run() {
                         app_origin || !matches!(url.scheme(), "http" | "https" | "steam")
                     })
                     .build()?;
+
+                // appimage-wayland-fix: 01-wayland-fix.sh lädt die
+                // system-libwayland-client per LD_PRELOAD. erst NACH dem
+                // fenster-build entfernen: webkit spawnt seinen webprocess
+                // beim ersten load und braucht das preload (sonst lädt er die
+                // gebündelte lib und rendert nichts — blank screen). alle
+                // späteren kinder (xdg-open → browser/steam) erben die
+                // env-var sonst weiter und crashen lautlos.
+                std::env::remove_var("LD_PRELOAD");
             }
             Ok(())
         })
