@@ -97,16 +97,18 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: "Protium ${{ github.ref_name }}"
           body: |
-            ## 0.2.1 — externe links öffnen endlich den browser
+            ## 0.2.2 — externe links öffnen den browser, app rendert wieder
 
-            protondb-link und play-button schienen tot: der appimage-wayland-fix
-            vererbte `LD_PRELOAD` an kind-prozesse, wodurch der browser beim
-            start lautlos crashte (fork-detached meldet trotzdem erfolg).
+            zwei appimage-wayland-fix-bugs: `LD_PRELOAD`-vererbung crashte den
+            browser beim öffnen lautlos (fork-detached meldet trotzdem erfolg),
+            und der erste entfernen-versuch zu früh im start liess webkit ohne
+            preload rendern (blank screen).
 
             **fix:**
-            - `LD_PRELOAD` wird nach dem app-start entfernt — die lib ist dann
-              schon geladen, kind-prozesse (xdg-open → browser/steam) starten
-              sauber
+            - `LD_PRELOAD` wird erst NACH dem fenster-build entfernt: webkit
+              spawnt seinen webprocess beim ersten load und braucht das preload
+              (blank screen weg), spätere kind-prozesse (xdg-open → browser/
+              steam) starten sauber
             - rechtsklick-"open link" kapert nicht mehr die webview: externe
               navigationen (http/https/steam) werden geblockt, links gehören in
               den system-browser (on_navigation, fenster wird im setup gebaut)
@@ -114,7 +116,8 @@ jobs:
               notification statt stillem nix
 
             **verifikation:** vitest 263/263 · `npm run check` clean ·
-            cargo test 100/100.
+            cargo test 100/100 · lokaler test mit simuliertem appimage-env:
+            spiel startet, protondb tab öffnet.
           draft: true
           prerelease: false
           files: |
