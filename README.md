@@ -132,7 +132,7 @@ für die implementierung gelten folgende regeln: schreibende zugriffe auf steam-
 
 keine sicherheitsprobleme, eher wartung und ehrlichkeit. abarbeitung bei gelegenheit, reihenfolge ≠ priorität.
 
-fixes dieser liste wandern direkt auf main. 0.2.0 enthält die kanonische binary-VDF-skip-tabelle (shortcuts.ts); 0.1.9 enthielt kopierbare fehler-notifications (toast mit copy-button statt stummer console-ausgabe, alle fehlerpfade umgestellt); 0.1.8 enthielt den overhead-scan-refactor (dedup + dead code entfernt, details in PROTIUM_STATUS); 0.1.7 enthielt die snap-unterstützung sowie die inzwischen behobenen punkte dieser liste (sha512-warnung, cache-write-schutz, batchDirSizes, settings-andeutung entfernt); die offenen punkte kommen mit späteren versionen.
+fixes dieser liste wandern direkt auf main. 0.2.1 fixt die toten externen links (LD_PRELOAD-vererbung im appimage tötete browser/steam lautlos, webview-navigation wird jetzt geblockt); 0.2.0 enthielt die kanonische binary-VDF-skip-tabelle (shortcuts.ts); 0.1.9 enthielt kopierbare fehler-notifications (toast mit copy-button statt stummer console-ausgabe, alle fehlerpfade umgestellt); 0.1.8 enthielt den overhead-scan-refactor (dedup + dead code entfernt, details in PROTIUM_STATUS); 0.1.7 enthielt die snap-unterstützung sowie die inzwischen behobenen punkte dieser liste (sha512-warnung, cache-write-schutz, batchDirSizes, settings-andeutung entfernt); die offenen punkte kommen mit späteren versionen.
 
 - [x] `cache.set` in ein eigenes try hinter den rückgabewert ziehen (`geproton.ts`, `protondb.ts`), damit ein cache-schreibfehler nicht frisch geladene netz-daten verwirft - gefixt
 - [x] binary-VDF-skip-tabelle ans kanonische layout angleichen (`shortcuts.ts`) — gefixt

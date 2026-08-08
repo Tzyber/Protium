@@ -97,22 +97,24 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: "Protium ${{ github.ref_name }}"
           body: |
-            ## 0.2.0 — kanonische binary-VDF-skip-tabelle
+            ## 0.2.1 — externe links öffnen endlich den browser
 
-            die binary-VDF-skip-tabelle in `shortcuts.ts` trug für drei typen
-            erfundene layouts; jetzt gilt die kanonische Valve-semantik.
-            reine wartung — kein verhaltenswechsel auf echten steam-dateien.
+            protondb-link und play-button schienen tot: der appimage-wayland-fix
+            vererbte `LD_PRELOAD` an kind-prozesse, wodurch der browser beim
+            start lautlos crashte (fork-detached meldet trotzdem erfolg).
 
             **fix:**
-            - skip-tabelle kanonisch: wstring (0x05) = u16-count + UTF-16LE,
-              color (0x06) = 4 bytes, uint64 (0x07) = 8 bytes
-            - zweite map-body-iteration entfernt: der 0x00-case delegiert an
-              `walkMapBody`, kein eigener depth-loop mehr (drift-quelle)
-            - 6 neue parser-tests (typen 0x03–0x07, wstring-randfälle,
-              truncation-messages, byteOffset-pfad)
+            - `LD_PRELOAD` wird nach dem app-start entfernt — die lib ist dann
+              schon geladen, kind-prozesse (xdg-open → browser/steam) starten
+              sauber
+            - rechtsklick-"open link" kapert nicht mehr die webview: externe
+              navigationen (http/https/steam) werden geblockt, links gehören in
+              den system-browser (on_navigation, fenster wird im setup gebaut)
+            - protondb-link schluckt fehler nicht mehr lautlos: kopierbare
+              notification statt stillem nix
 
             **verifikation:** vitest 263/263 · `npm run check` clean ·
-            kein rust-änderung, keine capability-änderung.
+            cargo test 100/100.
           draft: true
           prerelease: false
           files: |

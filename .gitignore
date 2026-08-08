@@ -36,3 +36,17 @@ docs/superpowers/specs/2026-07-30-politur-1-2-design.md
 BEFUNDE_2026-07-29.md
 tagesbericht-2026-07-31.md
 *.md
+.cursor/rules/caveman.mdc
+
+# sandbox-artefakte: /dev/null-char-devices, die der bash-sandbox-lauf im
+# repo-root anlegt (crw 1,3). nicht committen.
+.bash_profile
+.bashrc
+.gitconfig
+.gitmodules
+.mcp.json
+.profile
+.ripgreprc
+.vscode
+.zprofile
+.zshrc
