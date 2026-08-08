@@ -97,29 +97,33 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: "Protium ${{ github.ref_name }}"
           body: |
-            ## 0.2.3 — externe links öffnen den browser, app rendert wieder
+            ## 0.2.4 — externe links öffnen den browser, app rendert wieder
 
-            zwei appimage-wayland-fix-bugs: `LD_PRELOAD`-vererbung crashte den
-            browser beim öffnen lautlos (fork-detached meldet trotzdem erfolg),
-            und der erste entfernen-versuch zu früh im start liess webkit ohne
-            preload rendern (blank screen). dazu ein flakky test (race zwischen
-            zwei tests um denselben temp-dir-namen) — verzeichnisnamen
-            getrennt, CI stabil.
+            zwei appimage-bugs: das gebündelte ubuntu-xdg-open scheitert auf
+            kde-artigen systemen lautlos (PATH-lookup in der app nahm immer
+            das gebündelte statt des host-xdg-open), und der erste
+            entfernen-versuch zu früh im start liess webkit ohne preload
+            rendern (blank screen). dazu ein flakky test (race um
+            temp-dir-namen).
 
             **fix:**
-            - `LD_PRELOAD` wird erst NACH dem fenster-build entfernt: webkit
-              spawnt seinen webprocess beim ersten load und braucht das preload
-              (blank screen weg), spätere kind-prozesse (xdg-open → browser/
-              steam) starten sauber
+            - externe links laufen über einen eigenen command (R-7) statt
+              plugin-opener: kind-prozesse bekommen gefiltertes env (alle
+              AppImage-mount-einträge raus — das gebündelte ubuntu-xdg-open
+              scheiterte auf kde-systemen lautlos), url-allowlist im rust-code
+              (protondb + github + steam, appid numerisch), gio-fallback,
+              startfehler kommen als toast statt im kind-prozess zu
+              verschwinden
+            - blank screen weg: kein globales env-entfernen mehr, der
+              webprocess behält sein preload (spawn-seitige filterung)
             - rechtsklick-"open link" kapert nicht mehr die webview: externe
-              navigationen (http/https/steam) werden geblockt, links gehören in
-              den system-browser (on_navigation, fenster wird im setup gebaut)
-            - protondb-link schluckt fehler nicht mehr lautlos: kopierbare
-              notification statt stillem nix
+              navigationen (http/https/steam) werden geblockt (on_navigation,
+              fenster wird im setup gebaut)
+            - flakky test: race um denselben temp-dir-namen — verzeichnisnamen
+              getrennt, CI stabil
 
             **verifikation:** vitest 263/263 · `npm run check` clean ·
-            cargo test 100/100 · lokaler test mit simuliertem appimage-env:
-            spiel startet, protondb tab öffnet.
+            cargo test 104/104.
           draft: true
           prerelease: false
           files: |
