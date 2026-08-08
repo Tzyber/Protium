@@ -1610,12 +1610,15 @@ mod tests {
 
     #[test]
     fn validate_dest_prefix_trick_abgelehnt() {
-        // dest = "<cache-dir>-evil/x" — komponenten-vergleich fängt das ab
+        // dest = "<cache-dir>-evil/x" — komponenten-vergleich fängt das ab.
+        // eigener verzeichnisname pro test: `validate_dest_im_cache_dir_ok`
+        // nutzt `protium-desttest-cache-{pid}`, und das remove_dir_all hier
+        // löschte dessen verzeichnis mitten im lauf (race, CI-rot).
         let tmp = std::env::temp_dir();
-        let cache = tmp.join(format!("protium-desttest-cache-{}", std::process::id()));
+        let cache = tmp.join(format!("protium-desttest-prefix-{}", std::process::id()));
         std::fs::create_dir_all(&cache).unwrap();
 
-        let evil = tmp.join(format!("protium-desttest-cache-{}-evil", std::process::id()));
+        let evil = tmp.join(format!("protium-desttest-prefix-{}-evil", std::process::id()));
         let dest = evil.join("x");
         let res = validate_download_dest(dest.to_str().unwrap(), &cache);
         assert!(res.is_err(), "prefix-trick muss abgelehnt werden: {res:?}");
