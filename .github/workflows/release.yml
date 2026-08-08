@@ -97,12 +97,14 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: "Protium ${{ github.ref_name }}"
           body: |
-            ## 0.2.2 — externe links öffnen den browser, app rendert wieder
+            ## 0.2.3 — externe links öffnen den browser, app rendert wieder
 
             zwei appimage-wayland-fix-bugs: `LD_PRELOAD`-vererbung crashte den
             browser beim öffnen lautlos (fork-detached meldet trotzdem erfolg),
             und der erste entfernen-versuch zu früh im start liess webkit ohne
-            preload rendern (blank screen).
+            preload rendern (blank screen). dazu ein flakky test (race zwischen
+            zwei tests um denselben temp-dir-namen) — verzeichnisnamen
+            getrennt, CI stabil.
 
             **fix:**
             - `LD_PRELOAD` wird erst NACH dem fenster-build entfernt: webkit
